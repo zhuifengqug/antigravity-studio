@@ -12,6 +12,15 @@
   ];
 
   var EFFORT_RANK = { off: 0, minimal: 1, low: 2, medium: 3, high: 4, xhigh: 5, max: 6 };
+  var EFFORT_DISPLAY_LABEL = {
+    off: 'Off',
+    minimal: 'Minimal',
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+    xhigh: 'Extra High',
+    max: 'Max'
+  };
 
   function ensureEffortStyles() {
     if (typeof document === 'undefined') return;
@@ -34,7 +43,7 @@
 
   function detectEffortFromText(text) {
     var low = String(text || '').toLowerCase();
-    if (/(?:\bxhigh\b|\bx-high\b|extra[\s-]*high|极高|超高)/i.test(low)) return 'xhigh';
+    if (/(?:\bxhigh\b|\bx-high\b|extra[\s-]*high|\bextra\b|极高|超高)/i.test(low)) return 'xhigh';
     if (/(?:\bmax\b|最大)/i.test(low)) return 'max';
     if (/(?:\bhigh\b|\bthinking\b|深度思考|\(\s*高\s*\)|（\s*高\s*）|\s高$)/i.test(low)) return 'high';
     if (/(?:\bmedium\b|\bmed\b|\(\s*中\s*\)|（\s*中\s*）|\s中$)/i.test(low)) return 'medium';
@@ -49,7 +58,8 @@
       .replace(/\b(?:new|notice|beta|preview|recommended|default)\b|默认|自动/gi, ' ')
       .replace(/[（(][^（）()]*[）)]/g, ' ')
       .replace(/\b(?:orchestrator|编排)\b/gi, ' ')
-      .replace(/\b(?:off|none|minimal|min|low|medium|med|high|xhigh|x-high|extra\s*high|max)\b/gi, ' ')
+      .replace(/\b(?:off|none|minimal|min|low|medium|med|high|xhigh|x-high|extra\s+high|extra|thinking|max)\b/gi, ' ')
+      .replace(/[^a-z0-9.\u4e00-\u9fa5]+/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim()
       .toLowerCase();
@@ -58,27 +68,35 @@
   function parseModelLabel(label) {
     var s = String(label || '').trim();
     if (!s) return null;
-    var mParen = s.match(/^(.*?)\s*[（(]([^()（）]+)[）)]\s*$/);
+    var mParen = s.match(/^(.*?)\s*[（(](off|minimal|min|low|lite|medium|med|high|xhigh|x-high|extra(?:\s+high)?|max)(?:\s+thinking)?[）)]\s*$/i);
     if (mParen) {
       var eff1 = detectEffortFromText(mParen[2]);
-      return { base: mParen[1].trim(), effort: eff1, effortLabel: mParen[2].trim() };
+      return {
+        base: mParen[1].trim(),
+        effort: eff1,
+        effortLabel: EFFORT_DISPLAY_LABEL[eff1] || mParen[2].trim()
+      };
     }
-    var mTail = s.match(/^(.*?)\s+(extra\s*high|x-high|xhigh|minimal|medium|high|low|min|med|off|max)$/i);
+    var mTail = s.match(/^(.*?)\s+(extra\s+high|x-high|xhigh|extra|minimal|medium|high|low|min|med|off|max)$/i);
     if (mTail) {
       var eff2 = detectEffortFromText(mTail[2]);
-      return { base: mTail[1].trim(), effort: eff2, effortLabel: mTail[2].trim() };
+      return {
+        base: mTail[1].trim(),
+        effort: eff2,
+        effortLabel: EFFORT_DISPLAY_LABEL[eff2] || mTail[2].trim()
+      };
     }
-    return { base: s, effort: 'medium', effortLabel: 'Medium' };
+    return null;
   }
 
   function itemMatchesEffort(txt, levelId) {
     var low = String(txt || '').toLowerCase().trim();
     if (!low) return false;
     if (levelId === 'xhigh') {
-      return /\bxhigh\b|\bx-high\b|extra[\s-]*high|极高|超高/.test(low);
+      return /\bxhigh\b|\bx-high\b|extra[\s-]*high|\bextra\b|极高|超高/.test(low);
     }
     if (levelId === 'high') {
-      if (/\bxhigh\b|\bx-high\b|extra[\s-]*high|极高|超高/.test(low)) return false;
+      if (/\bxhigh\b|\bx-high\b|extra[\s-]*high|\bextra\b|极高|超高/.test(low)) return false;
       return /\bhigh\b|\(\s*高\s*\)|（\s*高\s*）|^高$|\s高$/.test(low);
     }
     if (levelId === 'medium') {
@@ -107,7 +125,7 @@
       if (!raw) return null;
       if (raw.alternate) {
         var root = raw;
-        for (var g = 0; root.return && g < 80; g++) root = root.return;
+        for (var g = 0; root.return && g < 600; g++) root = root.return;
         if (root && root.stateNode && root.stateNode.current && root.stateNode.current !== root) {
           return raw.alternate;
         }
@@ -116,6 +134,67 @@
     } catch (_e) {
       return null;
     }
+  }
+
+  function isOrchestratorModel(m) {
+    if (!m) return false;
+    var txt = typeof m === 'string' ? m : (String(m.label || '') + ' ' + String(m.modelId || ''));
+    return /\borchestrator\b|编排/i.test(txt);
+  }
+
+  function findPlannerOption(planners, ref) {
+    if (!ref) return null;
+    if (typeof ref === 'object' && typeof ref.label === 'string') return ref;
+    var list = Array.isArray(planners) ? planners : [];
+    for (var i = 0; i < list.length; i++) {
+      var p = list[i];
+      if (!p) continue;
+      if (p.value === ref || p.modelId === ref || p.label === ref) return p;
+    }
+    return null;
+  }
+
+  function buildEffortIndexFromOptions(list) {
+    var out = new Map();
+    if (!Array.isArray(list)) return out;
+    for (var i = 0; i < list.length; i++) {
+      var o = list[i];
+      if (!o || o.disabled || o.isCustom || typeof o.label !== 'string' || isOrchestratorModel(o)) continue;
+      var parsed = parseModelLabel(o.label);
+      if (!parsed || !parsed.base) continue;
+      var slug = extractModelFamily(parsed.base);
+      if (!slug) continue;
+      var m = out.get(slug);
+      if (!m) {
+        m = new Map();
+        out.set(slug, m);
+      }
+      if (!m.has(parsed.effort)) m.set(parsed.effort, o);
+    }
+    return out;
+  }
+
+  function normalizeEffortIndex(rawMap, optsList) {
+    var out = buildEffortIndexFromOptions(optsList);
+    if (!(rawMap instanceof Map)) return out;
+    rawMap.forEach(function (inn, rk) {
+      if (!(inn instanceof Map) || !inn.size) return;
+      var detectedBase = '';
+      inn.forEach(function (o) {
+        if (detectedBase || !o || typeof o.label !== 'string') return;
+        var p = parseModelLabel(o.label);
+        if (p && p.base) detectedBase = p.base;
+      });
+      var slug = extractModelFamily(detectedBase || String(rk || ''));
+      if (!slug) return;
+      var merged = out.get(slug) || new Map();
+      inn.forEach(function (o, ek) {
+        var nk = detectEffortFromText(ek);
+        if (nk && o && !o.disabled && !merged.has(nk)) merged.set(nk, o);
+      });
+      if (merged.size) out.set(slug, merged);
+    });
+    return out;
   }
 
   function readAgFiberContext(el) {
@@ -157,11 +236,11 @@
     var ops = Array.isArray(sc && sc.orchestratorPlanners) ? sc.orchestratorPlanners : [];
 
     return {
-      effortIndex: sc && sc.effortIndex instanceof Map ? sc.effortIndex : null,
+      effortIndex: normalizeEffortIndex(sc && sc.effortIndex, mos),
       modelOptions: Array.isArray(mos) ? mos : [],
       selectedModel: sel,
       orchPlanners: ops,
-      orchIdx: sc && sc.orchestratorPlannerIndex instanceof Map ? sc.orchestratorPlannerIndex : null,
+      orchIdx: normalizeEffortIndex(sc && sc.orchestratorPlannerIndex, ops),
       orchDef: (sc && sc.orchestratorDefaultPlanner) || null,
       orchPick: (sc && sc.orchestratorPick && typeof sc.orchestratorPick === 'object') ? sc.orchestratorPick : null,
       conversationId: cid,
@@ -172,18 +251,33 @@
     };
   }
 
-  function isOrchestratorModel(m) {
-    if (!m) return false;
-    var txt = typeof m === 'string' ? m : (String(m.label || '') + ' ' + String(m.modelId || ''));
-    return /\borchestrator\b|编排/i.test(txt);
-  }
-
   function collectEffortOptionsForBase(optionsList, targetBaseSlug, extraIndexMap) {
     var map = new Map();
+    if (extraIndexMap instanceof Map) {
+      var slugHit = extraIndexMap.get(targetBaseSlug);
+      if (!(slugHit instanceof Map)) {
+        extraIndexMap.forEach(function (inner, baseKey) {
+          if (!slugHit && inner instanceof Map && extractModelFamily(baseKey) === targetBaseSlug) {
+            slugHit = inner;
+          }
+        });
+      }
+      if (slugHit instanceof Map) {
+        slugHit.forEach(function (opt, effKey) {
+          var normId = detectEffortFromText(effKey);
+          if (normId && opt && !opt.disabled && !map.has(normId)) {
+            map.set(normId, {
+              id: normId,
+              label: EFFORT_DISPLAY_LABEL[normId] || effKey,
+              option: opt
+            });
+          }
+        });
+      }
+    }
     for (var i = 0; i < (optionsList || []).length; i++) {
       var opt = optionsList[i];
       if (!opt || opt.disabled || opt.isCustom || !opt.label) continue;
-      if (isOrchestratorModel(opt)) continue;
       var parsed = parseModelLabel(opt.label);
       if (!parsed || !parsed.base) continue;
       if (extractModelFamily(parsed.base) === targetBaseSlug) {
@@ -191,19 +285,6 @@
           map.set(parsed.effort, { id: parsed.effort, label: parsed.effortLabel, option: opt });
         }
       }
-    }
-    if (extraIndexMap instanceof Map) {
-      extraIndexMap.forEach(function (inner, baseKey) {
-        if (extractModelFamily(baseKey) === targetBaseSlug && inner instanceof Map) {
-          inner.forEach(function (opt, effKey) {
-            var normId = detectEffortFromText(effKey);
-            if (!map.has(normId) && opt && opt.label) {
-              var p2 = parseModelLabel(opt.label);
-              map.set(normId, { id: normId, label: (p2 && p2.effortLabel) || effKey, option: opt });
-            }
-          });
-        }
-      });
     }
     var levels = [];
     map.forEach(function (entry) {
@@ -218,18 +299,24 @@
   function resolveActiveModelProfile(ctx, triggerText, hoveredBaseText) {
     if (!ctx) return null;
 
+    var effIdx = ctx.effortIndex instanceof Map ? ctx.effortIndex : normalizeEffortIndex(null, ctx.modelOptions);
+    var orchIdx = (ctx.orchIdx instanceof Map && ctx.orchIdx.size) ? ctx.orchIdx : normalizeEffortIndex(null, ctx.orchPlanners);
+
     // 1. If user is hovering over a specific non-orchestrator model row in the open menu, inspect THAT model's real efforts
     if (hoveredBaseText && !isOrchestratorModel(hoveredBaseText)) {
       var hovSlug = extractModelFamily(hoveredBaseText);
-      var hovLevels = collectEffortOptionsForBase(ctx.modelOptions, hovSlug, ctx.effortIndex);
+      var hovLevels = collectEffortOptionsForBase(ctx.modelOptions, hovSlug, effIdx);
       if (hovLevels.length) {
         var selParsed = ctx.selectedModel ? parseModelLabel(ctx.selectedModel.label) : null;
         var isSameAsSelected = selParsed && extractModelFamily(selParsed.base) === hovSlug;
+        var hovCur = isSameAsSelected && hovLevels.some(function (l) { return l.id === selParsed.effort; })
+          ? selParsed.effort
+          : (hovLevels.some(function (l) { return l.id === 'medium'; }) ? 'medium' : hovLevels[0].id);
         return {
           isOrchPlan: false,
           isHovered: true,
-          baseName: hoveredBaseText.trim(),
-          currentEffort: isSameAsSelected ? selParsed.effort : (hovLevels[0].id),
+          baseName: (selParsed && isSameAsSelected ? selParsed.base : null) || hoveredBaseText.trim(),
+          currentEffort: hovCur,
           levels: hovLevels
         };
       }
@@ -239,29 +326,19 @@
     var isOrch = isOrchestratorModel(selected) || isOrchestratorModel(triggerText);
 
     if (isOrch && Array.isArray(ctx.orchPlanners) && ctx.orchPlanners.length) {
-      var pk = ctx.orchPick;
-      var activePlanner = null;
-      if (pk && pk.selected != null && pk.selected !== 0) {
-        activePlanner = ctx.orchPlanners.find(function (p) { return p && p.value === pk.selected; }) || null;
-      }
-      if (!activePlanner && triggerText) {
-        var trigFam = extractModelFamily(triggerText);
-        var trigEff = detectEffortFromText(triggerText);
-        activePlanner = ctx.orchPlanners.find(function (p) {
-          if (!p || !p.label) return false;
-          var pp = parseModelLabel(p.label);
-          return pp && extractModelFamily(pp.base) === trigFam && pp.effort === trigEff;
-        }) || null;
-      }
-      if (!activePlanner) activePlanner = ctx.orchDef || ctx.orchPlanners[0];
-      var pParsed = activePlanner ? parseModelLabel(activePlanner.label) : null;
-      var pBase = pParsed ? pParsed.base : (activePlanner && activePlanner.label) || '';
+      var pk = ctx.orchPick || ctx.orchestratorPick;
+      var def = findPlannerOption(ctx.orchPlanners, ctx.orchDef || ctx.orchestratorDefaultPlanner) || ctx.orchPlanners[0] || null;
+      var pkRef = pk ? (pk.model !== undefined ? pk.model : pk.selected) : null;
+      var activePlanner = (pkRef && pkRef !== 0 ? findPlannerOption(ctx.orchPlanners, pkRef) : null) || def;
+
+      var pParsed = activePlanner && activePlanner.label ? parseModelLabel(activePlanner.label) : null;
+      var pBase = pParsed ? pParsed.base : ((activePlanner && activePlanner.label) || '');
       var pSlug = extractModelFamily(pBase);
-      var pLevels = collectEffortOptionsForBase(ctx.orchPlanners, pSlug, ctx.orchIdx);
+      var pLevels = collectEffortOptionsForBase(ctx.orchPlanners, pSlug, orchIdx);
       if (pLevels.length) {
-        var realOrchEffort = (triggerText && pSlug && extractModelFamily(triggerText) === pSlug)
-          ? detectEffortFromText(triggerText)
-          : (pParsed ? pParsed.effort : 'medium');
+        var realOrchEffort = (pParsed && pParsed.effort)
+          || ((triggerText && pSlug && extractModelFamily(triggerText) === pSlug) ? detectEffortFromText(triggerText) : '')
+          || (pLevels.some(function (l) { return l.id === 'medium'; }) ? 'medium' : pLevels[0].id);
         return {
           isOrchPlan: true,
           isHovered: false,
@@ -276,11 +353,11 @@
     var parsed = parseModelLabel(baseLabel);
     var baseName = parsed ? parsed.base : baseLabel;
     var baseSlug = extractModelFamily(baseName);
-    var levels = collectEffortOptionsForBase(ctx.modelOptions, baseSlug, ctx.effortIndex);
+    var levels = collectEffortOptionsForBase(ctx.modelOptions, baseSlug, effIdx);
     if (!levels.length) return null;
-    var realEff = (triggerText && baseSlug && extractModelFamily(triggerText) === baseSlug)
-      ? detectEffortFromText(triggerText)
-      : (parsed ? parsed.effort : 'medium');
+    var realEff = (parsed && parsed.effort)
+      || ((triggerText && baseSlug && extractModelFamily(triggerText) === baseSlug) ? detectEffortFromText(triggerText) : '')
+      || (levels.some(function (l) { return l.id === 'medium'; }) ? 'medium' : levels[0].id);
     return {
       isOrchPlan: false,
       isHovered: false,
@@ -296,7 +373,7 @@
     try {
       var pk = ctx.orchPick || ctx.orchestratorPick;
       if (isOrchPlan && pk && typeof pk.select === 'function') {
-        var def = ctx.orchDef || ctx.orchestratorDefaultPlanner;
+        var def = findPlannerOption(ctx.orchPlanners, ctx.orchDef || ctx.orchestratorDefaultPlanner);
         var nextVal = (def && def.value === targetOption.value) ? 0 : targetOption.value;
         pk.select(nextVal);
         if (shouldKeep && typeof ctx.setIsOpen === 'function') {
@@ -353,17 +430,43 @@
     var hoveredModelText = '';
     var optimisticLock = null;
     var syncTimer = 0;
+    var clickResyncTimer1 = 0;
+    var clickResyncTimer2 = 0;
 
     function readHostTriggerRaw() {
-      var trig = document.querySelector('[data-testid="model-selector-trigger"]');
+      var trigs = document.querySelectorAll('[data-testid="model-selector-trigger"]');
+      var trig = null;
+      for (var i = 0; i < trigs.length; i++) {
+        try {
+          var rect = trigs[i].getBoundingClientRect();
+          if (rect && rect.width > 0) {
+            trig = trigs[i];
+            break;
+          }
+        } catch (_e) {}
+      }
+      if (!trig && trigs.length) trig = trigs[0];
       if (!trig) return { trig: null, raw: '', family: '', effort: null };
-      var raw = String(trig.getAttribute('aria-label') || trig.textContent || '').trim();
+      var raw = String(trig.textContent || trig.getAttribute('aria-label') || '').trim();
       return {
         trig: trig,
         raw: raw,
         family: extractModelFamily(raw),
         effort: detectEffortFromText(raw)
       };
+    }
+
+    function forceResyncFromHost() {
+      var curPanel = document.querySelector('[data-testid="model-selector-panel"]');
+      var curTrig = readHostTriggerRaw();
+      var nextCtx = readAgFiberContext(curPanel || curTrig.trig);
+      if (nextCtx) liveCtx = nextCtx;
+      var nextProf = nextCtx ? resolveActiveModelProfile(nextCtx, curTrig.raw, hoveredModelText) : null;
+      if (nextProf && nextProf.currentEffort) {
+        activeProfile = nextProf;
+        currentEffort = nextProf.currentEffort;
+        updateBarDom();
+      }
     }
 
     function tryApplyEffortDomFallback(panel, levelId, familySlug) {
@@ -496,19 +599,24 @@
     }
 
     function onPanelPointerOver(ev) {
-      var item = ev.target && ev.target.closest && ev.target.closest('[role="menuitem"], [role="option"], [data-testid="model-selector-item"]');
+      var item = ev.target && ev.target.closest && ev.target.closest(
+        '[data-testid="model-selector-item"], [data-testid="model-selector-orchestrator"], [data-testid="orchestrator-picker-row"], [role="menuitem"], [role="option"]'
+      );
       if (!item || !mountedPanel || !mountedPanel.contains(item)) return;
       var raw = item.getAttribute('data-model-base') || item.getAttribute('data-model-label') || item.textContent || '';
       var fam = extractModelFamily(raw);
-      if (!fam || fam === extractModelFamily(hoveredModelText)) return;
+      if (!fam) return;
       if (isOrchestratorModel(raw)) {
+        if (!hoveredModelText) return;
         hoveredModelText = '';
       } else {
-        hoveredModelText = raw.replace(/\b(?:new|notice|beta|preview|recommended)\b/gi, '').trim();
+        if (fam === extractModelFamily(hoveredModelText)) return;
+        hoveredModelText = raw.replace(/\b(?:new|notice|beta|preview|recommended|default)\b/gi, '').trim();
       }
       var trigInfo = readHostTriggerRaw();
       var ctx = readAgFiberContext(mountedPanel) || liveCtx;
       if (ctx) {
+        liveCtx = ctx;
         activeProfile = resolveActiveModelProfile(ctx, trigInfo.raw, hoveredModelText);
         if (activeProfile && activeProfile.currentEffort) currentEffort = activeProfile.currentEffort;
         updateBarDom();
@@ -519,16 +627,37 @@
       }
     }
 
+    function onPanelClick(ev) {
+      if (ev && ev.target && ev.target.closest && ev.target.closest('.ags-effort-bar')) return;
+      optimisticLock = null;
+      hoveredModelText = '';
+      if (clickResyncTimer1) clearTimeout(clickResyncTimer1);
+      if (clickResyncTimer2) clearTimeout(clickResyncTimer2);
+      clickResyncTimer1 = setTimeout(function () {
+        clickResyncTimer1 = 0;
+        forceResyncFromHost();
+      }, 50);
+      clickResyncTimer2 = setTimeout(function () {
+        clickResyncTimer2 = 0;
+        forceResyncFromHost();
+      }, 180);
+    }
+
     function detachPanelListener() {
       if (mountedPanel) {
         try { mountedPanel.removeEventListener('pointerover', onPanelPointerOver, true); } catch (_e) {}
+        try { mountedPanel.removeEventListener('click', onPanelClick, true); } catch (_e2) {}
       }
     }
 
     function removeBar() {
       detachPanelListener();
+      if (clickResyncTimer1) { clearTimeout(clickResyncTimer1); clickResyncTimer1 = 0; }
+      if (clickResyncTimer2) { clearTimeout(clickResyncTimer2); clickResyncTimer2 = 0; }
       mountedPanel = null;
       hoveredModelText = '';
+      lastRenderedKey = '';
+      optimisticLock = null;
       if (barEl && barEl.parentElement) barEl.parentElement.removeChild(barEl);
     }
 
@@ -549,6 +678,7 @@
         mountedPanel = panel;
         hoveredModelText = '';
         panel.addEventListener('pointerover', onPanelPointerOver, { capture: true, passive: true });
+        panel.addEventListener('click', onPanelClick, { capture: true });
       }
 
       var trigInfo = readHostTriggerRaw();
@@ -588,6 +718,8 @@
 
     function destroy() {
       if (syncTimer) clearTimeout(syncTimer);
+      if (clickResyncTimer1) clearTimeout(clickResyncTimer1);
+      if (clickResyncTimer2) clearTimeout(clickResyncTimer2);
       removeBar();
     }
 

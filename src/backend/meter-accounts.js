@@ -1297,8 +1297,9 @@ async function fetchAccountQuotaViaCloudCode(accessToken, options = {}) {
   const proxyConfigOptions = options.proxyConfigOptions || {};
   const quotaStage = options.stage || 'quota_fetch';
   const nowMs = Number.isFinite(Number(options.nowMs)) ? Number(options.nowMs) : Date.now();
-  const baseUrl = options.useDaily ? CLOUDCODE_DAILY_URL : CLOUDCODE_PROD_URL;
-  let targetHost = 'cloudcode-pa.googleapis.com';
+  const useDaily = options.useDaily !== false;
+  const baseUrl = useDaily ? CLOUDCODE_DAILY_URL : CLOUDCODE_PROD_URL;
+  let targetHost = useDaily ? 'daily-cloudcode-pa.googleapis.com' : 'cloudcode-pa.googleapis.com';
   try { targetHost = new URL(baseUrl).hostname; } catch { }
   const ua = `antigravity/2.34.0 ${process.platform === 'win32' ? 'windows' : process.platform}/${process.arch === 'x64' ? 'amd64' : process.arch}`;
   const headers = {
@@ -1368,6 +1369,9 @@ async function fetchAccountQuotaViaCloudCode(accessToken, options = {}) {
 
   if (!availRes.ok && !summaryRes.ok) {
     const st = availRes.status || summaryRes.status;
+    if (useDaily && options.useDaily === undefined && st !== 401 && st !== 403) {
+      return fetchAccountQuotaViaCloudCode(accessToken, { ...options, useDaily: false });
+    }
     const err = attachStageErrorMeta(
       new Error(`CloudCode 配额请求失败 (HTTP ${st})`),
       quotaStage,

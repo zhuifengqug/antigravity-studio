@@ -931,6 +931,37 @@ function buildEmptySnapshot(cfg, quotaUi, cid = '', lsError = null) {
   };
 }
 
+function buildEnrichedQuotaUsageEvents(ledger, nowMs = Date.now()) {
+  const cutoffMs = nowMs - 10 * 86400000;
+  const usageEvents = [];
+  let minTs = Infinity;
+  for (const c of Object.values(ledger?.calls || {})) {
+    if (!c || typeof c !== 'object') continue;
+    let ts = Number(c.timestamp ?? c.ts ?? c.requestStartMs ?? c.startTimeMs);
+    if (!Number.isFinite(ts) || ts <= 0) {
+      if (c.created_at) ts = Date.parse(c.created_at);
+      else if (c.date) ts = Date.parse(`${c.date}T12:00:00Z`);
+    }
+    if (!Number.isFinite(ts) || ts <= 0) continue;
+    if (ts < minTs) minTs = ts;
+    if (ts < cutoffMs) continue;
+    const rawModel = c.modelKey || c.modelLabel || c.model || '';
+    const poolKey = meterCore.getModelPoolKey(rawModel);
+    const sharedGroupKey = meterCore.getSharedQuotaGroupKey(rawModel);
+    usageEvents.push({
+      ...c,
+      ts,
+      timestamp: ts,
+      poolKey,
+      sharedGroupKey,
+    });
+  }
+  return {
+    usageEvents,
+    historyCoverageStartMs: Number.isFinite(minTs) ? minTs : null,
+  };
+}
+
 async function fetchQuotaWithHostAuth(authCtx, opts = {}, cfg = null) {
   const lowThreshold = Number(cfg?.quota?.lowQuotaThreshold ?? 0.2);
   let lastRes = null;
@@ -951,20 +982,31 @@ async function fetchQuotaWithHostAuth(authCtx, opts = {}, cfg = null) {
     }
   }
 
-  // Apply real quota token estimates using recent ledger events & calibration cache
+  // Apply real quota token estimates using enriched ledger events & sanitized calibration cache
   try {
     if (lastRes && lastRes.snapshot && Array.isArray(lastRes.snapshot.pools) && typeof meterCore.applyQuotaTokenEstimates === 'function') {
+      const nowMs = Date.now();
       const agDir = getGeminiAntigravityDir();
       const ledger = meterCollector.loadPricingLedger(agDir);
-      const usageEvents = Object.values(ledger?.calls || {}).slice(-800);
+      const { usageEvents, historyCoverageStartMs } = buildEnrichedQuotaUsageEvents(ledger, nowMs);
       const store = new ConfigStore();
       const calPath = path.join(store.stateDir, 'quota_calibration.json');
       const prevCal = readJsonSafe(calPath, {}) || {};
+      const cleanCal = {};
+      for (const [k, entry] of Object.entries(prevCal)) {
+        if (!entry || typeof entry !== 'object') continue;
+        const poisoned = entry.calibratedTotalTokens == null &&
+          Number(entry.sampleCount || 0) === 0 &&
+          (entry.externalDivergenceInCycle === true || entry.cycleInvalidationReason === 'external_divergence') &&
+          Number(entry.anchorCycleTokens || 0) === 0;
+        if (!poisoned) cleanCal[k] = entry;
+      }
       const estRes = meterCore.applyQuotaTokenEstimates(lastRes.snapshot, {
         usageEvents,
+        historyCoverageStartMs,
         accountScopeKey: lastRes.accountScopeKey || 'anonymous',
-        calibrationMap: prevCal,
-        nowMs: Date.now(),
+        calibrationMap: cleanCal,
+        nowMs,
       });
       if (estRes?.snapshot) lastRes.snapshot = estRes.snapshot;
       if (estRes?.nextCalibrationMap) {
@@ -1442,6 +1484,7 @@ function formatPlanDisplayName(rawPlan, fallbackSource) {
   const tierMap = {
     'g1-pro-tier': 'Google One Pro',
     'g1-ultra-tier': 'Google One Ultra',
+    'g1-ultra-lite-tier': 'Google One Ultra Lite',
     'g1-plus-tier': 'Google One Plus',
     'free-tier': 'Free',
   };
@@ -1817,7 +1860,23 @@ function registerIpcOnce() {
     }
 
     const res = await meterAccounts.dispatchAccountsAction(mgr, normalizedPayload);
-    if (res && res.overview) {
+    if (normalizedPayload.action === 'refresh_quota') {
+      try {
+        const preOv = mgr.getOverviewState();
+        const activeEmail = String(preOv?.activeAccountEmail || '').toLowerCase();
+        const targetEmail = String(normalizedPayload.email || '').toLowerCase();
+        if (!targetEmail || targetEmail === activeEmail) {
+          const hostQuota = await fetchQuotaWithHostAuth(authCtx, { force: true }, store.load());
+          const hostEmail = String(hostQuota?.ui?.email || activeEmail || '').toLowerCase();
+          if (hostQuota?.raw?.ok && hostQuota?.raw?.snapshot && hostEmail && (!targetEmail || targetEmail === hostEmail)) {
+            mgr.syncActiveHostQuotaSnapshot(hostQuota.raw, hostEmail);
+          }
+        }
+      } catch {}
+      if (res) {
+        res.overview = normalizeAccountsOverviewForUi(mgr.getOverviewState());
+      }
+    } else if (res && res.overview) {
       res.overview = normalizeAccountsOverviewForUi(res.overview);
     }
     return res;
@@ -2192,6 +2251,7 @@ module.exports = {
   resolveHostAuthContext,
   computeHistoryOverview,
   computeConversationCumulativeCost,
+  buildEnrichedQuotaUsageEvents,
   formatFriendlyPoolTitle,
   normalizeQuotaForUi,
   normalizeAccountsOverviewForUi,

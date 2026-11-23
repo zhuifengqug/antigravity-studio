@@ -133,7 +133,7 @@
       }
     }
 
-    var weeks = daysRange === 7 ? 2 : daysRange === 30 ? 8 : 26;
+    var weeks = (daysRange === 1 || daysRange === 7) ? 2 : daysRange === 30 ? 8 : 26;
     var today = new Date();
     today.setHours(0, 0, 0, 0);
     // Monday-based day of week (0 = Mon ... 6 = Sun)
@@ -244,7 +244,7 @@
 
       var labels = isEn
         ? {
-            overview: 'Overview', models: 'Models', all: 'All', d30: '30d', d7: '7d',
+            overview: 'Overview', models: 'Models', all: 'All', d30: '30d', d7: '7d', today: 'Today',
             sessions: 'Sessions', calls: 'Messages', total: 'Total Tokens',
             days: 'Active Days', peak: 'Peak Hour', topModel: 'Top Model',
             weekdays: ['M', '', 'W', '', 'F', '', 'S'],
@@ -253,7 +253,7 @@
           }
         : isTw
           ? {
-              overview: '概覽', models: '模型', all: '全部', d30: '30 天', d7: '7 天',
+              overview: '概覽', models: '模型', all: '全部', d30: '30 天', d7: '7 天', today: '今天',
               sessions: '會話數', calls: '訊息數', total: 'Token 總量',
               days: '活躍天數', peak: '高峰時段', topModel: '最常用模型',
               weekdays: ['一', '', '三', '', '五', '', '日'],
@@ -261,7 +261,7 @@
               split: '桌面端 vs CLI 佔比'
             }
           : {
-              overview: '概览', models: '模型', all: '全部', d30: '30 天', d7: '7 天',
+              overview: '概览', models: '模型', all: '全部', d30: '30 天', d7: '7 天', today: '今天',
               sessions: '会话数', calls: '消息数', total: 'Token 总量',
               days: '活跃天数', peak: '高峰时段', topModel: '最常用模型',
               weekdays: ['一', '', '三', '', '五', '', '日'],
@@ -293,6 +293,7 @@
         '    <button type="button" class="ags-home-seg-btn ' + (state.days === 0 ? 'active' : '') + '" data-home-days="0">' + esc(labels.all) + '</button>',
         '    <button type="button" class="ags-home-seg-btn ' + (state.days === 30 ? 'active' : '') + '" data-home-days="30">' + esc(labels.d30) + '</button>',
         '    <button type="button" class="ags-home-seg-btn ' + (state.days === 7 ? 'active' : '') + '" data-home-days="7">' + esc(labels.d7) + '</button>',
+        '    <button type="button" class="ags-home-seg-btn ' + (state.days === 1 ? 'active' : '') + '" data-home-days="1">' + esc(labels.today) + '</button>',
         '  </div>',
         '</div>'
       ].join('');

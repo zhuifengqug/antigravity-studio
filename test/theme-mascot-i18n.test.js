@@ -80,6 +80,10 @@ test('Home overview card 7xN heatmap normalization, book comparison, and effort 
   assert.equal(parsedXHigh.base, 'Gemini 4 Neon');
   assert.equal(parsedXHigh.effort, 'xhigh');
   assert.equal(parsedXHigh.effortLabel, 'Extra High');
+  const parsedParenExtra = effortSlider.parseModelLabel('Gemini 4 Neon (Extra)');
+  assert.equal(parsedParenExtra.base, 'Gemini 4 Neon');
+  assert.equal(parsedParenExtra.effort, 'xhigh');
+  assert.equal(parsedParenExtra.effortLabel, 'Extra High');
   assert.equal(effortSlider.extractModelFamily('Gemini 4 Neon (XHigh)'), 'gemini 4 neon');
   assert.equal(effortSlider.itemMatchesEffort('Gemini 4 Neon (XHigh)', 'high'), false);
   assert.equal(effortSlider.itemMatchesEffort('Gemini 4 Neon (High)', 'high'), true);
@@ -115,16 +119,23 @@ test('Home overview card 7xN heatmap normalization, book comparison, and effort 
   const orchCtx = {
     selectedModel: { label: 'Orchestrator', value: 'orch' },
     orchPlanners: [
-      { label: 'Gemini 4 Hydrogen (Medium)', value: 11 },
-      { label: 'Gemini 4 Hydrogen (High)', value: 12 },
+      { label: 'Gemini 4 Neon (Low)', value: 10 },
+      { label: 'Gemini 4 Neon (Medium)', value: 11 },
+      { label: 'Gemini 4 Neon (High)', value: 12 },
+      { label: 'Gemini 4 Neon (Extra)', value: 13 },
     ],
-    orchDefaultPlanner: { label: 'Gemini 4 Hydrogen (Medium)', value: 11 },
-    orchPick: { selected: 11, select: (val) => orchCalls.push(val) },
+    orchDef: 13,
+    orchPick: { model: 11, select: (val) => orchCalls.push(val) },
   };
-  const orchProf = effortSlider.resolveActiveModelProfile(orchCtx, 'Orchestrator');
+  const orchProf = effortSlider.resolveActiveModelProfile(orchCtx, 'Orchestrator Gemini 4 Neon Extra High');
   assert.equal(orchProf.isOrchPlan, true);
-  assert.equal(effortSlider.commitEffortOption(orchCtx, orchProf.levels[1].option, true, true), true);
-  assert.deepEqual(orchCalls, [12]);
+  assert.equal(orchProf.currentEffort, 'medium');
+  assert.deepEqual(orchProf.levels.map((l) => l.id), ['low', 'medium', 'high', 'xhigh']);
+  const extraOpt = orchProf.levels.find((l) => l.id === 'xhigh').option;
+  const lowOpt = orchProf.levels.find((l) => l.id === 'low').option;
+  assert.equal(effortSlider.commitEffortOption(orchCtx, extraOpt, true, true), true);
+  assert.equal(effortSlider.commitEffortOption(orchCtx, lowOpt, true, true), true);
+  assert.deepEqual(orchCalls, [0, 10]);
 });
 
 test('Merged v2.34.0 dictionaries (4000+ entries) translate accurately and protect code/paths', () => {

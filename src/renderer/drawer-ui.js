@@ -17,7 +17,7 @@
       quotaTitle: '模型额度池',
       noQuota: '连接本地 LanguageServer 后自动显示模型额度',
       launchCli: '打开 CLI 终端',
-      daysAll: '全部', days7: '7天', days30: '30天', days90: '90天',
+      daysAll: '全部', daysToday: '今天', days7: '7天', days30: '30天', days90: '90天',
       totalTok: '总消耗', estApi: '估算 API 费用', vsSub: '较订阅节省',
       heatmap: '7×N 活跃热力图',
       sourceSplit: '桌面端 vs CLI 占比',
@@ -50,7 +50,7 @@
       quotaTitle: '模型額度池',
       noQuota: '連線本機 LanguageServer 後自動顯示模型額度',
       launchCli: '開啟 CLI 終端機',
-      daysAll: '全部', days7: '7天', days30: '30天', days90: '90天',
+      daysAll: '全部', daysToday: '今天', days7: '7天', days30: '30天', days90: '90天',
       totalTok: '總消耗', estApi: '估算 API 費用', vsSub: '較訂閱節省',
       heatmap: '7×N 活躍熱力圖',
       sourceSplit: '桌面端 vs CLI 佔比',
@@ -83,7 +83,7 @@
       quotaTitle: 'Model Quota Pools',
       noQuota: 'Connects automatically to local LanguageServer when active',
       launchCli: 'Open CLI Terminal',
-      daysAll: 'All', days7: '7d', days30: '30d', days90: '90d',
+      daysAll: 'All', daysToday: 'Today', days7: '7d', days30: '30d', days90: '90d',
       totalTok: 'Total Tokens', estApi: 'Est. API Cost', vsSub: 'vs Subscription',
       heatmap: '7×N Activity Heatmap',
       sourceSplit: 'Desktop vs CLI',
@@ -408,11 +408,14 @@
               var te = b.tokenEstimate;
               var tokLine = '';
               if (te && te.estRemainingShort) {
-                tokLine = '<div class="ags-sub" style="font-size:10.5px">预计剩余 ≈ ' + esc(te.estRemainingShort) +
-                  (te.estTotalShort ? (' / 周期总额 ≈ ' + esc(te.estTotalShort)) : '') +
+                tokLine = '<div class="ags-sub" style="font-size:11px;color:var(--ags-text-primary);opacity:0.88">预计剩余 ≈ <strong>' + esc(te.estRemainingShort) + ' tokens</strong>' +
+                  (te.estTotalShort ? (' · 周期总额 ≈ ' + esc(te.estTotalShort)) : '') +
+                  (te.cycleTokensUsed > 0 ? (' · 本周期已用 ' + fmtTok(te.cycleTokensUsed)) : '') +
                   (te.isReliable ? '' : ' (校准中)') + '</div>';
               } else if (te && te.cycleTokensUsed > 0) {
-                tokLine = '<div class="ags-sub" style="font-size:10.5px">本周期已用 ' + fmtTok(te.cycleTokensUsed) + ' (样本校准中)</div>';
+                tokLine = '<div class="ags-sub" style="font-size:10.5px">本周期已用 ' + fmtTok(te.cycleTokensUsed) + ' tokens（样本校准中，待进度变化后估算剩余）</div>';
+              } else if (bPct >= 98) {
+                tokLine = '<div class="ags-sub" style="font-size:10.5px;opacity:0.75">本周期尚未消耗（消耗 ≥3% 后自动校准预计剩余 tokens）</div>';
               }
               return '<div style="display:flex;flex-direction:column;gap:3px">' +
                 '<div class="ags-row"><span class="ags-sub">' + esc(b.windowLabel || '周期额度') + '</span>' +
@@ -563,6 +566,7 @@
         '<div class="ags-row">',
         '  <div class="ags-pill-group">',
         '    <button class="ags-pill-opt ' + (state.days === 0 ? 'active' : '') + '" data-days="0">' + esc(t('daysAll')) + '</button>',
+        '    <button class="ags-pill-opt ' + (state.days === 1 ? 'active' : '') + '" data-days="1">' + esc(t('daysToday')) + '</button>',
         '    <button class="ags-pill-opt ' + (state.days === 7 ? 'active' : '') + '" data-days="7">' + esc(t('days7')) + '</button>',
         '    <button class="ags-pill-opt ' + (state.days === 30 ? 'active' : '') + '" data-days="30">' + esc(t('days30')) + '</button>',
         '    <button class="ags-pill-opt ' + (state.days === 90 ? 'active' : '') + '" data-days="90">' + esc(t('days90')) + '</button>',

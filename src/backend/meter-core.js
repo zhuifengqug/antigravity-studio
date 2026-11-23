@@ -17,6 +17,9 @@
       : String(raw);
     const s = String(text || '').toLowerCase().trim();
     if (!s) return 'unknown';
+    if (s.includes('neon') || s.includes('gemini-4-neon')) {
+      return 'gemini-4-neon';
+    }
     if (s.includes('carbon') || s.includes('gemini-4-carbon') || s.includes('m670')) {
       return 'gemini-4-carbon';
     }
@@ -41,6 +44,7 @@
 
   function getSharedQuotaGroupKey(raw) {
     const pk = getModelPoolKey(raw);
+    if (pk === 'gemini-4-neon') return 'shared_gemini_argon';
     if (pk === 'gemini-4-hydrogen' || pk === 'gemini-3.8-flash') return 'shared_gemini_main';
     if (pk === 'claude-opus-5-5' || pk === 'claude-sonnet-5-5' || pk === 'gpt-oss-120b') return 'shared_3p_pool';
     if (pk === 'gemini-4-argon') return 'shared_gemini_argon';

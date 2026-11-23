@@ -9,6 +9,7 @@ const path = require('path');
 const {
   computeHistoryOverview,
   computeConversationCumulativeCost,
+  buildEnrichedQuotaUsageEvents,
   formatFriendlyPoolTitle,
   normalizeQuotaForUi,
   normalizeAccountsOverviewForUi,
@@ -116,6 +117,9 @@ test('computeHistoryOverview parses real pricing_ledger_v1 and token_usage_archi
     assert.ok(Math.abs(ov.costEstimate - sumByModel) < 0.001);
     assert.ok(Array.isArray(ov.heatmap7xN) && ov.heatmap7xN.length >= 1);
     assert.ok(Array.isArray(ov.byModel) && ov.byModel.length >= 2);
+    const ovToday = await computeHistoryOverview(1, {}, store);
+    assert.equal(ovToday.days, 1);
+    assert.equal(ovToday.calls, 2);
   } finally {
     if (prevEnv === undefined) delete process.env.ANTIGRAVITY_APP_DATA_DIR;
     else process.env.ANTIGRAVITY_APP_DATA_DIR = prevEnv;
@@ -251,4 +255,48 @@ test('meter-core pricing catalog normalization & quota formatting', () => {
   assert.equal(cumRes.sessionCostUsd, 0.9);
   assert.equal(cumRes.turnCostUsd, 0.15);
   assert.equal(cumRes.callCount, 3);
+
+  assert.equal(meterCore.getModelPoolKey('Orchestrator (Neon)'), 'gemini-4-neon');
+  assert.equal(meterCore.getModelPoolKey('Gemini 4 Neon'), 'gemini-4-neon');
+
+  const nowMs = Date.now();
+  const resetAtMs = nowMs + 5 * 86400000;
+  const resetIso = new Date(resetAtMs).toISOString();
+  const cycleStartMs = resetAtMs - 7 * 86400000;
+  const enriched = buildEnrichedQuotaUsageEvents({
+    calls: {
+      old: { callId: 'old', modelLabel: 'Gemini 4 Neon (High)', inputTokens: 1000, cacheTokens: 1000, outputTokens: 100, timestamp: cycleStartMs - 86400000 },
+      c1: { callId: 'c1', modelLabel: 'Gemini 4 Neon (High)', inputTokens: 2000000, cacheTokens: 8000000, outputTokens: 500000, timestamp: nowMs - 3600000 },
+    },
+  }, nowMs);
+  assert.equal(enriched.usageEvents.length, 2);
+  assert.equal(enriched.usageEvents[1].poolKey, 'gemini-4-neon');
+  assert.equal(enriched.usageEvents[1].sharedGroupKey, 'shared_gemini_argon');
+
+  const estSnapRes = meterCore.applyQuotaTokenEstimates({
+    pools: [{
+      poolKey: 'shared_gemini_argon',
+      remainingFraction: 0.8,
+      models: [{ productLabel: 'Gemini 4 Neon', modelIds: ['gemini-4-neon'] }],
+      buckets: [{
+        bucketId: 'weekly',
+        windowKey: 'weekly',
+        windowShort: '7d',
+        windowLabel: '每周限额',
+        remainingFraction: 0.8,
+        hasResetTime: true,
+        resetTimeIso: resetIso,
+        resetAtMs,
+      }],
+    }],
+  }, {
+    usageEvents: enriched.usageEvents,
+    historyCoverageStartMs: enriched.historyCoverageStartMs,
+    accountScopeKey: 'test-acct',
+    calibrationMap: {},
+    nowMs,
+  });
+  const te = estSnapRes.snapshot.pools[0].buckets[0].tokenEstimate;
+  assert.equal(te.isReliable, true);
+  assert.ok(te.estRemainingShort);
 });
