@@ -15,18 +15,23 @@
     var s = document.createElement('style');
     s.id = 'ag-studio-hud-style';
     s.textContent = [
-      '.ags-hud-wrap { display:inline-flex; align-items:center; justify-content:center; gap:8px; pointer-events:auto; z-index:2147483000; font-family:var(--ags-font-ui, system-ui, sans-serif); font-variant-numeric:tabular-nums; }',
+      '.ags-hud-wrap { display:inline-flex; align-items:center; justify-content:center; gap:6px; pointer-events:auto; z-index:2147483000; font-family:var(--ags-font-ui, system-ui, sans-serif); font-variant-numeric:tabular-nums; }',
       '.ags-hud-floating { position:fixed; right:18px; bottom:16px; }',
       '.ags-hud-inline { margin:2px auto; }',
-      '.ags-vial-btn { position:relative; display:inline-flex; align-items:center; justify-content:center; width:26px; height:42px; padding:0; border:none; background:transparent; cursor:pointer; flex-shrink:0; transition:transform 140ms ease; }',
+      '.ags-hud-toolbar { gap:5px; max-width:100%; overflow:hidden; }',
+      '.ags-vial-btn { position:relative; display:inline-flex; align-items:center; justify-content:center; width:24px; height:38px; padding:0; border:none; background:transparent; cursor:pointer; flex-shrink:0; transition:transform 140ms ease; }',
+      '.ags-hud-toolbar .ags-vial-btn { width:16px; height:24px; }',
       '.ags-vial-btn:hover { transform:translateY(-1px) scale(1.06); }',
-      '.ags-vial-cv { display:block; width:24px; height:42px; }',
-      '.ags-hud-pill { display:inline-flex; align-items:center; gap:8px; height:28px; padding:0 12px; border-radius:999px; border:1px solid var(--ags-border, rgba(148,163,184,0.22)); background:color-mix(in srgb, var(--ags-bg-surface, #18181b) 88%, transparent); color:var(--ags-text-secondary, #a1a1aa); font-size:11.5px; cursor:pointer; backdrop-filter:blur(12px); box-shadow:0 4px 16px rgba(0,0,0,0.10); transition:border-color 140ms ease, color 140ms ease, box-shadow 140ms ease; white-space:nowrap; }',
-      '.ags-hud-pill:hover { border-color:var(--ags-accent, #D97757); color:var(--ags-text-primary, #f4f4f5); box-shadow:0 6px 20px rgba(0,0,0,0.16); }',
+      '.ags-vial-cv { display:block; width:24px; height:38px; }',
+      '.ags-hud-toolbar .ags-vial-cv { width:16px; height:24px; }',
+      '.ags-hud-pill { display:inline-flex; align-items:center; gap:7px; height:26px; padding:0 10px; border-radius:999px; border:1px solid var(--ags-border, rgba(148,163,184,0.22)); background:var(--ags-bg-surface, #18181b); color:var(--ags-text-secondary, #a1a1aa); font-size:11.5px; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,0.06); transition:border-color 140ms ease, color 140ms ease; white-space:nowrap; }',
+      '.ags-hud-toolbar .ags-hud-pill { height:24px; padding:0 8px; gap:5px; font-size:11px; background:var(--ags-bg-canvas, transparent); box-shadow:none; }',
+      '.ags-hud-pill:hover { border-color:var(--ags-accent, #D97757); color:var(--ags-text-primary, #f4f4f5); }',
       '.ags-hud-sep { opacity:0.32; }',
       '.ags-hud-strong { color:var(--ags-text-primary, #f4f4f5); font-weight:600; }',
       '.ags-hud-quota-low { color:var(--ags-warning, #D9822B); font-weight:600; }',
-      '.ags-hud-crit { color:var(--ags-danger, #EF4444); font-weight:600; }'
+      '.ags-hud-crit { color:var(--ags-danger, #EF4444); font-weight:600; }',
+      '@media (max-width: 720px) { .ags-hud-toolbar .ags-hud-hide-sm { display:none; } }'
     ].join('\n');
     (document.head || document.documentElement).appendChild(s);
   }
@@ -180,6 +185,8 @@
     var lastFrameAt = 0;
     var currentCtx = vialCv.getContext('2d');
     var lastVisualSig = '';
+    var lastPillKey = '';
+    var isCompactToolbar = false;
     var isDark = true;
     var accentHex = '#3B82F6';
     var isStreaming = false;
@@ -219,8 +226,8 @@
 
     function renderVialFrame() {
       if (!currentCtx) return;
-      var cssW = 24;
-      var cssH = 42;
+      var cssW = isCompactToolbar ? 16 : 24;
+      var cssH = isCompactToolbar ? 24 : 38;
       var dpr = Math.min((typeof window !== 'undefined' && window.devicePixelRatio) || 1, 2);
       var tw = Math.round(cssW * dpr);
       var th = Math.round(cssH * dpr);
@@ -236,11 +243,11 @@
       resolveVialColors();
 
       var cx = cssW / 2;
-      var tubeX = 5;
-      var tubeY = 3;
-      var tubeW = 14;
-      var tubeH = 36;
-      var tubeR = 6.5;
+      var tubeX = isCompactToolbar ? 3 : 5;
+      var tubeY = 2;
+      var tubeW = isCompactToolbar ? 10 : 14;
+      var tubeH = isCompactToolbar ? 20 : 34;
+      var tubeR = isCompactToolbar ? 4.5 : 6.5;
 
       // 1. Glass air chamber background
       drawRoundedRectPath(ctx, tubeX, tubeY, tubeW, tubeH, tubeR);
@@ -359,9 +366,25 @@
     function mountToSlot(positionMode, composer) {
       var anchors = globalScope.__AG_STUDIO_ANCHORS__;
       var mode = positionMode || 'composer';
-      if (mode === 'composer' && anchors && composer) {
+      if (mode !== 'floating' && anchors && composer) {
+        // Primary: inside composer toolbar right next to the model selector button
+        if (typeof anchors.ensureComposerToolbarSlot === 'function') {
+          var toolbarSlot = anchors.ensureComposerToolbarSlot(composer);
+          if (toolbarSlot) {
+            isCompactToolbar = true;
+            anchors.parkComposerBottomSlot();
+            wrap.className = 'ags-hud-wrap ags-hud-toolbar';
+            if (wrap.parentElement !== toolbarSlot) {
+              toolbarSlot.appendChild(wrap);
+            }
+            return;
+          }
+        }
+        // Fallback: below composer
+        if (typeof anchors.parkComposerToolbarSlot === 'function') anchors.parkComposerToolbarSlot();
         var bottomSlot = anchors.ensureComposerBottomSlot(composer);
         if (bottomSlot) {
+          isCompactToolbar = false;
           wrap.className = 'ags-hud-wrap ags-hud-inline';
           if (wrap.parentElement !== bottomSlot) {
             bottomSlot.appendChild(wrap);
@@ -369,7 +392,11 @@
           return;
         }
       }
-      if (anchors) anchors.parkComposerBottomSlot();
+      if (anchors) {
+        if (typeof anchors.parkComposerToolbarSlot === 'function') anchors.parkComposerToolbarSlot();
+        anchors.parkComposerBottomSlot();
+      }
+      isCompactToolbar = false;
       wrap.className = 'ags-hud-wrap ags-hud-floating';
       var host = document.getElementById('ag-studio-root') || document.body;
       if (host && wrap.parentElement !== host) {
@@ -421,6 +448,7 @@
       var visSig = [
         Math.round(ratio * 100),
         generating ? 1 : 0,
+        isCompactToolbar ? 1 : 0,
         document.documentElement.getAttribute('data-ags-theme') || '',
         document.documentElement.getAttribute('data-ags-mode') || ''
       ].join('|');
@@ -429,6 +457,25 @@
         if (generating) phys.impulse(0.45);
         wakeVial();
       }
+
+      var pillKey = [
+        ctx.model || '',
+        pct,
+        used,
+        limit,
+        Math.round(speed),
+        cost.toFixed(2),
+        minQuotaPct === null ? 'n' : Math.round(minQuotaPct),
+        cachePct,
+        Math.round(ttft),
+        hudCfg.showContext !== false ? 1 : 0,
+        hudCfg.showSpeed !== false ? 1 : 0,
+        hudCfg.showCost !== false ? 1 : 0,
+        hudCfg.showQuotaBadge !== false ? 1 : 0
+      ].join('|');
+
+      if (pillKey === lastPillKey) return;
+      lastPillKey = pillKey;
 
       pill.title = '模型: ' + (ctx.model || '未检测') +
         ' · 缓存命中: ' + cachePct + '%' +
@@ -448,7 +495,7 @@
         parts.push('<span>' + Math.round(speed) + ' tok/s</span>');
       }
       if (hudCfg.showCost !== false) {
-        parts.push('<span>$' + cost.toFixed(2) + '</span>');
+        parts.push('<span class="ags-hud-hide-sm">$' + cost.toFixed(2) + '</span>');
       }
       if (hudCfg.showQuotaBadge !== false && minQuotaPct !== null) {
         var qCls = minQuotaPct <= 20 ? 'ags-hud-quota-low' : '';

@@ -123,9 +123,20 @@
 
   root.appendChild(drawer.element);
 
+  var lastThemeSig = '';
+  var lastTypoSig = '';
+
   function applyVisuals() {
-    themes.applyThemeToDocument(currentConfig.theme);
-    typography.applyTypographyToDocument(currentConfig.theme, scannedFonts);
+    var themeSig = JSON.stringify(currentConfig.theme || {});
+    if (themeSig !== lastThemeSig) {
+      lastThemeSig = themeSig;
+      themes.applyThemeToDocument(currentConfig.theme);
+    }
+    var fontsSig = JSON.stringify((currentConfig.theme && currentConfig.theme.fonts) || {}) + '|' + scannedFonts.length;
+    if (fontsSig !== lastTypoSig) {
+      lastTypoSig = fontsSig;
+      typography.applyTypographyToDocument(currentConfig.theme, scannedFonts);
+    }
     var mCfg = currentConfig.mascot || {};
     mascotStage.update({
       style: mCfg.style || 'clawd',
@@ -314,7 +325,9 @@
     lastInteractionAt = Date.now();
     if (e.target && e.target.closest && e.target.closest('[data-testid="agent-input-box"], .surface-composer-card')) {
       lastTypingAt = Date.now();
-      syncDomAndTurnState();
+      if (!wasGenerating) {
+        mascotStage.update({ state: 'typing' });
+      }
     }
   }, true);
 
@@ -367,5 +380,5 @@
 
   setInterval(function () {
     if (!document.hidden) refreshData(false);
-  }, 2500);
+  }, 3500);
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -9,8 +9,8 @@
     var s = document.createElement('style');
     s.id = 'ag-studio-prism-fx-style';
     s.textContent = [
-      '@keyframes ags-ink-in { from { opacity:0.15; filter:blur(1.5px); } to { opacity:1; filter:blur(0); } }',
-      '.ags-ink-chunk { animation: ags-ink-in 260ms cubic-bezier(.22,1,.36,1) both; }',
+      '@keyframes ags-ink-in { from { opacity:0.22; } to { opacity:1; } }',
+      '.ags-ink-chunk { animation: ags-ink-in 220ms cubic-bezier(.22,1,.36,1) both; }',
       '@keyframes ags-caret-blink { 0%, 45% { opacity:1; } 55%, 100% { opacity:0.25; } }',
       '.ags-smooth-caret { position:absolute; top:0; left:0; width:2px; border-radius:2px; background:var(--ags-accent, #D97757); box-shadow:0 0 8px var(--ags-accent-soft, rgba(217,119,87,0.35)); pointer-events:none; z-index:40; transition:transform 80ms cubic-bezier(.22,1,.36,1), height 80ms ease, opacity 120ms ease; opacity:0; }',
       '.ags-smooth-caret[data-vis="1"] { opacity:1; animation:ags-caret-blink 1.05s ease-in-out infinite; }',
@@ -82,13 +82,16 @@
         return;
       }
       var active = document.activeElement;
-      if (!active || !active.closest) { hideCaret(); return; }
-      if (active.closest('#ag-studio-root, [data-ag-studio-ignore], .monaco-editor')) {
+      if (!active || (!active.isContentEditable && active.getAttribute && active.getAttribute('contenteditable') !== 'true')) {
+        hideCaret();
+        return;
+      }
+      if (!active.closest || active.closest('#ag-studio-root, [data-ag-studio-ignore], .monaco-editor')) {
         hideCaret();
         return;
       }
       var inComposer = active.closest('[data-testid="agent-input-box"], .surface-composer-card');
-      if (!inComposer || (!active.isContentEditable && active.getAttribute('contenteditable') !== 'true')) {
+      if (!inComposer) {
         hideCaret();
         return;
       }

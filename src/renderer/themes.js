@@ -184,7 +184,7 @@
       '  color: var(--ags-text-primary) !important;',
       '  font-family: var(--ags-font-ui, system-ui, -apple-system, sans-serif);',
       '}',
-      'aside, nav, [class*="sidebar"], [class*="Sidebar"] {',
+      'aside, nav {',
       '  background-color: var(--ags-bg-sidebar);',
       '  border-color: var(--ags-border);',
       '}',
@@ -194,7 +194,7 @@
       '[data-testid="agent-input-box"] .surface-composer-card, .surface-composer-card {',
       '  background-color: var(--ags-bg-surface);',
       '  border-color: var(--ags-border);',
-      '  transition: border-color 150ms ease, box-shadow 150ms ease;',
+      '  transition: border-color 150ms ease;',
       '}',
       '[data-testid="agent-input-box"] .surface-composer-card:focus-within, .surface-composer-card:focus-within {',
       '  border-color: var(--ags-accent);',
@@ -206,11 +206,11 @@
       '  color: var(--ags-text-primary);',
       '}',
       (editorialSerif
-        ? '.prose, [class*="markdown"], [class*="Markdown"], [data-markdown-root] { font-family: var(--ags-font-body, Georgia, "Noto Serif SC", serif); line-height: 1.68; }'
+        ? '.prose, [data-markdown-root] { font-family: var(--ags-font-body, Georgia, "Noto Serif SC", serif); line-height: 1.68; }'
         : ''),
       'pre, code, kbd, samp, .monaco-editor, .xterm { font-family: var(--ags-font-code, "JetBrains Mono", Consolas, monospace); }',
       'pre:not(.monaco-editor pre) { background-color: var(--ags-code-bg); border: 1px solid var(--ags-border); border-radius: 8px; }',
-      'button[data-variant="primary"], [class*="primaryButton"] { background-color: var(--ags-accent); border-color: var(--ags-accent); }',
+      'button[data-variant="primary"] { background-color: var(--ags-accent); border-color: var(--ags-accent); }',
       '::-webkit-scrollbar { width: 8px; height: 8px; }',
       '::-webkit-scrollbar-thumb { background: var(--ags-border); border-radius: 99px; }',
       '::-webkit-scrollbar-track { background: transparent; }'
@@ -227,10 +227,17 @@
       (document.head || document.documentElement).appendChild(styleEl);
     }
     var resolved = resolveActivePalette(themeConfig);
-    styleEl.textContent = buildThemeCss(themeConfig);
+    var css = buildThemeCss(themeConfig);
+    if (styleEl.textContent !== css) {
+      styleEl.textContent = css;
+    }
     if (document.documentElement) {
-      document.documentElement.setAttribute('data-ags-theme', resolved.theme.id);
-      document.documentElement.setAttribute('data-ags-mode', resolved.mode);
+      if (document.documentElement.getAttribute('data-ags-theme') !== resolved.theme.id) {
+        document.documentElement.setAttribute('data-ags-theme', resolved.theme.id);
+      }
+      if (document.documentElement.getAttribute('data-ags-mode') !== resolved.mode) {
+        document.documentElement.setAttribute('data-ags-mode', resolved.mode);
+      }
     }
     return resolved;
   }

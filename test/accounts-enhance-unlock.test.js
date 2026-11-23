@@ -124,3 +124,47 @@ test('meter-context-unlock, meter-rehydrate, and meter-accounts export working m
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('meter-accounts importFromCurrentClient separates OS credential id_token_email and CLI creds cleanly', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-studio-imp-'));
+  try {
+    const geminiDir = path.join(tmpDir, '.gemini');
+    fs.mkdirSync(geminiDir, { recursive: true });
+    fs.writeFileSync(path.join(geminiDir, 'google_accounts.json'), JSON.stringify({ active: 'cli.user@example.com', old: [] }));
+    fs.writeFileSync(path.join(geminiDir, 'oauth_creds.json'), JSON.stringify({
+      access_token: 'cli-access',
+      refresh_token: 'cli-refresh',
+      expiry_date: Date.now() + 3600000,
+    }));
+
+    const mgr = meterAccounts.createAccountsManager({
+      stateDir: path.join(tmpDir, 'state'),
+      homeDir: tmpDir,
+      appDataDir: tmpDir,
+      localAppDataDir: tmpDir,
+      credentialStore: {
+        getPaths: () => ({
+          desktopDbPath: path.join(tmpDir, 'missing.vscdb'),
+          ideDbPath: path.join(tmpDir, 'missing-ide.vscdb'),
+          googleAccountsPath: path.join(geminiDir, 'google_accounts.json'),
+          oauthCredsPath: path.join(geminiDir, 'oauth_creds.json'),
+        }),
+        readWindowsSystemCredential: () => ({
+          id_token_email: 'desktop.user@example.com',
+          token: { access_token: 'desk-access', refresh_token: 'desk-refresh', expiry: new Date(Date.now() + 3600000).toISOString() },
+        }),
+        readMacKeychainCredential: () => null,
+      },
+    });
+
+    const res = await mgr.importFromCurrentClient();
+    assert.equal(res.ok, true);
+    assert.equal(res.importedCount, 2);
+    const store = mgr.loadStore();
+    assert.equal(store.activeAccountEmail, 'desktop.user@example.com');
+    assert.equal(store.accounts['desktop.user@example.com'].credential.refreshToken, 'desk-refresh');
+    assert.equal(store.accounts['cli.user@example.com'].credential.refreshToken, 'cli-refresh');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

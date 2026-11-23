@@ -30,17 +30,17 @@
   function isVisible(el) {
     if (!el || el.isConnected === false || el.hidden) return false;
     if (el.getAttribute && el.getAttribute('aria-hidden') === 'true') return false;
-    var cls = typeof el.className === 'string' ? el.className : '';
-    if (/(?:^|\s)(?:hidden|sr-only)(?:\s|$)/.test(cls)) return false;
     if (el.style && (el.style.display === 'none' || el.style.visibility === 'hidden')) return false;
-    if (typeof el.checkVisibility === 'function') {
-      try { if (!el.checkVisibility()) return false; } catch (_e) {}
+    var cls = typeof el.className === 'string' ? el.className : '';
+    if (cls && /(?:^|\s)(?:hidden|sr-only)(?:\s|$)/.test(cls)) return false;
+    if (typeof el.getClientRects === 'function') {
+      try {
+        var rects = el.getClientRects();
+        if (!rects || rects.length === 0) return false;
+        return rects[0].width > 1 || rects[0].height > 1;
+      } catch (_e) {}
     }
-    if (typeof el.getBoundingClientRect === 'function') {
-      var r = el.getBoundingClientRect();
-      if (r.width <= 1 || r.height <= 1) return false;
-    }
-    return true;
+    return el.offsetParent !== null;
   }
 
   function readFiberCascadeId(el, maxDepth) {
@@ -193,8 +193,15 @@
     };
   }
 
+  var cachedComposer = null;
+
   function findComposerTarget() {
     if (typeof document === 'undefined') return null;
+
+    if (cachedComposer && cachedComposer.card && cachedComposer.card.isConnected && isVisible(cachedComposer.card)) {
+      return cachedComposer;
+    }
+    cachedComposer = null;
 
     // 1. Primary Antigravity 2.34 .surface-composer-card inside [data-testid="agent-input-box"]
     var cards = document.querySelectorAll(COMPOSER_CARD_SEL);
@@ -211,13 +218,14 @@
     if (chosenCard) {
       var ib = chosenCard.closest(INPUT_BOX_SEL) || chosenCard;
       var ed = ib.querySelector('[contenteditable="true"], textarea');
-      return {
+      cachedComposer = {
         card: chosenCard,
         inputBox: ib,
         editable: ed || null,
         isHome: Boolean(chosenCard.closest('.agy-home')),
         isSubagent: false
       };
+      return cachedComposer;
     }
 
     // 2. Fallback: [data-testid="agent-input-box"]
@@ -229,13 +237,14 @@
       if (!isVisible(box)) continue;
       var ed2 = box.querySelector('[contenteditable="true"], textarea');
       var card2 = box.querySelector('.surface-composer-card') || (ed2 && ed2.closest('form')) || box;
-      return {
+      cachedComposer = {
         card: card2,
         inputBox: box,
         editable: ed2 || null,
         isHome: Boolean(box.closest('.agy-home')),
         isSubagent: false
       };
+      return cachedComposer;
     }
 
     // 3. Generic fallback: visible contenteditable/textarea composer
@@ -250,17 +259,70 @@
       if (rect && rect.width > 180 && rect.height >= 20) {
         var outer = inp.closest('.surface-composer-card, [data-testid="agent-input-box"], form') || inp.parentElement;
         if (!outer) continue;
-        return {
+        cachedComposer = {
           card: outer,
           inputBox: outer,
           editable: inp,
           isHome: Boolean(outer.closest('.agy-home')),
           isSubagent: false
         };
+        return cachedComposer;
       }
     }
 
     return null;
+  }
+
+  function findModelTriggerInComposer(composer) {
+    if (typeof document === 'undefined' || !composer) return null;
+    var roots = [composer.card, composer.inputBox].filter(Boolean);
+    for (var r = 0; r < roots.length; r++) {
+      var trig = roots[r].querySelector('[data-testid="model-selector-trigger"]');
+      if (trig && isVisible(trig) && !isOwnNode(trig)) return trig;
+    }
+    // Fallback: look for model selector button inside composer toolbar
+    for (var r2 = 0; r2 < roots.length; r2++) {
+      var btns = roots[r2].querySelectorAll('button');
+      for (var b = 0; b < btns.length; b++) {
+        var btn = btns[b];
+        if (isOwnNode(btn) || !isVisible(btn)) continue;
+        var txt = String(btn.getAttribute('aria-label') || btn.textContent || '');
+        if (/\b(?:gemini|claude|gpt|sonnet|opus|flash|neon|hydrogen|model)\b/i.test(txt)) {
+          return btn;
+        }
+      }
+    }
+    return null;
+  }
+
+  function ensureComposerToolbarSlot(composer) {
+    if (typeof document === 'undefined' || !composer) return null;
+    var trig = findModelTriggerInComposer(composer);
+    if (!trig || !trig.parentElement) return null;
+
+    var slot = document.getElementById('ag-studio-composer-toolbar-slot');
+    if (!slot) {
+      slot = document.createElement('div');
+      slot.id = 'ag-studio-composer-toolbar-slot';
+      slot.setAttribute('data-ag-studio-ignore', 'true');
+      slot.setAttribute('data-ag-no-i18n', 'true');
+      slot.style.cssText = 'display:inline-flex;align-items:center;gap:4px;margin-left:6px;flex-shrink:1;min-width:0;max-width:100%;vertical-align:middle;pointer-events:auto;';
+    }
+    if (slot.parentElement !== trig.parentElement || slot.previousElementSibling !== trig) {
+      if (trig.nextSibling) {
+        trig.parentElement.insertBefore(slot, trig.nextSibling);
+      } else {
+        trig.parentElement.appendChild(slot);
+      }
+    }
+    slot.style.display = 'inline-flex';
+    return slot;
+  }
+
+  function parkComposerToolbarSlot() {
+    if (typeof document === 'undefined') return;
+    var slot = document.getElementById('ag-studio-composer-toolbar-slot');
+    if (slot) slot.style.display = 'none';
   }
 
   function ensureComposerTopAnchor(composer) {
@@ -322,21 +384,19 @@
       slot.id = 'ag-studio-home-slot';
       slot.setAttribute('data-ag-studio-ignore', 'true');
       slot.setAttribute('data-ag-no-i18n', 'true');
-      slot.style.cssText = 'width:100%;max-width:740px;margin:14px auto 8px auto;padding:0 12px;box-sizing:border-box;z-index:20;';
+      slot.style.cssText = 'width:100%;max-width:740px;margin:10px auto 38px auto;padding:0 12px;box-sizing:border-box;z-index:20;';
     }
 
-    // Prefer placing right below the home composer box (or bottom HUD slot if present inside home)
+    // Place ABOVE the composer input box (between greeting & composer, leaving room for top mascot)
     var comp = findComposerTarget();
+    var anchorBefore = null;
     var anchorAfter = null;
     var parent = null;
     if (comp && comp.isHome) {
-      var bottomSlot = document.getElementById('ag-studio-composer-bottom');
-      if (bottomSlot && bottomSlot.parentElement && bottomSlot.closest('.agy-home')) {
-        anchorAfter = bottomSlot;
-        parent = bottomSlot.parentElement;
-      } else if (comp.inputBox && comp.inputBox.parentElement) {
-        anchorAfter = comp.inputBox;
-        parent = comp.inputBox.parentElement;
+      var compEl = comp.inputBox || comp.card;
+      if (compEl && compEl.parentElement) {
+        anchorBefore = compEl;
+        parent = compEl.parentElement;
       }
     }
     if (!parent && homeInfo.greetingEl && homeInfo.greetingEl.parentElement) {
@@ -348,7 +408,11 @@
     }
     if (!parent) return null;
 
-    if (anchorAfter) {
+    if (anchorBefore) {
+      if (slot.parentElement !== parent || slot.nextElementSibling !== anchorBefore) {
+        parent.insertBefore(slot, anchorBefore);
+      }
+    } else if (anchorAfter) {
       if (slot.parentElement !== parent || slot.previousElementSibling !== anchorAfter) {
         if (anchorAfter.nextSibling) parent.insertBefore(slot, anchorAfter.nextSibling);
         else parent.appendChild(slot);
@@ -527,23 +591,21 @@
       return function () {};
     }
     var timer = 0;
-    var raf = 0;
     var disposed = false;
 
     function trigger(reason) {
       if (disposed) return;
-      if (raf) return;
-      var fire = function () {
-        raf = 0;
+      var delay = (reason === 'route' || reason === 'pushState' || reason === 'replaceState') ? 32 : 160;
+      if (timer) {
+        if (delay > 32) return;
+        clearTimeout(timer);
+      }
+      timer = setTimeout(function () {
+        timer = 0;
         if (!disposed && typeof onChange === 'function') {
           try { onChange(reason || 'mutation'); } catch (_e) {}
         }
-      };
-      if (typeof requestAnimationFrame === 'function') raf = requestAnimationFrame(fire);
-      else {
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(fire, 32);
-      }
+      }, delay);
     }
 
     var obs = null;
@@ -579,7 +641,7 @@
           childList: true,
           subtree: true,
           attributes: true,
-          attributeFilter: ['data-cascade-id', 'data-op-thought-state', 'hidden', 'class', 'aria-expanded']
+          attributeFilter: ['data-cascade-id', 'data-op-thought-state', 'hidden', 'aria-expanded']
         });
       }
     }
@@ -608,7 +670,6 @@
     return function dispose() {
       disposed = true;
       if (obs) try { obs.disconnect(); } catch (_e) {}
-      if (raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf);
       if (timer) clearTimeout(timer);
       window.removeEventListener('popstate', onPop);
       window.removeEventListener('hashchange', onPop);
@@ -621,7 +682,10 @@
     extractConversationId: extractConversationId,
     detectHomeState: detectHomeState,
     findComposerTarget: findComposerTarget,
+    findModelTriggerInComposer: findModelTriggerInComposer,
     ensureComposerTopAnchor: ensureComposerTopAnchor,
+    ensureComposerToolbarSlot: ensureComposerToolbarSlot,
+    parkComposerToolbarSlot: parkComposerToolbarSlot,
     ensureComposerBottomSlot: ensureComposerBottomSlot,
     parkComposerBottomSlot: parkComposerBottomSlot,
     ensureHomeCardSlot: ensureHomeCardSlot,

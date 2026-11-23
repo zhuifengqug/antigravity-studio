@@ -60,7 +60,12 @@ test('Home overview card 7xN heatmap normalization, book comparison, and effort 
   assert.ok(cells.length >= 28);
   const bookLine = homeCard.formatFunBookText(2811000000, 'zh-CN', 0.99);
   assert.match(bookLine, /平凡的世界/);
-  assert.equal(effortSlider.detectEffortFromText('High'), 'high');
+  assert.equal(effortSlider.detectEffortFromText('Gemini 4 Neon (High)'), 'high');
+  assert.equal(effortSlider.detectEffortFromText('Gemini 4 Neon (XHigh)'), 'xhigh');
+  assert.equal(effortSlider.extractModelFamily('Gemini 4 Neon (XHigh)'), 'gemini 4 neon');
+  assert.equal(effortSlider.itemMatchesEffort('Gemini 4 Neon (XHigh)', 'high'), false);
+  assert.equal(effortSlider.itemMatchesEffort('Gemini 4 Neon (High)', 'high'), true);
+  assert.equal(effortSlider.itemMatchesEffort('Gemini 4 Neon (XHigh)', 'xhigh'), true);
 });
 
 test('Merged v2.34.0 dictionaries (4000+ entries) translate accurately and protect code/paths', () => {
@@ -71,6 +76,9 @@ test('Merged v2.34.0 dictionaries (4000+ entries) translate accurately and prote
   const engineCN = domI18n.createTranslatorEngine({ language: 'zh-CN', ...zhCN });
   assert.equal(engineCN.translateText('  Settings  '), '  设置  ');
   assert.equal(engineCN.translateText('3 agents running'), '3 个智能体运行中');
+  // Negative caching on misses does not corrupt unknown text
+  assert.equal(engineCN.translateText('ZzzUnknownBrandTokenXYZ'), 'ZzzUnknownBrandTokenXYZ');
+  assert.equal(engineCN.translateText('ZzzUnknownBrandTokenXYZ'), 'ZzzUnknownBrandTokenXYZ');
 
   // Strict code/path isolation
   assert.equal(domI18n.looksLikeCodeOrPath('C:\\Users\\gjs27\\app.asar'), true);

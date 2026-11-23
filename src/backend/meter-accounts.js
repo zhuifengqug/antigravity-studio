@@ -1684,11 +1684,18 @@ function createAccountsManager(options = {}) {
         if (tok?.idToken) dbEmail = decodeJwtEmail(tok.idToken);
       }
     }
+    let osEmail = '';
+    try {
+      const winCred = credStore.readWindowsSystemCredential();
+      const macCred = credStore.readMacKeychainCredential();
+      const osCred = winCred || macCred || null;
+      osEmail = normalizeEmail(osCred?.id_token_email || decodeJwtEmail(osCred?.id_token || '') || '');
+    } catch { }
     let gaEmail = '';
     const ga = readJsonSafe(paths.googleAccountsPath, null);
     if (ga?.active) gaEmail = normalizeEmail(ga.active);
 
-    const resolved = hostEmail || dbEmail || gaEmail || null;
+    const resolved = hostEmail || osEmail || dbEmail || gaEmail || null;
     if (resolved) {
       const store = loadStore();
       let dirty = false;
@@ -1696,12 +1703,12 @@ function createAccountsManager(options = {}) {
         store.activeAccountEmail = resolved;
         dirty = true;
       }
-      if (hostEmail || dbEmail) {
+      if (hostEmail || osEmail || dbEmail) {
         recordVerifiedAccountSession(store, {
           email: resolved,
           nowMs: Date.now(),
           source: 'desktop',
-          evidence: hostEmail ? 'host_user_status' : 'desktop_state_db'
+          evidence: hostEmail ? 'host_user_status' : (osEmail ? 'os_credential' : 'desktop_state_db')
         });
         dirty = true;
       }
@@ -1710,7 +1717,7 @@ function createAccountsManager(options = {}) {
     return {
       email: resolved,
       accountScopeKey: resolved ? buildAccountScopeKey(resolved) : null,
-      sources: { hostEmail: hostEmail || null, dbEmail: dbEmail || null, cliEmail: gaEmail || null }
+      sources: { hostEmail: hostEmail || null, osEmail: osEmail || null, dbEmail: dbEmail || null, cliEmail: gaEmail || null }
     };
   }
 
@@ -1727,57 +1734,135 @@ function createAccountsManager(options = {}) {
     const cliCreds = readJsonSafe(paths.oauthCredsPath, null);
     const ga = readJsonSafe(paths.googleAccountsPath, null);
 
-    let accessToken = osCred?.token?.access_token || dbTok?.accessToken || cliCreds?.access_token || '';
-    const refreshToken = osCred?.token?.refresh_token || dbTok?.refreshToken || cliCreds?.refresh_token || '';
-    const idToken = osCred?.id_token || dbTok?.idToken || cliCreds?.id_token || '';
-    const expiresAt = osCred?.token?.expiry
-      || (dbTok?.expirySeconds ? new Date(dbTok.expirySeconds * 1000).toISOString() : null)
-      || (cliCreds?.expiry_date ? new Date(cliCreds.expiry_date).toISOString() : null);
-
-    if (!refreshToken && !accessToken) {
-      return { ok: false, error: '当前本机未检测到可用 Antigravity 登录凭据' };
-    }
-
-    let email = dbUser?.email || decodeJwtEmail(idToken) || normalizeEmail(ga?.active || '');
-    let name = dbUser?.name || '';
-    if (!email && typeof getHostUserStatusFn === 'function') {
+    let hostEmail = '';
+    if (typeof getHostUserStatusFn === 'function') {
       try {
         const hs = await getHostUserStatusFn();
-        email = normalizeEmail(hs?.email || hs?.userStatus?.email || '');
+        hostEmail = normalizeEmail(hs?.email || hs?.userStatus?.email || '');
       } catch { }
     }
-    if (!email && accessToken) {
-      try {
-        const info = await fetchGoogleUserInfo(accessToken, customFetch);
-        email = info.email;
-        name = name || info.name;
-      } catch { }
+
+    const candidates = [];
+
+    // 1. OS Credential Manager / Keychain (Windows gemini:antigravity)
+    if (osCred && (osCred.token?.refresh_token || osCred.token?.access_token)) {
+      const osAccess = osCred.token?.access_token || '';
+      const osRefresh = osCred.token?.refresh_token || '';
+      const osIdTok = osCred.id_token || '';
+      let osEmail = normalizeEmail(osCred.id_token_email || '') || decodeJwtEmail(osIdTok) || dbUser?.email || hostEmail || '';
+      let osName = dbUser?.name || '';
+      if (!osEmail && osAccess) {
+        try {
+          const info = await fetchGoogleUserInfo(osAccess, customFetch);
+          osEmail = info.email;
+          osName = osName || info.name;
+        } catch { }
+      }
+      if (osEmail) {
+        candidates.push({
+          email: osEmail,
+          name: osName,
+          source: 'client_import',
+          oauthClientKey: 'antigravity_default',
+          accessToken: osAccess,
+          refreshToken: osRefresh,
+          idToken: osIdTok,
+          expiresAt: osCred.token?.expiry || null,
+          isDesktopPrimary: true
+        });
+      }
     }
-    if (!email) {
-      return { ok: false, error: '已找到本地 Token 但未能识别所属邮箱，请使用 Google OAuth 登录导入' };
+
+    // 2. Desktop state.vscdb UnifiedStateSync
+    if (dbTok && (dbTok.refreshToken || dbTok.accessToken)) {
+      let dbEmail = dbUser?.email || decodeJwtEmail(dbTok.idToken || '') || hostEmail || '';
+      let dbName = dbUser?.name || '';
+      if (!dbEmail && dbTok.accessToken) {
+        try {
+          const info = await fetchGoogleUserInfo(dbTok.accessToken, customFetch);
+          dbEmail = info.email;
+          dbName = dbName || info.name;
+        } catch { }
+      }
+      if (dbEmail && !candidates.some(c => c.email === dbEmail)) {
+        candidates.push({
+          email: dbEmail,
+          name: dbName,
+          source: 'client_import',
+          oauthClientKey: 'antigravity_default',
+          accessToken: dbTok.accessToken || '',
+          refreshToken: dbTok.refreshToken || '',
+          idToken: dbTok.idToken || '',
+          expiresAt: dbTok.expirySeconds ? new Date(dbTok.expirySeconds * 1000).toISOString() : null,
+          isDesktopPrimary: candidates.length === 0
+        });
+      }
+    }
+
+    // 3. CLI ~/.gemini/oauth_creds.json + google_accounts.json
+    if (cliCreds && (cliCreds.refresh_token || cliCreds.access_token)) {
+      let cliEmail = decodeJwtEmail(cliCreds.id_token || '') || normalizeEmail(ga?.active || '') || '';
+      let cliName = '';
+      if (!cliEmail && cliCreds.access_token) {
+        try {
+          const info = await fetchGoogleUserInfo(cliCreds.access_token, customFetch);
+          cliEmail = info.email;
+          cliName = info.name || '';
+        } catch { }
+      }
+      if (cliEmail && !candidates.some(c => c.email === cliEmail)) {
+        candidates.push({
+          email: cliEmail,
+          name: cliName,
+          source: 'cli_import',
+          oauthClientKey: 'antigravity_default',
+          accessToken: cliCreds.access_token || '',
+          refreshToken: cliCreds.refresh_token || '',
+          idToken: cliCreds.id_token || '',
+          expiresAt: cliCreds.expiry_date ? new Date(cliCreds.expiry_date).toISOString() : null,
+          isDesktopPrimary: candidates.length === 0
+        });
+      }
+    }
+
+    if (candidates.length === 0) {
+      return { ok: false, error: '当前本机未检测到可用 Antigravity 登录凭据（或未能识别邮箱）' };
     }
 
     const nowMs = Date.now();
     const store = loadStore();
-    upsertAccountRecord(store, {
-      email,
-      name,
-      source: 'client_import',
-      oauthClientKey: 'antigravity_default',
-      credential: { accessToken, refreshToken, expiresAt, idToken },
-      authInvalid: false,
-      authError: null,
-      lastUsedAtMs: nowMs
-    });
-    store.activeAccountEmail = email;
+    for (const c of candidates) {
+      upsertAccountRecord(store, {
+        email: c.email,
+        name: c.name,
+        source: c.source,
+        oauthClientKey: c.oauthClientKey,
+        credential: {
+          accessToken: c.accessToken,
+          refreshToken: c.refreshToken,
+          expiresAt: c.expiresAt,
+          idToken: c.idToken
+        },
+        authInvalid: false,
+        authError: null,
+        lastUsedAtMs: nowMs
+      });
+    }
+    const primary = candidates.find(c => c.isDesktopPrimary) || candidates[0];
+    store.activeAccountEmail = primary.email;
     recordVerifiedAccountSession(store, {
-      email,
+      email: primary.email,
       nowMs,
       source: 'desktop',
       evidence: 'client_import'
     });
     saveStore(store);
-    return { ok: true, account: sanitizeAccountForView(store.accounts[email], store.activeAccountEmail) };
+    return {
+      ok: true,
+      importedCount: candidates.length,
+      account: sanitizeAccountForView(store.accounts[primary.email], store.activeAccountEmail),
+      accounts: candidates.map(c => sanitizeAccountForView(store.accounts[c.email], store.activeAccountEmail))
+    };
   }
 
   function listAntigravityToolsAccounts() {

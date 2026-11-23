@@ -626,27 +626,43 @@
 
       // 6. Strict <= 3 words coreWords fallback (100% known English words only)
       if (!core || /[\u4e00-\u9fa5]/.test(core) || /[-_\\/.]/.test(core)) {
+        cacheSet(trimmed, null);
         return null;
       }
       var words = core.split(/\s+/).filter(Boolean);
-      if (words.length === 0 || words.length > 3) return null;
+      if (words.length === 0 || words.length > 3) {
+        cacheSet(trimmed, null);
+        return null;
+      }
 
       var cw = isTW ? CORE_WORDS_TW : CORE_WORDS_CN;
       var outTokens = [];
       var replacedAny = false;
       for (var w = 0; w < words.length; w++) {
         var tok = words[w];
-        if (!/^[a-zA-Z]+$/.test(tok)) return null;
+        if (!/^[a-zA-Z]+$/.test(tok)) {
+          cacheSet(trimmed, null);
+          return null;
+        }
         var lw = tok.toLowerCase();
-        if (lw === 'end') return null;
+        if (lw === 'end') {
+          cacheSet(trimmed, null);
+          return null;
+        }
         var wCn = Object.prototype.hasOwnProperty.call(cw, lw)
           ? cw[lw]
           : (exactMap.has(tok) ? exactMap.get(tok) : lowerMap.get(lw));
-        if (wCn === undefined) return null;
+        if (wCn === undefined) {
+          cacheSet(trimmed, null);
+          return null;
+        }
         if (wCn !== tok) replacedAny = true;
         outTokens.push(wCn);
       }
-      if (!replacedAny) return null;
+      if (!replacedAny) {
+        cacheSet(trimmed, null);
+        return null;
+      }
 
       var finalWords = outTokens.join(' ').replace(/([\u4e00-\u9fa5])\s+([\u4e00-\u9fa5])/g, '$1$2') + trailPunc;
       cacheSet(trimmed, finalWords);
@@ -1163,19 +1179,21 @@
     function onHoverOrContext(e) {
       if (!engine.isEnabled()) return;
       var now = Date.now();
-      if (now - lastHoverTs < 120) return;
+      if (now - lastHoverTs < 150) return;
       lastHoverTs = now;
       var target = e && e.target;
       if (target && target.nodeType === 1 && !shouldIgnoreElement(target)) {
-        runWithoutObserver(function () {
-          walkAndTranslate(target);
-        });
+        if (isFloatingElement(target) || target.childElementCount <= 8) {
+          runWithoutObserver(function () {
+            walkAndTranslate(target);
+          });
+        }
       }
       if (hoverTimer) clearTimeout(hoverTimer);
       hoverTimer = setTimeout(function () {
         hoverTimer = null;
         scanFloatingContainers();
-      }, 50);
+      }, 60);
     }
 
     function bootListeners() {
@@ -1184,15 +1202,12 @@
       document.addEventListener('pointerenter', onHoverOrContext, { capture: true, passive: true });
       document.addEventListener('contextmenu', onHoverOrContext, { capture: true, passive: true });
       if (typeof window !== 'undefined') {
-        window.addEventListener('focus', runFullScan);
-        window.addEventListener('popstate', function () { setTimeout(runFullScan, 50); });
+        window.addEventListener('popstate', function () { setTimeout(runFullScan, 60); });
       }
-      document.addEventListener('visibilitychange', function () {
-        if (document.visibilityState === 'visible') runFullScan();
-      });
-      // Low-frequency safety scan (15s via requestIdleCallback, never spinning)
+      // Low-frequency safety scan (30s via requestIdleCallback, never spinning)
       var idleScheduled = false;
       setInterval(function () {
+        if (typeof document !== 'undefined' && document.hidden) return;
         if (!engine.isEnabled() && engine.getBrandTitleMode() === 'english') return;
         if (idleScheduled) return;
         if (typeof requestIdleCallback === 'function') {
@@ -1201,10 +1216,8 @@
             idleScheduled = false;
             runFullScan();
           }, { timeout: 5000 });
-        } else {
-          runFullScan();
         }
-      }, 15000);
+      }, 30000);
     }
 
     if (document.readyState === 'loading') {
