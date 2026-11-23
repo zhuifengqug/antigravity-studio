@@ -20,6 +20,8 @@ const MARKERS = {
   MENU_END: '// --- Antigravity Studio Menu i18n End ---',
   TRAY_START: '// --- Antigravity Studio Tray i18n Start ---',
   TRAY_END: '// --- Antigravity Studio Tray i18n End ---',
+  LS_START: '// --- Antigravity Studio LanguageServer Proxy Start ---',
+  LS_END: '// --- Antigravity Studio LanguageServer Proxy End ---',
 };
 
 const LEGACY_MARKERS = [

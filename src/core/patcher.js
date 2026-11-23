@@ -24,6 +24,24 @@ function stripAllStudioAndLegacyBlocks(content) {
   out = stripMarkedBlock(out, MARKERS.PRELOAD_START, MARKERS.PRELOAD_END);
   out = stripMarkedBlock(out, MARKERS.MENU_START, MARKERS.MENU_END);
   out = stripMarkedBlock(out, MARKERS.TRAY_START, MARKERS.TRAY_END);
+  out = stripMarkedBlock(out, MARKERS.LS_START, MARKERS.LS_END);
+
+  // Revert call sites injected by this tool so a re-install over an already patched
+  // ASAR starts from the stock call shape instead of leaving dangling helper calls.
+  out = out.replace(/__agBuildLocalizedMenu\(/g, 'electron_1.Menu.buildFromTemplate(');
+  out = out.replace(/__agSetLocalizedApplicationMenu\(/g, 'electron_1.Menu.setApplicationMenu(');
+  out = out.replace(/electron_1\.Menu\.buildFromTemplate\(__agTranslateTrayActions\(actions\)\)/g, 'electron_1.Menu.buildFromTemplate(actions)');
+  out = out.replace(/new electron_1\.MenuItem\(__agTranslateTrayItem\(options\)\)/g, 'new electron_1.MenuItem(options)');
+  out = out.replace(/countItem\.label = __agFormatAgentCount\(count\);\s*\/\* __agOrigCountLabel: ([\s\S]*?) \*\//g,
+    (m, orig) => `countItem.label = ${orig};`);
+
+  // Remove unmarked one-liners this tool injects, so repeated installs stay byte-stable.
+  out = out.replace(/^[ \t]*try \{ require\("\.\/ag-studio\/studio-main"\)\.attachWindow\(wins\[0\]\);.*\r?\n/gm, '');
+  out = out.replace(/^[ \t]*try \{ require\("\.\/ag-studio\/studio-main"\)\.attachWindow\(_agWin\);.*\r?\n/gm, '');
+  out = out.replace(/^[ \t]*try \{ require\("\.\/ag-studio\/proxy-manager"\)\.applyProxyToEnv\(env\);.*\r?\n/gm, '');
+  out = out.replace(/(^[ \t]*)const _agWin = createWindow\(/gm, '$1createWindow(');
+  // Normalise indentation drift left behind by repeated marker injection
+  out = out.replace(/^[ \t]+(void\s+loadHubWindowUrl\()/gm, '    $1');
 
   // Strip legacy third-party patch blocks cleanly if present
   for (const [s, e] of LEGACY_MARKERS) {
@@ -199,12 +217,34 @@ ${MARKERS.TRAY_END}`;
     'new electron_1.MenuItem(__agTranslateTrayItem(options))'
   );
 
-  // Hook updateTrayAgentCount
+  // Hook updateTrayAgentCount (keep the stock expression in a comment so re-install can restore it)
   src = src.replace(
-    /countItem\.label\s*=\s*count\s*>\s*0\s*\?[^;]+;/,
-    'countItem.label = __agFormatAgentCount(count);'
+    /countItem\.label\s*=\s*(count\s*>\s*0\s*\?[^;]+);/,
+    (m, orig) => `countItem.label = __agFormatAgentCount(count); /* __agOrigCountLabel: ${orig.trim()} */`
   );
 
+  return { content: src, warnings };
+}
+
+function patchLanguageServerJs(rawSource) {
+  let src = stripAllStudioAndLegacyBlocks(rawSource);
+  const warnings = [];
+
+  // dist/languageServer.js builds the child env as `{ ...process.env, ...loginShellEnv }`,
+  // so the login shell spread can wipe any proxy values present in process.env.
+  // Inject the proxy AFTER that spread so the Go language server always inherits it
+  // (Go only honours HTTP_PROXY/HTTPS_PROXY/ALL_PROXY, never the Windows system proxy).
+  const anchorRegex = /(const env = \{ \.\.\.process\.env[^;]*\}?;)/;
+  if (!anchorRegex.test(src)) {
+    warnings.push('Optional anchor "const env = { ...process.env, ...loginShellEnv };" not found in dist/languageServer.js');
+    return { content: src, warnings };
+  }
+
+  const block = `${MARKERS.LS_START}
+        try { require("./ag-studio/proxy-manager").applyProxyToEnv(env); } catch (_agProxyErr) {}
+        ${MARKERS.LS_END}`;
+
+  src = src.replace(anchorRegex, `$1\n${block}`);
   return { content: src, warnings };
 }
 
@@ -215,6 +255,7 @@ function inspectPatchAnchors(filesMap) {
     ['dist/preload.js', () => patchPreloadJs(filesMap['dist/preload.js'], '/* dry-run */')],
     ['dist/menu.js', () => patchMenuJs(filesMap['dist/menu.js'])],
     ['dist/tray.js', () => patchTrayJs(filesMap['dist/tray.js'])],
+    ['dist/languageServer.js', () => patchLanguageServerJs(filesMap['dist/languageServer.js'])],
   ];
   for (const [name, fn] of checks) {
     try {
@@ -238,5 +279,6 @@ module.exports = {
   patchPreloadJs,
   patchMenuJs,
   patchTrayJs,
+  patchLanguageServerJs,
   inspectPatchAnchors,
 };

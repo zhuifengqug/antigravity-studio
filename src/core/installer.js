@@ -23,6 +23,7 @@ const {
   patchPreloadJs,
   patchMenuJs,
   patchTrayJs,
+  patchLanguageServerJs,
   inspectPatchAnchors,
 } = require('./patcher');
 
@@ -171,7 +172,7 @@ function installStudio(options = {}) {
   }
 
   const pkg = JSON.parse(readAsarFile(asarPath, 'package.json').toString('utf8'));
-  const targetFiles = ['dist/utils.js', 'dist/preload.js', 'dist/menu.js', 'dist/tray.js'];
+  const targetFiles = ['dist/utils.js', 'dist/preload.js', 'dist/menu.js', 'dist/tray.js', 'dist/languageServer.js'];
   const rawContents = {};
   for (const rel of targetFiles) {
     rawContents[rel] = readAsarFile(asarPath, rel).toString('utf8');
@@ -192,6 +193,7 @@ function installStudio(options = {}) {
   const patchedPreload = patchPreloadJs(rawContents['dist/preload.js'], preloadSnippet);
   const patchedMenu = patchMenuJs(rawContents['dist/menu.js']);
   const patchedTray = patchTrayJs(rawContents['dist/tray.js']);
+  const patchedLs = patchLanguageServerJs(rawContents['dist/languageServer.js']);
 
   // Also fix relative require paths inside embedded main modules:
   // Inside ASAR: dist/ag-studio/*.js expects ../shared/... -> actually dist/ag-studio/shared/...
@@ -210,6 +212,7 @@ function installStudio(options = {}) {
     ...patchedPreload.warnings,
     ...patchedMenu.warnings,
     ...patchedTray.warnings,
+    ...patchedLs.warnings,
   ];
 
   const backupPath = `${asarPath}${BACKUP_SUFFIX}`;
@@ -226,7 +229,7 @@ function installStudio(options = {}) {
       legacyModulesDetected: statusBefore.legacyModulesPresent,
       anchorReport,
       warnings: allWarnings,
-      bundleFileCount: bundleOverlay.size + 5,
+      bundleFileCount: bundleOverlay.size + 6,
     };
   }
 
@@ -251,6 +254,7 @@ function installStudio(options = {}) {
   bundleOverlay.set('dist/preload.js', Buffer.from(patchedPreload.content, 'utf8'));
   bundleOverlay.set('dist/menu.js', Buffer.from(patchedMenu.content, 'utf8'));
   bundleOverlay.set('dist/tray.js', Buffer.from(patchedTray.content, 'utf8'));
+  bundleOverlay.set('dist/languageServer.js', Buffer.from(patchedLs.content, 'utf8'));
   bundleOverlay.set(`dist/${STUDIO_DIR_NAME}/manifest.json`, Buffer.from(JSON.stringify(manifest, null, 2), 'utf8'));
 
   // Remove legacy meter-* files if user requested clean takeover (default: keep untouched unless cleanLegacy:true)

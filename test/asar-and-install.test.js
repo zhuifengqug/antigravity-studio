@@ -73,6 +73,16 @@ function updateTrayAgentCount(count) {
 }
 `);
 
+  fs.writeFileSync(path.join(distDir, 'languageServer.js'), `"use strict";
+function startLanguageServer(port, csrf, options) {
+    const loginShellEnv = {};
+    const env = { ...process.env, ...loginShellEnv };
+    env['ANTIGRAVITY_SERVER_CSRF_TOKEN'] = csrf;
+    return { port, env };
+}
+exports.startLanguageServer = startLanguageServer;
+`);
+
   const asarPath = path.join(root, 'app.asar');
   packDirectoryToAsar(srcDir, asarPath);
   return { root, asarPath, stateDir };
@@ -91,6 +101,7 @@ test('ASAR pack, idempotent install, legacy cleanup, and lossless restore', () =
     assert.equal(dryRes.anchorReport['dist/preload.js'].ok, true);
     assert.equal(dryRes.anchorReport['dist/menu.js'].ok, true);
     assert.equal(dryRes.anchorReport['dist/tray.js'].ok, true);
+    assert.equal(dryRes.anchorReport['dist/languageServer.js'].ok, true);
     assert.equal(sha256File(asarPath), origSha);
 
     // Real install on sandbox ASAR
@@ -111,6 +122,13 @@ test('ASAR pack, idempotent install, legacy cleanup, and lossless restore', () =
     assert.match(patchedPreload, /exposeInMainWorld\('agStudioAPI'/);
     assert.doesNotMatch(patchedPreload, /legacy i18n/);
 
+    // language server proxy injection must sit AFTER the loginShellEnv spread
+    const patchedLs = readAsarFile(asarPath, 'dist/languageServer.js').toString('utf8');
+    assert.match(patchedLs, /Antigravity Studio LanguageServer Proxy Start/);
+    const spreadIdx = patchedLs.indexOf('{ ...process.env, ...loginShellEnv }');
+    const proxyIdx = patchedLs.indexOf('applyProxyToEnv(env)');
+    assert.ok(spreadIdx > 0 && proxyIdx > spreadIdx, 'proxy injection must follow the env spread');
+
     const files = listAsarFiles(asarPath).map((f) => f.path);
     assert.ok(files.includes('dist/ag-studio/studio-main.js'));
     assert.ok(files.includes('dist/ag-studio/studio-renderer.js'));
@@ -120,6 +138,13 @@ test('ASAR pack, idempotent install, legacy cleanup, and lossless restore', () =
     installStudio({ asarPath, stateDir });
     const utilsAfterSecond = readAsarFile(asarPath, 'dist/utils.js').toString('utf8');
     assert.equal(utilsAfterSecond.match(/Antigravity Studio Proxy Boot Start/g).length, 1);
+    assert.equal(utilsAfterSecond.match(/applyProxyToEnv\(env\)/g).length, 1);
+    assert.equal(utilsAfterSecond.match(/attachWindow\(wins\[0\]\)/g).length, 1);
+    assert.match(utilsAfterSecond, /^ {4}void loadHubWindowUrl\(/m);
+
+    const lsAfterSecond = readAsarFile(asarPath, 'dist/languageServer.js').toString('utf8');
+    assert.equal(lsAfterSecond.match(/LanguageServer Proxy Start/g).length, 1);
+    assert.equal(lsAfterSecond.match(/applyProxyToEnv\(env\)/g).length, 1);
 
     // Lossless restore check
     const res = restoreStudio({ asarPath, stateDir });
