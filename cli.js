@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { STUDIO_VERSION, getStateDir } = require('./src/shared/constants');
+const { STUDIO_VERSION, getStateDir, getLegacyMeterStateDir } = require('./src/shared/constants');
 const { ConfigStore } = require('./src/shared/config-store');
 const { getStudioStatus, installStudio } = require('./src/core/installer');
 const { restoreStudio } = require('./src/core/restore');
@@ -101,6 +101,7 @@ async function main() {
     } catch {}
     const store = new ConfigStore(stateDir);
     const status = getStudioStatus({ asarPath: flags.asar, stateDir });
+    const legacyMeterDir = getLegacyMeterStateDir();
     console.log(JSON.stringify({
       nodeVersion: process.version,
       platform: process.platform,
@@ -109,6 +110,11 @@ async function main() {
       stateDir: store.stateDir,
       configExists: fs.existsSync(store.configPath),
       fontsDir: store.fontsDir,
+      legacyMeterDetected: fs.existsSync(legacyMeterDir),
+      scriptsReady: {
+        attachmentScan: fs.existsSync(path.join(__dirname, 'scripts', 'attachment_scan.py')),
+        rehydrate: fs.existsSync(path.join(__dirname, 'scripts', 'rehydrate_after_compact.py')),
+      },
       antigravityDetected: status.found,
       asarPath: status.asarPath,
       appVersion: status.appVersion,

@@ -5,6 +5,7 @@ const tls = require('tls');
 const { URL } = require('url');
 const { ConfigStore } = require('../shared/config-store');
 const { DEFAULT_NO_PROXY } = require('../shared/constants');
+const meterProxy = require('./meter-proxy');
 
 function normalizeProxyUrl(rawUrl) {
   const s = String(rawUrl || '').trim();
@@ -35,66 +36,37 @@ function normalizeProxyUrl(rawUrl) {
   };
 }
 
-function ipToUint32(ip) {
-  const parts = String(ip).split('.');
-  if (parts.length !== 4) return null;
-  let val = 0;
-  for (const p of parts) {
-    const n = Number(p);
-    if (!Number.isInteger(n) || n < 0 || n > 255) return null;
-    val = ((val << 8) | n) >>> 0;
-  }
-  return val;
-}
-
 function matchesBypassRule(hostname, bypassList) {
-  const host = String(hostname || '').toLowerCase();
-  const rules = String(bypassList || '').split(/[\s,;]+/).map((r) => r.trim().toLowerCase()).filter(Boolean);
-  for (const rule of rules) {
-    if (rule === '<local>') {
-      if (!host.includes('.') || host === 'localhost') return true;
-      continue;
-    }
-    if (rule === '*') return true;
-    if (rule.includes('/')) {
-      const [netIp, prefixStr] = rule.split('/');
-      const prefix = Number(prefixStr);
-      const hostNum = ipToUint32(host);
-      const netNum = ipToUint32(netIp);
-      if (hostNum !== null && netNum !== null && Number.isInteger(prefix) && prefix >= 0 && prefix <= 32) {
-        const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
-        if ((hostNum & mask) === (netNum & mask)) return true;
-      }
-      continue;
-    }
-    if (rule.startsWith('.')) {
-      if (host === rule.slice(1) || host.endsWith(rule)) return true;
-      continue;
-    }
-    if (rule.startsWith('*.')) {
-      const suffix = rule.slice(1);
-      if (host.endsWith(suffix) || host === rule.slice(2)) return true;
-      continue;
-    }
-    if (host === rule) return true;
-  }
-  return false;
+  return meterProxy.matchesNoProxy(hostname, bypassList);
 }
 
-function applyProxyToEnv(targetEnv, proxyCfg) {
+function clearProxyFromEnv(targetEnv) {
   if (!targetEnv || typeof targetEnv !== 'object') return;
-  const store = new ConfigStore();
-  const cfg = proxyCfg || store.load().proxy;
+  for (const k of ['HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy', 'ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy', 'NODE_USE_ENV_PROXY']) {
+    delete targetEnv[k];
+  }
+}
+
+function applyProxyToEnv(targetEnv, proxyCfg, options = {}) {
+  if (!targetEnv || typeof targetEnv !== 'object') return null;
+  let cfg = proxyCfg;
+  if (!cfg) {
+    const store = new ConfigStore();
+    cfg = store.load().proxy;
+  }
   if (!cfg || cfg.enabled !== true || !cfg.proxyUrl) {
-    return;
+    if (options.clearWhenDisabled) {
+      clearProxyFromEnv(targetEnv);
+    }
+    return null;
   }
   let parsed;
   try {
     parsed = normalizeProxyUrl(cfg.proxyUrl);
   } catch {
-    return;
+    return null;
   }
-  if (!parsed) return;
+  if (!parsed) return null;
   const noProxy = String(cfg.bypassList ?? DEFAULT_NO_PROXY).trim();
   for (const k of ['HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy', 'ALL_PROXY', 'all_proxy']) {
     targetEnv[k] = parsed.normalized;
@@ -159,7 +131,7 @@ function applyBootProxySync() {
     if (electron.app) {
       electron.app.on('session-created', (sess) => {
         if (sess && typeof sess.setProxy === 'function') {
-          sess.setProxy({ proxyRules: parsed.chromiumProxyUrl, proxyBypassRules: bypassList }).catch(() => {});
+          sess.setProxy({ mode: 'fixed_servers', proxyRules: parsed.chromiumProxyUrl, proxyBypassRules: bypassList }).catch(() => {});
         }
       });
       electron.app.whenReady().then(() => applySessionProxy(electron.app, electron.session, cfg)).catch(() => {});
@@ -336,7 +308,6 @@ async function testProxyConnectivity(proxyUrl, options = {}) {
     };
   }
 
-  // Optional TLS handshake over tunnel to confirm end-to-end connectivity
   return new Promise((resolve, reject) => {
     const tlsSock = tls.connect({
       socket: tunnel.socket,
@@ -365,8 +336,10 @@ async function testProxyConnectivity(proxyUrl, options = {}) {
 }
 
 module.exports = {
+  ...meterProxy,
   normalizeProxyUrl,
   matchesBypassRule,
+  clearProxyFromEnv,
   applyProxyToEnv,
   applySessionProxy,
   applyBootProxySync,

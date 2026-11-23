@@ -73,14 +73,27 @@ function collectBundleFiles(projectRoot = PROJECT_ROOT) {
   };
 
   addDir(path.join(projectRoot, 'src', 'shared'), 'shared');
-  addDir(path.join(projectRoot, 'src', 'main'), 'main');
   addDir(path.join(projectRoot, 'src', 'i18n'), 'i18n');
 
-  // Flatten main modules directly under dist/ag-studio/ for concise require('./ag-studio/studio-main')
-  const mainDir = path.join(projectRoot, 'src', 'main');
-  for (const ent of fs.readdirSync(mainDir, { withFileTypes: true })) {
-    if (ent.isFile() && ent.name.endsWith('.js')) {
-      overlay.set(`dist/${STUDIO_DIR_NAME}/${ent.name}`, fs.readFileSync(path.join(mainDir, ent.name)));
+  // Include core/asar-engine.js so dist/ag-studio/asar-engine.js resolves inside ASAR
+  const coreAsarPath = path.join(projectRoot, 'src', 'core', 'asar-engine.js');
+  if (fs.existsSync(coreAsarPath)) {
+    overlay.set(`dist/${STUDIO_DIR_NAME}/core/asar-engine.js`, fs.readFileSync(coreAsarPath));
+  }
+
+  // Include Python runtime helper scripts under dist/ag-studio/scripts/
+  for (const pyName of ['attachment_scan.py', 'rehydrate_after_compact.py']) {
+    const pyPath = path.join(projectRoot, 'scripts', pyName);
+    if (fs.existsSync(pyPath)) {
+      overlay.set(`dist/${STUDIO_DIR_NAME}/scripts/${pyName}`, fs.readFileSync(pyPath));
+    }
+  }
+
+  // Flatten backend modules directly under dist/ag-studio/ for concise require('./ag-studio/studio-main')
+  const backendDir = path.join(projectRoot, 'src', 'backend');
+  for (const ent of fs.readdirSync(backendDir, { withFileTypes: true })) {
+    if (ent.isFile() && ent.name.endsWith('.js') && ent.name !== 'studio-preload-snippet.js') {
+      overlay.set(`dist/${STUDIO_DIR_NAME}/${ent.name}`, fs.readFileSync(path.join(backendDir, ent.name)));
     }
   }
 
@@ -185,7 +198,7 @@ function installStudio(options = {}) {
     throw new Error(`Pre-flight anchor check failed (fail-closed): ${details}`);
   }
 
-  const preloadSnippetPath = path.join(projectRoot, 'src', 'main', 'studio-preload-snippet.js');
+  const preloadSnippetPath = path.join(projectRoot, 'src', 'backend', 'studio-preload-snippet.js');
   const preloadSnippet = fs.readFileSync(preloadSnippetPath, 'utf8');
   const bundleOverlay = collectBundleFiles(projectRoot);
 
@@ -195,14 +208,24 @@ function installStudio(options = {}) {
   const patchedTray = patchTrayJs(rawContents['dist/tray.js']);
   const patchedLs = patchLanguageServerJs(rawContents['dist/languageServer.js']);
 
-  // Also fix relative require paths inside embedded main modules:
+  // Also fix relative require paths inside embedded backend modules:
   // Inside ASAR: dist/ag-studio/*.js expects ../shared/... -> actually dist/ag-studio/shared/...
-  // Rewrite require('../shared/...') & require('../i18n/...') inside dist/ag-studio/*.js so both repo & ASAR resolve cleanly!
+  // Rewrite require('../shared/...') / require('../i18n/...') / require('../core/...') inside dist/ag-studio/*.js
   for (const [rel, buf] of bundleOverlay.entries()) {
-    if (rel.startsWith(`dist/${STUDIO_DIR_NAME}/`) && rel.endsWith('.js') && !rel.includes('/shared/') && !rel.includes('/main/') && !rel.includes('/i18n/')) {
+    const isTopStudioJs =
+      rel.startsWith(`dist/${STUDIO_DIR_NAME}/`) &&
+      rel.endsWith('.js') &&
+      !rel.endsWith('/studio-renderer.js') &&
+      !rel.endsWith('/studio-i18n-preload.js') &&
+      !rel.includes('/shared/') &&
+      !rel.includes('/i18n/') &&
+      !rel.includes('/core/') &&
+      !rel.includes('/scripts/');
+    if (isTopStudioJs) {
       let code = buf.toString('utf8');
       code = code.replace(/require\(['"]\.\.\/shared\/([^'"]+)['"]\)/g, "require('./shared/$1')");
       code = code.replace(/require\(['"]\.\.\/i18n\/([^'"]+)['"]\)/g, "require('./i18n/$1')");
+      code = code.replace(/require\(['"]\.\.\/core\/([^'"]+)['"]\)/g, "require('./core/$1')");
       bundleOverlay.set(rel, Buffer.from(code, 'utf8'));
     }
   }

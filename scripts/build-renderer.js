@@ -10,12 +10,25 @@ const DIST = path.join(ROOT, 'dist');
 function buildAll() {
   fs.mkdirSync(DIST, { recursive: true });
 
+  const spritesPath = path.join(ROOT, 'src', 'renderer', 'assets', 'mascot-sprites.js');
+  if (!fs.existsSync(spritesPath)) {
+    const buildMascotAssets = path.join(ROOT, 'scripts', 'build-mascot-assets.js');
+    if (fs.existsSync(buildMascotAssets)) {
+      require(buildMascotAssets).buildSprites();
+    }
+  }
+
   const rendererParts = [
     path.join(ROOT, 'src', 'renderer', 'themes.js'),
     path.join(ROOT, 'src', 'renderer', 'typography.js'),
-    path.join(ROOT, 'src', 'renderer', 'mascot.js'),
+    path.join(ROOT, 'src', 'renderer', 'dom-anchors.js'),
+    spritesPath,
+    path.join(ROOT, 'src', 'renderer', 'mascot-stage.js'),
     path.join(ROOT, 'src', 'renderer', 'composer-hud.js'),
-    path.join(ROOT, 'src', 'renderer', 'dashboard-ui.js'),
+    path.join(ROOT, 'src', 'renderer', 'home-overview-card.js'),
+    path.join(ROOT, 'src', 'renderer', 'prism-fx.js'),
+    path.join(ROOT, 'src', 'renderer', 'effort-slider.js'),
+    path.join(ROOT, 'src', 'renderer', 'drawer-ui.js'),
     path.join(ROOT, 'src', 'renderer', 'bootstrap.js'),
   ];
 

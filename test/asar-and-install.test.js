@@ -134,8 +134,15 @@ test('ASAR pack, idempotent install, legacy cleanup, and lossless restore', () =
     assert.ok(files.includes('dist/ag-studio/studio-renderer.js'));
     assert.ok(files.includes('dist/ag-studio/native-i18n.js'));
 
-    // Re-install idempotency check
+    // Re-install idempotency check (byte-for-byte identical across all 5 targets)
+    const snap1 = {};
+    for (const rel of ['dist/utils.js', 'dist/preload.js', 'dist/menu.js', 'dist/tray.js', 'dist/languageServer.js']) {
+      snap1[rel] = readAsarFile(asarPath, rel).toString('utf8');
+    }
     installStudio({ asarPath, stateDir });
+    for (const rel of Object.keys(snap1)) {
+      assert.equal(readAsarFile(asarPath, rel).toString('utf8'), snap1[rel], `${rel} should be byte-identical across repeated installs`);
+    }
     const utilsAfterSecond = readAsarFile(asarPath, 'dist/utils.js').toString('utf8');
     assert.equal(utilsAfterSecond.match(/Antigravity Studio Proxy Boot Start/g).length, 1);
     assert.equal(utilsAfterSecond.match(/applyProxyToEnv\(env\)/g).length, 1);
