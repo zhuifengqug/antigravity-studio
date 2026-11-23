@@ -377,6 +377,29 @@ function midEstimate(group) {
   return 0;
 }
 
+function formatFriendlyPoolTitle(rawKey, models = []) {
+  const key = String(rawKey || '').trim();
+  const low = key.toLowerCase();
+  if (low === 'shared_gemini_main') return 'Gemini 4 主力共享池';
+  if (low === 'shared_3p_pool') return 'Claude / GPT 共享池';
+  if (low === 'shared_gemini_argon') return 'Gemini 4 Argon / 编排池';
+  if (low === 'shared_gemini_carbon') return 'Gemini 4 Carbon 专属池';
+  if (low === 'shared_gemini_flash' || (low.includes('gemini') && low.includes('flash'))) {
+    return 'Gemini Flash 轻量池';
+  }
+  const labels = (Array.isArray(models) ? models : [])
+    .map((m) => String(m?.productLabel || m?.label || '').trim())
+    .filter((s) => s && !/^MODEL_PLACEHOLDER/i.test(s));
+  const uniqueLabels = [...new Set(labels)];
+  if (uniqueLabels.length) {
+    return uniqueLabels.slice(0, 2).join(' / ') + (uniqueLabels.length > 2 ? ' 等共享池' : ' 共享池');
+  }
+  if (!key || /^shared_/i.test(key) || /^MODEL_PLACEHOLDER/i.test(key)) {
+    return '模型共享额度池';
+  }
+  return key;
+}
+
 function normalizeQuotaForUi(quotaRes, lowThreshold = 0.2) {
   const snap = quotaRes?.snapshot || {};
   const rawPools = Array.isArray(snap.pools) ? snap.pools : [];
@@ -385,9 +408,19 @@ function normalizeQuotaForUi(quotaRes, lowThreshold = 0.2) {
     const pct = p.remainingPercent != null
       ? Number(p.remainingPercent)
       : (frac !== null ? Math.round(frac * 100) : null);
+    const rawKey = p.poolKey || p.title || 'Pool';
+    const poolModels = Array.isArray(p.models) ? p.models : [];
+    const modelNames = [...new Set(
+      poolModels
+        .map((m) => String(m?.productLabel || m?.label || m?.productKey || '').trim())
+        .filter((s) => s && !/^MODEL_PLACEHOLDER/i.test(s))
+    )];
+    const displayName = formatFriendlyPoolTitle(rawKey, poolModels);
     return {
       ...p,
-      poolKey: p.poolKey || p.title || 'Pool',
+      poolKey: rawKey,
+      displayName,
+      modelNames,
       remainingFraction: frac,
       remainingPercent: pct,
       resetTime: p.resetTime || p.resetTimeIso || null,
@@ -522,6 +555,48 @@ function shapeCollectResultForUi(collected, quotaUi, cfg, cid) {
     });
   }
 
+  let evaluation = null;
+  try {
+    if (typeof meterCore.evaluateGenerationExperience === 'function') {
+      const lang = cfg?.i18n?.language || 'zh-CN';
+      const totalIn = Number(latest?.input || (bdSystem + bdTools + bdUser));
+      const outTok = Number(latest?.output || (bdAssistant + bdThinking));
+      const ttftSec = ttftMs > 0 ? ttftMs / 1000 : null;
+      const durSec = durationMs > 0 ? durationMs / 1000 : null;
+      const streamingSec = speedObj.streamingSec != null
+        ? Number(speedObj.streamingSec)
+        : (latestCall?.streamingSec != null ? Number(latestCall.streamingSec) : null);
+      const streamSpeed = Number(speedObj.streamingTps || speedObj.tps || latestCall?.tps || 0) || null;
+      const phase = isGenerating ? 'streaming' : (outTok > 0 || durSec ? 'final' : '');
+      if (phase) {
+        const ev = meterCore.evaluateGenerationExperience({
+          phase,
+          outcomeStatus: latestCall?.outcomeStatus || latestCall?.status || latest?.status || '',
+          outputTokens: outTok,
+          totalInputTokens: totalIn,
+          ttftSec,
+          streamingSec,
+          totalDurationSec: durSec,
+          streamSpeed,
+          overallTps: tokPerSec > 0 ? tokPerSec : null,
+        }, lang);
+        if (ev) {
+          evaluation = {
+            phase: ev.phase || phase,
+            badge: ev.badge || null,
+            shortTitle: ev.shortTitle || '',
+            comment: ev.comment || '',
+            subLabel: ev.subLabel || '',
+            score: ev.efficiency?.available ? ev.efficiency.score : null,
+            grade: ev.efficiency?.available ? ev.efficiency.grade : null,
+            ttftFormatted: ev.ttftFormatted || '',
+            durationFormatted: ev.durationFormatted || '',
+          };
+        }
+      }
+    }
+  } catch {}
+
   return {
     lsConnected: true,
     lsError: null,
@@ -551,8 +626,9 @@ function shapeCollectResultForUi(collected, quotaUi, cfg, cid) {
         ttftMs,
         durationMs,
         isGenerating,
-        eScore: speedObj.eScore ?? null,
-        eGrade: speedObj.eGrade ?? null,
+        eScore: speedObj.eScore ?? evaluation?.score ?? null,
+        eGrade: speedObj.eGrade ?? evaluation?.grade ?? null,
+        evaluation,
       },
       attachments,
     },
@@ -1795,5 +1871,8 @@ module.exports = {
   readHostLanguageServerAuth,
   resolveHostAuthContext,
   computeHistoryOverview,
+  formatFriendlyPoolTitle,
+  normalizeQuotaForUi,
+  shapeCollectResultForUi,
   getAppQuitting: () => isAppQuitting,
 };

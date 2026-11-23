@@ -6,7 +6,12 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { computeHistoryOverview } = require('../src/backend/studio-main');
+const {
+  computeHistoryOverview,
+  formatFriendlyPoolTitle,
+  normalizeQuotaForUi,
+  shapeCollectResultForUi,
+} = require('../src/backend/studio-main');
 const meterCore = require('../src/backend/meter-core');
 const { ConfigStore } = require('../src/shared/config-store');
 
@@ -118,4 +123,38 @@ test('meter-core pricing catalog normalization & quota formatting', () => {
   assert.equal(typeof meterCore.summarize, 'function');
   assert.equal(typeof meterCore.resolveModelQuota, 'function');
   assert.equal(typeof meterCore.summarizeApiCost, 'function');
+
+  assert.equal(formatFriendlyPoolTitle('shared_gemini_main'), 'Gemini 4 主力共享池');
+  assert.equal(formatFriendlyPoolTitle('shared_3p_pool'), 'Claude / GPT 共享池');
+  assert.equal(formatFriendlyPoolTitle('shared_gemini_argon'), 'Gemini 4 Argon / 编排池');
+  assert.equal(formatFriendlyPoolTitle('shared_gemini_carbon'), 'Gemini 4 Carbon 专属池');
+
+  const qUi = normalizeQuotaForUi({
+    ok: true,
+    snapshot: {
+      pools: [
+        {
+          poolKey: 'shared_gemini_main',
+          remainingFraction: 0.8,
+          models: [{ productLabel: 'Gemini 4 Hydrogen' }, { productLabel: 'Gemini 4 Neon' }],
+        },
+      ],
+    },
+  });
+  assert.equal(qUi.pools[0].displayName, 'Gemini 4 主力共享池');
+  assert.deepEqual(qUi.pools[0].modelNames, ['Gemini 4 Hydrogen', 'Gemini 4 Neon']);
+
+  const shaped = shapeCollectResultForUi({
+    latest: {
+      model: 'Gemini 4 Hydrogen (High)',
+      actual: 560000,
+      budget: 786400,
+      input: 100000,
+      output: 12000,
+      cached: 80000,
+      speed: { tps: 85, streamingTps: 92, ttft: 1.4, duration: 15, streamingSec: 13.6 },
+    },
+  }, qUi, { i18n: { language: 'zh-CN' }, enhance: {}, context: {} }, 'conv-test');
+  assert.ok(shaped.context.speed.evaluation);
+  assert.ok(shaped.context.speed.evaluation.comment.length > 0);
 });

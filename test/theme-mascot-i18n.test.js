@@ -66,6 +66,42 @@ test('Home overview card 7xN heatmap normalization, book comparison, and effort 
   assert.equal(effortSlider.itemMatchesEffort('Gemini 4 Neon (XHigh)', 'high'), false);
   assert.equal(effortSlider.itemMatchesEffort('Gemini 4 Neon (High)', 'high'), true);
   assert.equal(effortSlider.itemMatchesEffort('Gemini 4 Neon (XHigh)', 'xhigh'), true);
+
+  // Verify React Fiber model profile resolution & commitEffortOption argument order
+  const calls = [];
+  const mockCtx = {
+    conversationId: 'conv-abc',
+    selectedModel: { label: 'Gemini 4 Neon (High)', value: 'm1' },
+    modelOptions: [
+      { label: 'Gemini 4 Neon (Low)', value: 'm0' },
+      { label: 'Gemini 4 Neon (High)', value: 'm1' },
+      { label: 'Gemini 4 Neon (XHigh)', value: 'm2' },
+    ],
+    setModelConfigByLabelForConversation: (label, cid, keepOpen) => {
+      calls.push({ type: 'model', label, cid, keepOpen });
+    },
+  };
+  const prof = effortSlider.resolveActiveModelProfile(mockCtx, 'Gemini 4 Neon (High)');
+  assert.equal(prof.currentEffort, 'high');
+  assert.deepEqual(prof.levels.map((l) => l.id), ['low', 'high', 'xhigh']);
+  const xhighOpt = prof.levels.find((l) => l.id === 'xhigh').option;
+  assert.equal(effortSlider.commitEffortOption(mockCtx, xhighOpt, false, true), true);
+  assert.deepEqual(calls[0], { type: 'model', label: 'Gemini 4 Neon (XHigh)', cid: 'conv-abc', keepOpen: true });
+
+  const orchCalls = [];
+  const orchCtx = {
+    selectedModel: { label: 'Orchestrator', value: 'orch' },
+    orchPlanners: [
+      { label: 'Gemini 4 Hydrogen (Medium)', value: 11 },
+      { label: 'Gemini 4 Hydrogen (High)', value: 12 },
+    ],
+    orchDefaultPlanner: { label: 'Gemini 4 Hydrogen (Medium)', value: 11 },
+    orchPick: { selected: 11, select: (val) => orchCalls.push(val) },
+  };
+  const orchProf = effortSlider.resolveActiveModelProfile(orchCtx, 'Orchestrator');
+  assert.equal(orchProf.isOrchPlan, true);
+  assert.equal(effortSlider.commitEffortOption(orchCtx, orchProf.levels[1].option, true, true), true);
+  assert.deepEqual(orchCalls, [12]);
 });
 
 test('Merged v2.34.0 dictionaries (4000+ entries) translate accurately and protect code/paths', () => {

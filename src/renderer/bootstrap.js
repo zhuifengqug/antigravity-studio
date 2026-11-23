@@ -315,6 +315,11 @@
     if (e.target && e.target.closest && e.target.closest('[data-testid="agent-input-box"], .surface-composer-card')) {
       lastTypingAt = Date.now();
     }
+    if (e.key === 'Escape' && drawer.isOpen()) {
+      e.preventDefault();
+      drawer.toggle(false);
+      return;
+    }
     if (e.ctrlKey && e.shiftKey && (e.key === 'G' || e.key === 'g')) {
       e.preventDefault();
       drawer.toggle();

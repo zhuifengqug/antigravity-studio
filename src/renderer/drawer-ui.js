@@ -136,7 +136,8 @@
     var style = document.createElement('style');
     style.id = 'ag-studio-drawer-style';
     style.textContent = [
-      '.ags-drawer { position:fixed; top:12px; right:12px; bottom:12px; width:420px; max-width:calc(100vw - 24px); background:var(--ags-bg-surface,#18181b); color:var(--ags-text-primary,#f4f4f5); border:1px solid var(--ags-border,#2e2e32); border-radius:14px; box-shadow:var(--ags-shadow,0 16px 40px rgba(0,0,0,0.45)); z-index:2147483500; display:flex; flex-direction:column; font-family:var(--ags-font-ui,system-ui,sans-serif); font-size:13px; font-variant-numeric:tabular-nums; transition:transform 180ms cubic-bezier(.22,1,.36,1), opacity 160ms ease; overflow:hidden; }',
+      '.ags-drawer { position:fixed; top:40px; right:12px; bottom:12px; width:420px; max-width:calc(100vw - 24px); background:var(--ags-bg-surface,#18181b); color:var(--ags-text-primary,#f4f4f5); border:1px solid var(--ags-border,#2e2e32); border-radius:14px; box-shadow:var(--ags-shadow,0 16px 40px rgba(0,0,0,0.45)); z-index:2147483500; display:flex; flex-direction:column; font-family:var(--ags-font-ui,system-ui,sans-serif); font-size:13px; font-variant-numeric:tabular-nums; transition:transform 180ms cubic-bezier(.22,1,.36,1), opacity 160ms ease; overflow:hidden; -webkit-app-region:no-drag; app-region:no-drag; }',
+      '.ags-drawer * { -webkit-app-region:no-drag; app-region:no-drag; }',
       '.ags-drawer.ags-hidden { transform:translateX(calc(100% + 24px)); opacity:0; pointer-events:none; }',
       '.ags-head { display:flex; align-items:center; justify-content:space-between; padding:14px 16px 10px 16px; border-bottom:1px solid var(--ags-border); }',
       '.ags-title { font-size:14px; font-weight:600; letter-spacing:-0.01em; display:flex; align-items:center; gap:8px; }',
@@ -178,6 +179,12 @@
       '.ags-details { border:1px solid var(--ags-border); border-radius:10px; background:var(--ags-bg-surface); padding:8px 11px; }',
       '.ags-details summary { cursor:pointer; font-size:12px; color:var(--ags-text-secondary); font-weight:500; outline:none; user-select:none; }',
       '.ags-details[open] summary { margin-bottom:10px; color:var(--ags-text-primary); }',
+      '.ags-fold-card { border:1px solid var(--ags-border); border-radius:10px; background:var(--ags-bg-surface); overflow:hidden; }',
+      '.ags-fold-btn { width:100%; border:none; background:transparent; color:var(--ags-text-secondary); padding:9px 11px; display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:500; cursor:pointer; text-align:left; }',
+      '.ags-fold-btn:hover { color:var(--ags-text-primary); background:var(--ags-bg-canvas); }',
+      '.ags-fold-body { padding:0 11px 10px 11px; display:flex; flex-direction:column; gap:6px; }',
+      '.ags-eval-box { padding:8px 10px; border-radius:9px; background:var(--ags-bg-surface); border:1px solid var(--ags-border); display:flex; flex-direction:column; gap:4px; }',
+      '.ags-eval-badge { display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:600; }',
       '.ags-hm-7row { display:grid; grid-template-rows:repeat(7, 10px); grid-auto-flow:column; grid-auto-columns:10px; gap:3px; overflow-x:auto; padding:2px 0; }',
       '.ags-hm-cell { width:10px; height:10px; border-radius:2px; background:var(--ags-bg-subtle); }',
       '.ags-tl-item { padding:7px 9px; border-radius:8px; border:1px solid var(--ags-border); background:var(--ags-bg-canvas); display:flex; flex-direction:column; gap:3px; font-size:11.5px; }',
@@ -217,7 +224,10 @@
       speedHistory: [],
       proxyTestResult: null,
       timelineOpen: false,
+      timelineLoading: false,
+      timelineConvId: '',
       timelineData: null,
+      attachOpen: false,
       enhanceStatus: null,
       unlockStatus: null,
       rehydrateStatus: null,
@@ -226,6 +236,36 @@
       accounts: null,
       fonts: []
     };
+
+    // Build fixed header + tabs + scrollable body shell once so close/tabs never lose listeners or scroll
+    el.innerHTML = [
+      '<div class="ags-head">',
+      '  <div class="ags-title"><span class="ags-dot"></span><span id="ags-head-title">Antigravity Studio</span></div>',
+      '  <button type="button" class="ags-btn ags-btn-ghost" id="ags-close-btn">收起</button>',
+      '</div>',
+      '<div class="ags-tabs">',
+      '  <button type="button" class="ags-tab active" data-tab="overview">概览</button>',
+      '  <button type="button" class="ags-tab" data-tab="usage">统计</button>',
+      '  <button type="button" class="ags-tab" data-tab="accounts">账号</button>',
+      '  <button type="button" class="ags-tab" data-tab="settings">设置</button>',
+      '</div>',
+      '<div class="ags-body" id="ags-drawer-body"></div>'
+    ].join('\n');
+
+    var closeBtnFixed = el.querySelector('#ags-close-btn');
+    if (closeBtnFixed) {
+      closeBtnFixed.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        toggle(false);
+      });
+    }
+    el.querySelectorAll('[data-tab]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        state.activeTab = btn.getAttribute('data-tab');
+        if (opts.onTabChange) opts.onTabChange(state.activeTab);
+        render(null, true);
+      });
+    });
 
     function t(key) {
       var cfg = opts.getConfig ? opts.getConfig() : {};
@@ -288,27 +328,48 @@
             : '');
       }
 
+      var evalInfo = ctx.speed && ctx.speed.evaluation;
+      var evalHtml = '';
+      if (evalInfo && (evalInfo.comment || evalInfo.shortTitle)) {
+        var evColor = (evalInfo.badge && evalInfo.badge.color) || 'var(--ags-accent)';
+        var evGlyph = (evalInfo.badge && evalInfo.badge.glyph) || '⚡';
+        var evBadgeTxt = (evalInfo.badge && evalInfo.badge.text) || evalInfo.shortTitle || '';
+        var gradeTxt = evalInfo.grade ? (evalInfo.grade + '级' + (evalInfo.score != null ? (' ' + Math.round(evalInfo.score) + '分') : '') + ' · ') : '';
+        evalHtml = '<div class="ags-eval-box">' +
+          '<div class="ags-row"><span class="ags-eval-badge" style="color:' + esc(evColor) + '">' + esc(evGlyph + ' ' + gradeTxt + evBadgeTxt) + '</span>' +
+          (evalInfo.subLabel ? '<span class="ags-sub">' + esc(evalInfo.subLabel) + '</span>' : '') + '</div>' +
+          (evalInfo.comment ? '<div class="ags-sub" style="line-height:1.45">' + esc(evalInfo.comment) + '</div>' : '') +
+          '</div>';
+      }
+
       var turns = (state.timelineData && (state.timelineData.turns || state.timelineData.items)) || [];
-      var timelineHtml = turns.length
-        ? turns.slice(0, 10).map(function (tr, i) {
-            return '<div class="ags-tl-item">' +
-              '<div class="ags-row"><span style="font-weight:500">#' + (tr.turnIndex != null ? tr.turnIndex : (i + 1)) + ' · ' + esc(tr.model || 'model') + '</span>' +
-              '<span class="ags-sub">' + esc(tr.tps ? (Math.round(tr.tps) + ' tok/s') : (tr.status || '')) + '</span></div>' +
-              '<div class="ags-sub">in ' + fmtTok(tr.inputTokens || 0) + ' · out ' + fmtTok(tr.outputTokens || 0) +
-              (tr.cacheReadTokens ? (' · cache ' + fmtTok(tr.cacheReadTokens)) : '') + '</div>' +
-              '</div>';
-          }).join('')
-        : '<div class="ags-sub">' + (snap && snap.conversationId ? '暂无逐轮记录或等待加载' : '进入会话后可查看逐轮调用记录') + '</div>';
+      var timelineHtml = state.timelineLoading
+        ? '<div class="ags-sub">正在加载逐轮调用记录...</div>'
+        : (turns.length
+          ? turns.slice(0, 10).map(function (tr, i) {
+              return '<div class="ags-tl-item">' +
+                '<div class="ags-row"><span style="font-weight:500">#' + (tr.turnIndex != null ? tr.turnIndex : (i + 1)) + ' · ' + esc(tr.model || 'model') + '</span>' +
+                '<span class="ags-sub">' + esc(tr.tps ? (Math.round(tr.tps) + ' tok/s') : (tr.status || '')) + '</span></div>' +
+                '<div class="ags-sub">in ' + fmtTok(tr.inputTokens || 0) + ' · out ' + fmtTok(tr.outputTokens || 0) +
+                (tr.cacheReadTokens ? (' · cache ' + fmtTok(tr.cacheReadTokens)) : '') + '</div>' +
+                '</div>';
+            }).join('')
+          : '<div class="ags-sub">' + (snap && snap.conversationId ? '暂无逐轮记录' : '进入会话后可查看逐轮调用记录') + '</div>');
 
       var quotaHtml = pools.length
         ? pools.map(function (p) {
             var pPct = p.remainingPercent == null ? 100 : Math.round(p.remainingPercent);
             var eta = formatResetEta(p.resetTime);
             var barColor = p.isLow ? 'var(--ags-warning)' : 'var(--ags-accent)';
+            var poolTitle = p.displayName || p.poolKey || p.title || '模型共享池';
+            var subModels = Array.isArray(p.modelNames) && p.modelNames.length
+              ? '<div class="ags-sub" style="font-size:10.5px;opacity:0.8">' + esc(p.modelNames.join(' · ')) + '</div>'
+              : '';
             return '<div style="display:flex;flex-direction:column;gap:4px">' +
-              '<div class="ags-row"><span style="font-size:12px">' + esc(p.poolKey || p.title || 'Pool') + '</span>' +
+              '<div class="ags-row"><span style="font-size:12px;font-weight:500">' + esc(poolTitle) + '</span>' +
               '<span class="ags-sub">' + pPct + '%' + (eta ? (' · ' + eta) : '') + '</span></div>' +
               '<div class="ags-prog"><div class="ags-prog-fill" style="width:' + pPct + '%;background:' + barColor + '"></div></div>' +
+              subModels +
               '</div>';
           }).join('')
         : '<div class="ags-sub">' + esc(t('noQuota')) + '</div>';
@@ -338,18 +399,20 @@
         '    <div class="ags-metric-box"><div class="ags-sub">' + esc(t('ttft')) + '</div><div class="ags-metric-val">' + (ttft ? Math.round(ttft) : '-') + ' <span class="ags-sub">ms</span></div></div>',
         '    <div class="ags-metric-box"><div class="ags-sub">' + esc(t('cost')) + '</div><div class="ags-metric-val">$' + cost.toFixed(3) + '</div></div>',
         '  </div>',
+        evalHtml,
         '  <div>' + renderSparklineSvg(state.speedHistory.slice(-16)) + '</div>',
         '</div>',
 
-        '<details class="ags-details" id="ags-timeline-details" ' + (state.timelineOpen ? 'open' : '') + '>',
-        '  <summary>' + esc(t('timelineTitle')) + '</summary>',
-        '  <div style="display:flex;flex-direction:column;gap:6px">' + timelineHtml + '</div>',
-        '</details>',
+        '<div class="ags-fold-card">',
+        '  <button type="button" class="ags-fold-btn" data-action="toggle-timeline"><span>' + (state.timelineOpen ? '▾ ' : '▸ ') + esc(t('timelineTitle')) + '</span>' +
+        (turns.length ? ('<span class="ags-sub">' + turns.length + ' 条</span>') : '') + '</button>',
+        (state.timelineOpen ? '<div class="ags-fold-body">' + timelineHtml + '</div>' : ''),
+        '</div>',
 
-        '<details class="ags-details">',
-        '  <summary>' + esc(t('attachTitle')) + '</summary>',
-        attachHtml,
-        '</details>',
+        '<div class="ags-fold-card">',
+        '  <button type="button" class="ags-fold-btn" data-action="toggle-attach"><span>' + (state.attachOpen ? '▾ ' : '▸ ') + esc(t('attachTitle')) + '</span></button>',
+        (state.attachOpen ? '<div class="ags-fold-body">' + attachHtml + '</div>' : ''),
+        '</div>',
 
         '<div class="ags-card">',
         '  <div class="ags-card-head"><span>' + esc(t('quotaTitle')) + '</span>' +
@@ -680,27 +743,37 @@
     }
 
     function bindEvents(cfg) {
-      el.querySelectorAll('[data-tab]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          state.activeTab = btn.getAttribute('data-tab');
-          if (opts.onTabChange) opts.onTabChange(state.activeTab);
-          render();
-        });
-      });
+      var bodyEl = el.querySelector('#ags-drawer-body');
+      if (!bodyEl) return;
 
-      var closeBtn = el.querySelector('#ags-close-btn');
-      if (closeBtn) closeBtn.addEventListener('click', function () { toggle(false); });
-
-      var tlDet = el.querySelector('#ags-timeline-details');
-      if (tlDet) {
-        tlDet.addEventListener('toggle', function () {
-          state.timelineOpen = tlDet.open;
-          if (tlDet.open && opts.api && opts.api.getSessionTimeline && state.snapshot && state.snapshot.conversationId) {
-            opts.api.getSessionTimeline(state.snapshot.conversationId, { limit: 15 }).then(function (tl) {
+      var tlBtn = bodyEl.querySelector('[data-action="toggle-timeline"]');
+      if (tlBtn) {
+        tlBtn.addEventListener('click', function () {
+          state.timelineOpen = !state.timelineOpen;
+          var cid = state.snapshot && state.snapshot.conversationId;
+          if (state.timelineOpen && opts.api && opts.api.getSessionTimeline && cid && (!state.timelineData || state.timelineConvId !== cid)) {
+            state.timelineLoading = true;
+            state.timelineConvId = cid;
+            render(null, true);
+            opts.api.getSessionTimeline(cid, { limit: 15 }).then(function (tl) {
+              state.timelineLoading = false;
               state.timelineData = tl;
-              render();
-            }).catch(function () {});
+              render(null, true);
+            }).catch(function () {
+              state.timelineLoading = false;
+              render(null, true);
+            });
+          } else {
+            render(null, true);
           }
+        });
+      }
+
+      var attBtn = bodyEl.querySelector('[data-action="toggle-attach"]');
+      if (attBtn) {
+        attBtn.addEventListener('click', function () {
+          state.attachOpen = !state.attachOpen;
+          render(null, true);
         });
       }
 
@@ -1082,7 +1155,7 @@
       });
     }
 
-    function render(dataPatch) {
+    function render(dataPatch, forceUserAction) {
       if (dataPatch) {
         if (dataPatch.snapshot !== undefined) state.snapshot = dataPatch.snapshot;
         if (dataPatch.history !== undefined) state.history = dataPatch.history;
@@ -1093,8 +1166,29 @@
         if (dataPatch.rehydrateStatus !== undefined) state.rehydrateStatus = dataPatch.rehydrateStatus;
       }
 
+      var bodyEl = el.querySelector('#ags-drawer-body');
+      if (!bodyEl) return;
+
+      // Avoid destroying focused input/select during background polling
+      if (!forceUserAction && typeof document !== 'undefined' && document.activeElement && bodyEl.contains(document.activeElement)) {
+        var tag = (document.activeElement.tagName || '').toUpperCase();
+        if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') {
+          return;
+        }
+      }
+
       var cfg = (opts.getConfig && opts.getConfig()) || {};
       var tabLabels = t('tabs');
+
+      var titleSpan = el.querySelector('#ags-head-title');
+      if (titleSpan) titleSpan.textContent = t('title');
+      var closeSpan = el.querySelector('#ags-close-btn');
+      if (closeSpan) closeSpan.textContent = t('close');
+      el.querySelectorAll('[data-tab]').forEach(function (tb) {
+        var tk = tb.getAttribute('data-tab');
+        tb.textContent = tabLabels[tk] || tk;
+        tb.classList.toggle('active', state.activeTab === tk);
+      });
 
       var content = '';
       if (state.activeTab === 'overview') content = renderOverview(state.snapshot);
@@ -1102,19 +1196,9 @@
       else if (state.activeTab === 'accounts') content = renderAccounts(state.accounts);
       else content = renderSettings(cfg);
 
-      el.innerHTML = [
-        '<div class="ags-head">',
-        '  <div class="ags-title"><span class="ags-dot"></span><span>' + esc(t('title')) + '</span></div>',
-        '  <button class="ags-btn ags-btn-ghost" id="ags-close-btn">' + esc(t('close')) + '</button>',
-        '</div>',
-        '<div class="ags-tabs">',
-        '  <button class="ags-tab ' + (state.activeTab === 'overview' ? 'active' : '') + '" data-tab="overview">' + esc(tabLabels.overview) + '</button>',
-        '  <button class="ags-tab ' + (state.activeTab === 'usage' ? 'active' : '') + '" data-tab="usage">' + esc(tabLabels.usage) + '</button>',
-        '  <button class="ags-tab ' + (state.activeTab === 'accounts' ? 'active' : '') + '" data-tab="accounts">' + esc(tabLabels.accounts) + '</button>',
-        '  <button class="ags-tab ' + (state.activeTab === 'settings' ? 'active' : '') + '" data-tab="settings">' + esc(tabLabels.settings) + '</button>',
-        '</div>',
-        '<div class="ags-body">' + content + '</div>'
-      ].join('\n');
+      var prevScroll = bodyEl.scrollTop || 0;
+      bodyEl.innerHTML = content;
+      bodyEl.scrollTop = prevScroll;
 
       bindEvents(cfg);
     }
