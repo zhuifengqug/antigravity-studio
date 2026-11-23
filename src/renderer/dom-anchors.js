@@ -306,13 +306,45 @@
       slot.id = 'ag-studio-composer-toolbar-slot';
       slot.setAttribute('data-ag-studio-ignore', 'true');
       slot.setAttribute('data-ag-no-i18n', 'true');
-      slot.style.cssText = 'display:inline-flex;align-items:center;gap:4px;margin-left:6px;flex-shrink:1;min-width:0;max-width:100%;vertical-align:middle;pointer-events:auto;';
+      slot.style.cssText = 'display:inline-flex;align-items:center;gap:4px;margin-left:6px;flex-shrink:0;vertical-align:middle;pointer-events:auto;';
     }
-    if (slot.parentElement !== trig.parentElement || slot.previousElementSibling !== trig) {
-      if (trig.nextSibling) {
-        trig.parentElement.insertBefore(slot, trig.nextSibling);
+
+    // Walk up from trig to find the horizontal toolbar flex row (not a column wrapper)
+    var targetParent = trig.parentElement;
+    var insertAfter = trig;
+    var cur = trig;
+    for (var depth = 0; depth < 4 && cur && cur.parentElement && cur.parentElement !== composer.card; depth++) {
+      var p = cur.parentElement;
+      try {
+        var cs = typeof getComputedStyle === 'function' ? getComputedStyle(p) : null;
+        if (cs && (cs.display === 'flex' || cs.display === 'inline-flex') && cs.flexDirection !== 'column') {
+          targetParent = p;
+          insertAfter = cur;
+          if (p.children && p.children.length >= 2) break;
+        }
+      } catch (_e) {}
+      cur = p;
+    }
+
+    // Ensure targetParent itself lays out horizontally without wrapping the HUD below the model trigger
+    try {
+      var pcs = typeof getComputedStyle === 'function' ? getComputedStyle(targetParent) : null;
+      if (pcs && pcs.flexDirection === 'column') {
+        targetParent.style.flexDirection = 'row';
+        targetParent.style.alignItems = 'center';
+        targetParent.style.flexWrap = 'nowrap';
+      } else if (pcs && pcs.display === 'block') {
+        targetParent.style.display = 'inline-flex';
+        targetParent.style.alignItems = 'center';
+        targetParent.style.flexWrap = 'nowrap';
+      }
+    } catch (_e2) {}
+
+    if (slot.parentElement !== targetParent || slot.previousElementSibling !== insertAfter) {
+      if (insertAfter.nextSibling) {
+        targetParent.insertBefore(slot, insertAfter.nextSibling);
       } else {
-        trig.parentElement.appendChild(slot);
+        targetParent.appendChild(slot);
       }
     }
     slot.style.display = 'inline-flex';
@@ -384,38 +416,64 @@
       slot.id = 'ag-studio-home-slot';
       slot.setAttribute('data-ag-studio-ignore', 'true');
       slot.setAttribute('data-ag-no-i18n', 'true');
-      slot.style.cssText = 'width:100%;max-width:740px;margin:10px auto 38px auto;padding:0 12px;box-sizing:border-box;z-index:20;';
+      slot.style.cssText = 'width:100%;max-width:660px;margin:14px auto 14px auto;padding:0 12px;box-sizing:border-box;z-index:20;';
     }
 
-    // Place ABOVE the composer input box (between greeting & composer, leaving room for top mascot)
+    // Target placement: right BELOW the Antigravity icon + greeting, and ABOVE the 3 suggestion rows & composer
     var comp = findComposerTarget();
-    var anchorBefore = null;
+    var compEl = comp && comp.isHome ? (comp.inputBox || comp.card) : null;
+    var homeColumn = compEl ? compEl.parentElement : null;
+
     var anchorAfter = null;
+    var anchorBefore = null;
     var parent = null;
-    if (comp && comp.isHome) {
-      var compEl = comp.inputBox || comp.card;
-      if (compEl && compEl.parentElement) {
-        anchorBefore = compEl;
-        parent = compEl.parentElement;
+
+    if (homeInfo.greetingEl && homeColumn) {
+      // Walk up from greetingEl to find the direct child of homeColumn (or shared column)
+      var gNode = homeInfo.greetingEl;
+      while (gNode && gNode.parentElement && gNode.parentElement !== homeColumn && gNode.parentElement !== document.body) {
+        gNode = gNode.parentElement;
+      }
+      if (gNode && gNode.parentElement === homeColumn) {
+        parent = homeColumn;
+        anchorAfter = gNode;
       }
     }
+
     if (!parent && homeInfo.greetingEl && homeInfo.greetingEl.parentElement) {
-      anchorAfter = homeInfo.greetingEl;
       parent = homeInfo.greetingEl.parentElement;
+      anchorAfter = homeInfo.greetingEl;
     }
+
+    // Fallback: if greeting not matched, place above the first non-slot child before composer (suggestions block) or above composer
+    if (!parent && homeColumn) {
+      parent = homeColumn;
+      anchorBefore = compEl;
+      var kids = homeColumn.children || [];
+      for (var k = 0; k < kids.length; k++) {
+        var kid = kids[k];
+        if (kid === slot || kid === compEl) continue;
+        if (kid.querySelector && kid.querySelector('h1, h2, svg, img')) {
+          anchorAfter = kid;
+          anchorBefore = null;
+          break;
+        }
+      }
+    }
+
     if (!parent && homeInfo.homeRoot) {
       parent = homeInfo.homeRoot;
     }
     if (!parent) return null;
 
-    if (anchorBefore) {
-      if (slot.parentElement !== parent || slot.nextElementSibling !== anchorBefore) {
-        parent.insertBefore(slot, anchorBefore);
-      }
-    } else if (anchorAfter) {
+    if (anchorAfter) {
       if (slot.parentElement !== parent || slot.previousElementSibling !== anchorAfter) {
         if (anchorAfter.nextSibling) parent.insertBefore(slot, anchorAfter.nextSibling);
         else parent.appendChild(slot);
+      }
+    } else if (anchorBefore) {
+      if (slot.parentElement !== parent || slot.nextElementSibling !== anchorBefore) {
+        parent.insertBefore(slot, anchorBefore);
       }
     } else if (slot.parentElement !== parent) {
       parent.appendChild(slot);

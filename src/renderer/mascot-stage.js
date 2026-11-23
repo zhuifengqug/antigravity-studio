@@ -378,6 +378,9 @@
     var reaction = null; // { sheet: 'poke-left' | 'poke-right' | 'tickle', until: number }
     var clickStamps = [];
     var currentAnchor = null;
+    var cachedInkColor = '#91888A';
+    var cachedInkKey = '';
+    var lastGeomKey = '';
 
     function getSprites() {
       return globalScope.__AG_STUDIO_MASCOT_SPRITES__ || null;
@@ -393,12 +396,17 @@
 
     function getInkColor() {
       try {
-        if (typeof getComputedStyle === 'function') {
-          var v = getComputedStyle(document.documentElement).getPropertyValue('--ags-text-secondary').trim();
-          if (v) return v;
+        var key = (document.documentElement.getAttribute('data-ags-theme') || '') + '|' +
+          (document.documentElement.getAttribute('data-ags-mode') || '');
+        if (key !== cachedInkKey) {
+          cachedInkKey = key;
+          if (typeof getComputedStyle === 'function') {
+            var v = getComputedStyle(document.documentElement).getPropertyValue('--ags-text-secondary').trim();
+            if (v) cachedInkColor = v;
+          }
         }
       } catch (_e) {}
-      return '#91888A';
+      return cachedInkColor;
     }
 
     function resolveLogicalKey() {
@@ -408,6 +416,10 @@
     }
 
     function applyGeometry() {
+      var gKey = [cur.style, cur.state, cur.scale, cur.align, cur.offsetX, cur.offsetY].join('|');
+      if (gKey === lastGeomKey) return;
+      lastGeomKey = gKey;
+
       var w = 104;
       var h = 72;
       if (cur.style === 'deepy') {
@@ -537,13 +549,14 @@
       if (isMotionReduced() || (typeof document !== 'undefined' && document.hidden) || !cur.enabled || !currentAnchor) {
         return 0;
       }
-      if (logicalKey === 'sleeping') return 900; // ultra-low-power Zzz drift
+      if (logicalKey === 'sleeping') return 950;
+      if (logicalKey === 'idle') return cur.style === 'astra' ? 280 : 180;
       if (cur.style === 'astra') {
-        return logicalKey === 'idle' ? 220 : logicalKey === 'error' ? 75 : 120;
+        return logicalKey === 'error' ? 85 : 130;
       }
       var sprites = getSprites();
-      if (cur.style === 'deepy') return (sprites && sprites.deepyFrameMs) || 95;
-      return (sprites && sprites.crabFrameMs) || 85;
+      if (cur.style === 'deepy') return (sprites && sprites.deepyFrameMs) || 110;
+      return (sprites && sprites.crabFrameMs) || 100;
     }
 
     function scheduleNextTick() {
@@ -590,6 +603,9 @@
         stopAnimLoop();
         return;
       }
+      if (currentAnchor === anchorEl && stageEl.parentElement === anchorEl) {
+        return;
+      }
       currentAnchor = anchorEl;
       if (stageEl.parentElement !== anchorEl) {
         anchorEl.appendChild(stageEl);
@@ -601,34 +617,51 @@
 
     function update(next) {
       if (!next) return;
-      var stateChanged = false;
-      var styleChanged = false;
+      var changed = false;
+      var stateOrStyleChanged = false;
       if (typeof next.enabled === 'boolean' && next.enabled !== cur.enabled) {
         cur.enabled = next.enabled;
-        stateChanged = true;
+        changed = true;
+        stateOrStyleChanged = true;
       }
       if (next.style && next.style !== cur.style) {
         cur.style = next.style;
-        styleChanged = true;
+        changed = true;
+        stateOrStyleChanged = true;
       }
       if (next.state) {
         var norm = STATE_ALIASES[next.state] || next.state;
         if (MASCOT_STATES[norm] && norm !== cur.state) {
           cur.state = norm;
-          stateChanged = true;
+          changed = true;
+          stateOrStyleChanged = true;
         }
       }
-      if (next.scale != null) cur.scale = Number(next.scale) || 1;
-      if (next.align) cur.align = next.align;
-      if (next.offsetX != null) cur.offsetX = Number(next.offsetX) || 0;
-      if (next.offsetY != null) cur.offsetY = Number(next.offsetY) || 0;
+      if (next.scale != null && Number(next.scale) !== cur.scale) {
+        cur.scale = Number(next.scale) || 1;
+        changed = true;
+      }
+      if (next.align && next.align !== cur.align) {
+        cur.align = next.align;
+        changed = true;
+      }
+      if (next.offsetX != null && Number(next.offsetX) !== cur.offsetX) {
+        cur.offsetX = Number(next.offsetX) || 0;
+        changed = true;
+      }
+      if (next.offsetY != null && Number(next.offsetY) !== cur.offsetY) {
+        cur.offsetY = Number(next.offsetY) || 0;
+        changed = true;
+      }
+
+      if (!changed) return;
 
       if (!cur.enabled) {
         if (stageEl.parentElement) stageEl.parentElement.removeChild(stageEl);
         stopAnimLoop();
         return;
       }
-      if (styleChanged || stateChanged) frameIdx = 0;
+      if (stateOrStyleChanged) frameIdx = 0;
       applyGeometry();
       drawFrame();
       scheduleNextTick();

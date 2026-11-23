@@ -73,8 +73,17 @@
     '[class*="FileTree"]',
     '[class*="breadcrumb"]',
     '[class*="Breadcrumb"]',
+    '[data-testid="model-selector-panel"]',
+    '[data-testid="model-selector-trigger"]',
+    '[data-testid="project-header"]',
     '[data-testid="breadcrumb-segment"]'
   ];
+
+  // Pre-compile static selectors (excluding user-message special handling) into ONE closest() call
+  var STATIC_IGNORE_SELECTORS = IGNORE_SELECTORS.filter(function (s) {
+    return s !== '[data-testid*="user-message"]' && s !== '[data-testid="project-header"]';
+  });
+  var COMBINED_STATIC_IGNORE_SEL = STATIC_IGNORE_SELECTORS.join(', ');
 
   var SWARM_PROTECTED_CLASSES = [
     'msg-body', 'mention', 'msg-author', 'o2-mauth', 'chip-name', 'o2-wchip',
@@ -304,38 +313,28 @@
     }
 
     if (typeof el.closest === 'function') {
-      // Explicit allow-list for collapsible thinking trigger pill ("Thought for 4s")
-      // and user-message action bars outside user-message-content
       var isThinkingBtn = el.closest('button[data-testid="thinking-collapsible-trigger"]');
-      var isUserContent = el.closest('[data-testid="user-message-content"]');
-      if (isUserContent) return true;
+      if (el.closest('[data-testid="user-message-content"]')) return true;
 
-      for (var i = 0; i < IGNORE_SELECTORS.length; i++) {
-        var sel = IGNORE_SELECTORS[i];
-        try {
-          if (sel === '[data-testid*="user-message"]') {
-            var um = el.closest(sel);
-            if (um) {
-              var inActions = el.closest('[data-testid="queued-decorators"], [data-testid="user-message-actions"]');
-              if (!inActions) return true;
-            }
-            continue;
-          }
-          if (el.closest(sel)) return true;
-        } catch (_e) {}
+      if (COMBINED_STATIC_IGNORE_SEL && el.closest(COMBINED_STATIC_IGNORE_SEL)) return true;
+
+      var um = el.closest('[data-testid*="user-message"]');
+      if (um && !el.closest('[data-testid="queued-decorators"], [data-testid="user-message-actions"]')) {
+        return true;
       }
 
-      // Protect thinking body sibling of thinking-collapsible-trigger, but allow the trigger button itself
-      if (!isThinkingBtn) {
-        var cur = el;
-        while (cur && cur.parentElement && (typeof document === 'undefined' || cur !== document.body)) {
-          try {
-            var trig = cur.parentElement.querySelector(':scope > button[data-testid="thinking-collapsible-trigger"]');
-            if (trig && cur !== trig && !trig.contains(cur)) return true;
-          } catch (_e2) {}
-          if (isSwarmProtectedElement(cur)) return true;
-          cur = cur.parentElement;
+      // Fast pointer-only ancestor walk (zero querySelector calls)
+      var cur = el;
+      var hops = 0;
+      while (cur && hops < 16 && (typeof document === 'undefined' || cur !== document.body)) {
+        if (!isThinkingBtn && cur.previousElementSibling &&
+            cur.previousElementSibling.getAttribute &&
+            cur.previousElementSibling.getAttribute('data-testid') === 'thinking-collapsible-trigger') {
+          return true;
         }
+        if (isSwarmProtectedElement(cur)) return true;
+        cur = cur.parentElement;
+        hops++;
       }
 
       // Protect user project headers while allowing system group headers
@@ -347,7 +346,7 @@
       // Protect slash/mention option item names while translating category headers
       var menuOpt = el.closest('[data-testid="menu-option-label"]');
       if (menuOpt) {
-        var optTxt = (menuOpt.innerText || menuOpt.textContent || '').trim();
+        var optTxt = (menuOpt.textContent || '').trim();
         if (!MENTION_CATEGORIES.has(optTxt)) return true;
       }
     }
@@ -955,14 +954,23 @@
         if (tryHealFragmentedText(rootEl)) return;
       }
 
-      var walker = document.createTreeWalker(rootEl, 5 /* SHOW_ELEMENT | SHOW_TEXT */);
+      var walker = document.createTreeWalker(rootEl, 5 /* SHOW_ELEMENT | SHOW_TEXT */, {
+        acceptNode: function (node) {
+          if (node.nodeType === 1) {
+            var nt = (node.tagName || '').toUpperCase();
+            if (nt === 'INPUT' || nt === 'TEXTAREA') return 1 /* FILTER_ACCEPT */;
+            if (shouldIgnoreElement(node)) return 2 /* FILTER_REJECT (skips whole subtree!) */;
+          }
+          return 1;
+        }
+      });
       var current = walker.nextNode();
       while (current) {
         if (current.nodeType === 1) {
           var cTag = (current.tagName || '').toUpperCase();
           if (cTag === 'INPUT' || cTag === 'TEXTAREA') {
             processAttributes(current);
-          } else if (!shouldIgnoreElement(current)) {
+          } else {
             processAttributes(current);
             if (current.shadowRoot) {
               observeRoot(current.shadowRoot);
@@ -1036,12 +1044,10 @@
     function scheduleBatch() {
       if (batchScheduled) return;
       batchScheduled = true;
-      if (typeof queueMicrotask === 'function') {
-        queueMicrotask(flushPendingBatch);
-      } else if (typeof requestAnimationFrame === 'function') {
+      if (typeof requestAnimationFrame === 'function') {
         requestAnimationFrame(flushPendingBatch);
       } else {
-        setTimeout(flushPendingBatch, 0);
+        setTimeout(flushPendingBatch, 16);
       }
     }
 
@@ -1200,7 +1206,6 @@
     function bootListeners() {
       runFullScan();
       if (document.body) observeRoot(document.body);
-      document.addEventListener('pointerenter', onHoverOrContext, { capture: true, passive: true });
       document.addEventListener('contextmenu', onHoverOrContext, { capture: true, passive: true });
       if (typeof window !== 'undefined') {
         window.addEventListener('popstate', function () { setTimeout(runFullScan, 60); });

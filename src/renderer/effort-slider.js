@@ -14,11 +14,11 @@
     var s = document.createElement('style');
     s.id = 'ag-studio-effort-style';
     s.textContent = [
-      '.ags-effort-bar { margin:6px 8px 4px 8px; padding:8px 10px; border-radius:10px; border:1px solid var(--ags-border, rgba(148,163,184,.22)); background:var(--ags-bg-canvas, rgba(128,128,128,.06)); font-family:var(--ags-font-ui, system-ui, sans-serif); display:flex; flex-direction:column; gap:7px; }',
+      '.ags-effort-bar { position:fixed; z-index:2147483550; padding:7px 10px; border-radius:10px; border:1px solid var(--ags-border, rgba(148,163,184,.25)); background:var(--ags-bg-surface, #18181b); box-shadow:0 8px 24px rgba(0,0,0,.22); font-family:var(--ags-font-ui, system-ui, sans-serif); display:flex; flex-direction:column; gap:6px; box-sizing:border-box; }',
       '.ags-effort-head { display:flex; align-items:center; justify-content:space-between; font-size:11.5px; }',
       '.ags-effort-title { color:var(--ags-text-secondary, #94a3b8); font-weight:500; }',
       '.ags-effort-val { color:var(--ags-accent, #D97757); font-weight:600; }',
-      '.ags-effort-steps { position:relative; display:grid; grid-template-columns:repeat(4,1fr); gap:4px; padding:2px; border-radius:8px; background:var(--ags-bg-surface, rgba(24,24,27,.6)); border:1px solid var(--ags-border, rgba(148,163,184,.16)); }',
+      '.ags-effort-steps { position:relative; display:grid; grid-template-columns:repeat(4,1fr); gap:4px; padding:2px; border-radius:8px; background:var(--ags-bg-canvas, rgba(24,24,27,.6)); border:1px solid var(--ags-border, rgba(148,163,184,.16)); }',
       '.ags-effort-btn { border:none; background:transparent; color:var(--ags-text-secondary, #94a3b8); font-size:11px; font-weight:500; padding:4px 2px; border-radius:6px; cursor:pointer; transition:color 100ms ease, background-color 100ms ease; }',
       '.ags-effort-btn:hover { color:var(--ags-text-primary, #f4f4f5); }',
       '.ags-effort-btn.active { background:var(--ags-accent-soft, rgba(217,119,87,.16)); color:var(--ags-accent, #D97757); font-weight:600; }'
@@ -228,7 +228,7 @@
 
     function sync(cfg) {
       var fx = (cfg && cfg.fx) || {};
-      if (fx.effortSlider === false) {
+      if (fx.effortSlider !== true) {
         removeBar();
         return;
       }
@@ -238,17 +238,31 @@
         return;
       }
 
-      // Host trigger is always the single source of truth so model changes stay in sync
       var host = readHostTrigger();
       if (host.effort) {
         currentEffort = host.effort;
       }
 
       updateBarDom();
-      if (mountedPanel !== panel || barEl.parentElement !== panel) {
-        mountedPanel = panel;
-        panel.appendChild(barEl);
+      // Mount inside #ag-studio-root (NEVER inside React's portal panel) and position right below panel
+      var studioRoot = document.getElementById('ag-studio-root') || document.body;
+      if (barEl.parentElement !== studioRoot) {
+        studioRoot.appendChild(barEl);
       }
+      mountedPanel = panel;
+      try {
+        var r = panel.getBoundingClientRect();
+        if (r && r.width > 0) {
+          var w = Math.max(220, Math.min(340, Math.round(r.width)));
+          barEl.style.width = w + 'px';
+          barEl.style.left = Math.max(8, Math.round(r.left)) + 'px';
+          var topPos = r.bottom + 6;
+          if (topPos + 68 > (window.innerHeight || 900)) {
+            topPos = Math.max(8, r.top - 72);
+          }
+          barEl.style.top = Math.round(topPos) + 'px';
+        }
+      } catch (_e) {}
     }
 
     function destroy() {

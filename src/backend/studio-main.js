@@ -655,6 +655,9 @@ async function recordLiveCallsBestEffort(calls, authCtx) {
   } catch {}
 }
 
+const TURN_STATE_CACHE_TTL_MS = 2800;
+const turnStateCache = new Map();
+
 async function getTurnStateForConversation(cid, authCtx) {
   if (!cid || !UUID_RE.test(cid)) {
     return {
@@ -671,6 +674,11 @@ async function getTurnStateForConversation(cid, authCtx) {
       status: 'idle',
       state: 'idle',
     };
+  }
+
+  const cached = turnStateCache.get(cid);
+  if (cached && (Date.now() - cached.at) < TURN_STATE_CACHE_TTL_MS) {
+    return cached.value;
   }
 
   let full = null;
@@ -753,7 +761,7 @@ async function getTurnStateForConversation(cid, authCtx) {
   else if (isToolWorking) state = 'working';
   else if (isThinking || isGenerating) state = 'thinking';
 
-  return {
+  const out = {
     ok: true,
     lsConnected: true,
     conversationId: cid,
@@ -768,6 +776,12 @@ async function getTurnStateForConversation(cid, authCtx) {
     state,
     model: activeModel || undefined,
   };
+  turnStateCache.set(cid, { at: Date.now(), value: out });
+  if (turnStateCache.size > 16) {
+    const firstKey = turnStateCache.keys().next().value;
+    if (firstKey) turnStateCache.delete(firstKey);
+  }
+  return out;
 }
 
 function parseCallDateKeyAndHour(call, fallbackDate = null) {

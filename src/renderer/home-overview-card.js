@@ -81,21 +81,21 @@
     var s = document.createElement('style');
     s.id = 'ag-studio-home-card-style';
     s.textContent = [
-      '.ags-home-card { position:relative; border-radius:14px; border:1px solid var(--ags-border, rgba(148,163,184,.22)); background:var(--ags-bg-surface, #18181b); color:var(--ags-text-primary, #f4f4f5); padding:14px 16px; display:flex; flex-direction:column; gap:12px; font-family:var(--ags-font-ui, system-ui, sans-serif); font-variant-numeric:tabular-nums; box-shadow:0 4px 18px rgba(0,0,0,.06); }',
+      '.ags-home-card { position:relative; border-radius:14px; border:1px solid color-mix(in srgb, var(--ags-border, rgba(148,163,184,.25)) 48%, transparent); background:color-mix(in srgb, var(--ags-text-primary, #111) 2.8%, transparent); color:var(--ags-text-primary, #f4f4f5); padding:13px 15px; display:flex; flex-direction:column; gap:11px; font-family:var(--ags-font-ui, system-ui, sans-serif); font-variant-numeric:tabular-nums; box-shadow:none; }',
       '.ags-home-head { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }',
-      '.ags-home-seg { display:inline-flex; padding:2px; border-radius:9px; background:var(--ags-bg-canvas, rgba(128,128,128,.08)); border:1px solid var(--ags-border, rgba(148,163,184,.18)); gap:2px; }',
-      '.ags-home-seg-btn { border:none; background:transparent; color:var(--ags-text-secondary, #94a3b8); font-size:12px; font-weight:500; padding:4px 10px; border-radius:7px; cursor:pointer; transition:all 120ms ease; }',
+      '.ags-home-seg { display:inline-flex; padding:2px; border-radius:8px; background:transparent; border:none; gap:3px; }',
+      '.ags-home-seg-btn { border:none; background:transparent; color:var(--ags-text-secondary, #94a3b8); font-size:12px; font-weight:500; padding:3px 9px; border-radius:7px; cursor:pointer; transition:color 120ms ease, background-color 120ms ease; }',
       '.ags-home-seg-btn:hover { color:var(--ags-text-primary, #f4f4f5); }',
-      '.ags-home-seg-btn.active { background:var(--ags-bg-surface, #27272a); color:var(--ags-accent, #D97757); font-weight:600; box-shadow:0 1px 3px rgba(0,0,0,.10); }',
-      '.ags-home-kpis { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:8px; }',
-      '.ags-home-kpi { padding:9px 11px; border-radius:10px; border:1px solid var(--ags-border, rgba(148,163,184,.16)); background:var(--ags-bg-canvas, rgba(128,128,128,.05)); display:flex; flex-direction:column; gap:3px; min-width:0; }',
+      '.ags-home-seg-btn.active { background:color-mix(in srgb, var(--ags-text-primary, #111) 7%, transparent); color:var(--ags-text-primary, #f4f4f5); font-weight:600; }',
+      '.ags-home-kpis { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:7px; }',
+      '.ags-home-kpi { padding:8px 11px; border-radius:9px; border:none; background:color-mix(in srgb, var(--ags-text-primary, #111) 4%, transparent); display:flex; flex-direction:column; gap:2px; min-width:0; }',
       '.ags-home-kpi-lbl { font-size:11px; color:var(--ags-text-secondary, #94a3b8); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }',
-      '.ags-home-kpi-val { font-size:16px; font-weight:600; color:var(--ags-text-primary, #f4f4f5); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }',
-      '.ags-home-heat-wrap { position:relative; display:flex; align-items:stretch; gap:6px; overflow-x:auto; padding:2px 0; }',
+      '.ags-home-kpi-val { font-size:15.5px; font-weight:600; color:var(--ags-text-primary, #f4f4f5); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }',
+      '.ags-home-heat-wrap { position:relative; display:flex; align-items:stretch; gap:6px; padding:2px 0; }',
       '.ags-home-heat-days { display:grid; grid-template-rows:repeat(7, 1fr); gap:3px; font-size:9.5px; color:var(--ags-text-secondary, #94a3b8); align-items:center; padding-right:2px; flex-shrink:0; }',
-      '.ags-home-heat-grid { display:grid; grid-template-rows:repeat(7, 11px); grid-auto-flow:column; grid-auto-columns:11px; gap:3px; flex:1; }',
-      '.ags-home-heat-cell { width:11px; height:11px; border-radius:2.5px; background:var(--ags-bg-subtle, rgba(148,163,184,.16)); transition:transform 100ms ease; cursor:default; }',
-      '.ags-home-heat-cell:hover { transform:scale(1.22); outline:1px solid var(--ags-accent, #D97757); }',
+      '.ags-home-heat-grid { display:grid; grid-template-rows:repeat(7, minmax(10px, 13px)); grid-auto-flow:column; gap:3px; flex:1; }',
+      '.ags-home-heat-cell { width:100%; height:100%; min-width:9px; min-height:10px; border-radius:2.5px; background:color-mix(in srgb, var(--ags-text-primary, #111) 7%, transparent); cursor:default; }',
+      '.ags-home-heat-cell:hover { outline:1px solid var(--ags-accent, #D97757); }',
       '.ags-home-heat-cell[data-lvl="1"] { background:color-mix(in srgb, var(--ags-accent, #D97757) 26%, var(--ags-bg-subtle, transparent)); }',
       '.ags-home-heat-cell[data-lvl="2"] { background:color-mix(in srgb, var(--ags-accent, #D97757) 48%, var(--ags-bg-subtle, transparent)); }',
       '.ags-home-heat-cell[data-lvl="3"] { background:color-mix(in srgb, var(--ags-accent, #D97757) 72%, var(--ags-bg-subtle, transparent)); }',
@@ -133,7 +133,7 @@
       }
     }
 
-    var weeks = daysRange === 7 ? 2 : daysRange === 30 ? 6 : 20;
+    var weeks = daysRange === 7 ? 2 : daysRange === 30 ? 8 : 26;
     var today = new Date();
     today.setHours(0, 0, 0, 0);
     // Monday-based day of week (0 = Mon ... 6 = Sun)
@@ -185,11 +185,38 @@
 
     var state = {
       tab: 'overview', // overview | models
-      days: 30,        // 0 (all) | 30 | 7
+      days: 0,         // 0 (all) | 30 | 7
       bookSeed: Math.random(),
       data: null,
-      loading: false
+      loading: false,
+      lastRenderSig: ''
     };
+
+    // Single delegated listener on card instead of 182 per-cell listeners
+    card.addEventListener('click', function (ev) {
+      var tabBtn = ev.target && ev.target.closest && ev.target.closest('[data-home-tab]');
+      if (tabBtn) {
+        state.tab = tabBtn.getAttribute('data-home-tab');
+        state.lastRenderSig = '';
+        render();
+        return;
+      }
+      var dayBtn = ev.target && ev.target.closest && ev.target.closest('[data-home-days]');
+      if (dayBtn) {
+        state.days = Number(dayBtn.getAttribute('data-home-days'));
+        state.lastRenderSig = '';
+        if (typeof opts.onRangeChange === 'function') opts.onRangeChange(state.days);
+        render();
+      }
+    });
+    card.addEventListener('pointerover', function (ev) {
+      var cell = ev.target && ev.target.closest && ev.target.closest('.ags-home-heat-cell[data-tip]');
+      if (cell) showTip(cell, ev);
+    }, { passive: true });
+    card.addEventListener('pointerout', function (ev) {
+      var cell = ev.target && ev.target.closest && ev.target.closest('.ags-home-heat-cell[data-tip]');
+      if (cell) hideTip();
+    }, { passive: true });
 
     function getLang() {
       var cfg = typeof opts.getConfig === 'function' ? opts.getConfig() : {};
@@ -243,6 +270,19 @@
             };
 
       var d = state.data || {};
+      var sig = [
+        lang,
+        state.tab,
+        state.days,
+        d.sessions || 0,
+        d.calls || d.messages || 0,
+        d.totalTokens || 0,
+        d.activeDays || 0,
+        d.topModel || '',
+        d.updatedAt || ''
+      ].join('|');
+      if (sig === state.lastRenderSig && card.firstChild) return;
+      state.lastRenderSig = sig;
       var headerHtml = [
         '<div class="ags-home-head">',
         '  <div class="ags-home-seg">',
@@ -274,18 +314,19 @@
         }).join('');
 
         var cells = normalizeHeatmap7xN(d, state.days);
+        var colsCount = Math.max(1, Math.round(cells.length / 7));
         var dayAxis = labels.weekdays.map(function (w) { return '<span>' + esc(w) + '</span>'; }).join('');
         var gridCells = cells.map(function (c) {
           var tip = c.future ? '' : (c.date + ' · ' + fmtCompact(c.total) + ' tokens');
           return '<span class="ags-home-heat-cell" data-lvl="' + c.level + '" ' +
-            (tip ? ('data-tip="' + esc(tip) + '"') : 'style="opacity:0.25"') + '></span>';
+            (tip ? ('data-tip="' + esc(tip) + '"') : 'style="opacity:0.22"') + '></span>';
         }).join('');
 
         bodyHtml = [
           '<div class="ags-home-kpis">' + kpiHtml + '</div>',
           '<div class="ags-home-heat-wrap">',
           '  <div class="ags-home-heat-days">' + dayAxis + '</div>',
-          '  <div class="ags-home-heat-grid">' + gridCells + '</div>',
+          '  <div class="ags-home-heat-grid" style="grid-template-columns:repeat(' + colsCount + ', minmax(0, 1fr))">' + gridCells + '</div>',
           '</div>',
           '<div class="ags-home-foot"><span>' + esc(formatFunBookText(totalTok, lang, state.bookSeed)) + '</span></div>'
         ].join('');
@@ -326,24 +367,6 @@
       }
 
       card.innerHTML = headerHtml + bodyHtml;
-
-      card.querySelectorAll('[data-home-tab]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          state.tab = btn.getAttribute('data-home-tab');
-          render();
-        });
-      });
-      card.querySelectorAll('[data-home-days]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          state.days = Number(btn.getAttribute('data-home-days'));
-          if (typeof opts.onRangeChange === 'function') opts.onRangeChange(state.days);
-          render();
-        });
-      });
-      card.querySelectorAll('.ags-home-heat-cell[data-tip]').forEach(function (cell) {
-        cell.addEventListener('pointerenter', function (ev) { showTip(cell, ev); });
-        cell.addEventListener('pointerleave', hideTip);
-      });
     }
 
     function update(overviewData, cfg) {

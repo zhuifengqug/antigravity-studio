@@ -92,4 +92,12 @@ test('Merged v2.34.0 dictionaries (4000+ entries) translate accurately and prote
   assert.equal(menu[0].submenu[0].label, '新建窗口');
   assert.equal(nativeI18n.formatTrayAgentCount(2, 'zh-CN'), '2 个智能体运行中');
   assert.equal(nativeI18n.formatTrayAgentCount(0, 'en'), 'No agents running');
+
+  // Verify model-selector elements are protected from DOM translation
+  const mockPanelEl = {
+    nodeType: 1,
+    tagName: 'DIV',
+    closest: (sel) => sel.indexOf('model-selector-panel') !== -1 ? mockPanelEl : null,
+  };
+  assert.equal(domI18n.shouldIgnoreElement(mockPanelEl), true);
 });

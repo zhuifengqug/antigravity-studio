@@ -115,14 +115,14 @@ function getDefaultConfig() {
       inkStream: true,
       smoothCaret: true,
       edgeAura: true,
-      effortSlider: true,
+      effortSlider: false,
       homeOverview: true,
       reasoningEffort: 'medium',
     },
     homeOverview: true,
     homeOverviewPrefs: {
       defaultView: 'overview', // overview | models
-      defaultDays: 30, // 0 (all) | 30 | 7
+      defaultDays: 0, // 0 (all) | 30 | 7
     },
     i18n: {
       language: 'zh-CN', // zh-CN | zh-TW | en

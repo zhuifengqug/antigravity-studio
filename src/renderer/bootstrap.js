@@ -20,7 +20,7 @@
     theme: { activePreset: 'claude', colorMode: 'system', customThemes: [], editorialSerif: true, fonts: {} },
     mascot: { enabled: true, style: 'clawd', scale: 1, align: 'right', sleepTimeoutMs: 300000 },
     hud: { enabled: true, position: 'composer', showVial: true, homeOverview: true },
-    fx: { inkStream: true, smoothCaret: true, edgeAura: true, effortSlider: true },
+    fx: { inkStream: true, smoothCaret: true, edgeAura: true, effortSlider: false },
     homeOverview: true,
     i18n: { language: 'zh-CN' },
     proxy: { enabled: false, proxyUrl: 'http://127.0.0.1:7897' },
@@ -249,7 +249,7 @@
     var scanFn = api.scan
       ? function () { return api.scan(cid, Boolean(force)); }
       : (api.getLiveSnapshot ? function () { return api.getLiveSnapshot(cid); } : function () { return Promise.resolve(null); });
-    var turnFn = api.getTurnState
+    var turnFn = (cid && api.getTurnState)
       ? function () { return api.getTurnState(cid); }
       : function () { return Promise.resolve(null); };
 
@@ -380,5 +380,5 @@
 
   setInterval(function () {
     if (!document.hidden) refreshData(false);
-  }, 3500);
+  }, 4500);
 })(typeof window !== 'undefined' ? window : globalThis);
