@@ -62,17 +62,17 @@
         danger: '#DC2626'
       },
       dark: {
-        bgCanvas: '#0B0F19',
-        bgSidebar: '#111726',
-        bgSurface: '#161E31',
-        bgSubtle: '#1D2740',
+        bgCanvas: '#0F1117',
+        bgSidebar: '#141720',
+        bgSurface: '#1A1E28',
+        bgSubtle: '#252B39',
         accent: '#60A5FA',
         accentHover: '#7CB6FC',
-        accentSoft: 'rgba(96, 165, 250, 0.15)',
-        textPrimary: '#E8EEF9',
-        textSecondary: '#8D9BB8',
-        border: '#25314B',
-        codeBg: '#0F1524',
+        accentSoft: 'rgba(96, 165, 250, 0.16)',
+        textPrimary: '#F1F5F9',
+        textSecondary: '#94A3B8',
+        border: 'rgba(148, 163, 184, 0.22)',
+        codeBg: '#12151E',
         success: '#34D399',
         warning: '#FBBF24',
         danger: '#F87171'
@@ -109,19 +109,81 @@
     };
   }
 
-  function detectSystemDark() {
+  function parseRgbLuminance(colorStr) {
+    if (!colorStr || typeof colorStr !== 'string') return null;
+    var m = colorStr.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i);
+    if (!m) return null;
+    var alpha = m[4] !== undefined ? Number(m[4]) : 1;
+    if (Number.isFinite(alpha) && alpha < 0.2) return null;
+    var r = Number(m[1]);
+    var g = Number(m[2]);
+    var b = Number(m[3]);
+    if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) return null;
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  function detectHostDarkMode() {
+    if (typeof document !== 'undefined') {
+      try {
+        var docEl = document.documentElement;
+        var bodyEl = document.body;
+        var cls = String((docEl && docEl.className) || '') + ' ' + String((bodyEl && bodyEl.className) || '');
+        if (/\b(dark|vs-dark|theme-dark|dark-theme)\b/i.test(cls)) return true;
+        if (/\b(light|vs-light|theme-light|light-theme)\b/i.test(cls)) return false;
+
+        var attrNames = ['data-theme', 'data-color-scheme', 'data-color-mode', 'data-mode'];
+        var els = [docEl, bodyEl];
+        for (var e = 0; e < els.length; e++) {
+          var target = els[e];
+          if (!target || typeof target.getAttribute !== 'function') continue;
+          for (var a = 0; a < attrNames.length; a++) {
+            var val = String(target.getAttribute(attrNames[a]) || '').toLowerCase();
+            if (!val) continue;
+            if (val.indexOf('dark') !== -1) return true;
+            if (val.indexOf('light') !== -1) return false;
+          }
+        }
+
+        if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+          var probeSelectors = [
+            '[data-testid="agent-input-box"] .surface-composer-card',
+            '.surface-composer-card',
+            'main',
+            '[role="main"]',
+            'aside'
+          ];
+          for (var s = 0; s < probeSelectors.length; s++) {
+            var node = document.querySelector(probeSelectors[s]);
+            if (!node || (node.classList && node.classList.contains('ags-drawer'))) continue;
+            var cs = window.getComputedStyle(node);
+            if (!cs) continue;
+            var lum = parseRgbLuminance(cs.backgroundColor);
+            if (lum !== null) {
+              if (lum < 128) return true;
+              if (lum > 160) return false;
+            }
+          }
+          if (docEl) {
+            var rootScheme = String(window.getComputedStyle(docEl).colorScheme || '').trim().toLowerCase();
+            if (rootScheme === 'dark') return true;
+            if (rootScheme === 'light') return false;
+          }
+        }
+      } catch (_e) {}
+    }
+
     try {
       if (typeof window !== 'undefined' && window.matchMedia) {
         return window.matchMedia('(prefers-color-scheme: dark)').matches;
       }
-    } catch (_e) {}
+    } catch (_e2) {}
     return true;
   }
 
   function resolveEffectiveMode(colorMode) {
     if (colorMode === 'light') return 'light';
     if (colorMode === 'dark') return 'dark';
-    return detectSystemDark() ? 'dark' : 'light';
+    return detectHostDarkMode() ? 'dark' : 'light';
   }
 
   function getAllThemes(themeConfig) {
@@ -159,10 +221,12 @@
     var resolved = resolveActivePalette(themeConfig);
     var p = resolved.palette;
     var isDark = resolved.mode === 'dark';
+    var isNativeAntigravity = resolved.theme.id === 'antigravity';
     var editorialSerif = !(themeConfig && themeConfig.editorialSerif === false);
 
-    return [
+    var rules = [
       ':root {',
+      '  color-scheme: ' + (isDark ? 'dark' : 'light') + ';',
       '  --ags-bg-canvas: ' + p.bgCanvas + ';',
       '  --ags-bg-sidebar: ' + p.bgSidebar + ';',
       '  --ags-bg-surface: ' + p.bgSurface + ';',
@@ -178,43 +242,54 @@
       '  --ags-warning: ' + p.warning + ';',
       '  --ags-danger: ' + p.danger + ';',
       '  --ags-shadow: ' + (isDark ? '0 16px 40px rgba(0,0,0,0.45)' : '0 16px 40px rgba(15,23,42,0.10)') + ';',
-      '}',
-      'html, body, #root {',
-      '  background-color: var(--ags-bg-canvas) !important;',
-      '  color: var(--ags-text-primary) !important;',
-      '  font-family: var(--ags-font-ui, system-ui, -apple-system, sans-serif);',
-      '}',
-      'aside, nav {',
-      '  background-color: var(--ags-bg-sidebar);',
-      '  border-color: var(--ags-border);',
-      '}',
-      '.agy-home {',
-      '  background-color: var(--ags-bg-canvas);',
-      '}',
-      '[data-testid="agent-input-box"] .surface-composer-card, .surface-composer-card {',
-      '  background-color: var(--ags-bg-surface);',
-      '  border-color: var(--ags-border);',
-      '  transition: border-color 150ms ease;',
-      '}',
+      '}'
+    ];
+
+    if (!isNativeAntigravity) {
+      rules.push(
+        'html, body, #root {',
+        '  background-color: var(--ags-bg-canvas) !important;',
+        '  color: var(--ags-text-primary) !important;',
+        '  font-family: var(--ags-font-ui, system-ui, -apple-system, sans-serif);',
+        '}',
+        'aside:not(.ags-drawer) {',
+        '  background-color: var(--ags-bg-sidebar);',
+        '  border-color: var(--ags-border);',
+        '}',
+        '.agy-home {',
+        '  background-color: var(--ags-bg-canvas);',
+        '}',
+        '[data-testid="agent-input-box"] .surface-composer-card, .surface-composer-card {',
+        '  background-color: var(--ags-bg-surface);',
+        '  border-color: var(--ags-border);',
+        '  transition: border-color 150ms ease;',
+        '}',
+        '[data-testid="model-selector-panel"], [role="dialog"] {',
+        '  background-color: var(--ags-bg-surface);',
+        '  border-color: var(--ags-border);',
+        '  color: var(--ags-text-primary);',
+        '}'
+      );
+    }
+
+    rules.push(
       '[data-testid="agent-input-box"] .surface-composer-card:focus-within, .surface-composer-card:focus-within {',
       '  border-color: var(--ags-accent);',
       '  box-shadow: 0 0 0 1px var(--ags-accent-soft);',
-      '}',
-      '[data-testid="model-selector-panel"], [role="dialog"] {',
-      '  background-color: var(--ags-bg-surface);',
-      '  border-color: var(--ags-border);',
-      '  color: var(--ags-text-primary);',
-      '}',
-      (editorialSerif
-        ? '.prose, [data-markdown-root] { font-family: var(--ags-font-body, Georgia, "Noto Serif SC", serif); line-height: 1.68; }'
-        : ''),
+      '}'
+    );
+    if (editorialSerif) {
+      rules.push('.prose, [data-markdown-root] { font-family: var(--ags-font-body, Georgia, "Noto Serif SC", serif); line-height: 1.68; }');
+    }
+    rules.push(
       'pre, code, kbd, samp, .monaco-editor, .xterm { font-family: var(--ags-font-code, "JetBrains Mono", Consolas, monospace); }',
       'pre:not(.monaco-editor pre) { background-color: var(--ags-code-bg); border: 1px solid var(--ags-border); border-radius: 8px; }',
       'button[data-variant="primary"] { background-color: var(--ags-accent); border-color: var(--ags-accent); }',
       '::-webkit-scrollbar { width: 8px; height: 8px; }',
       '::-webkit-scrollbar-thumb { background: var(--ags-border); border-radius: 99px; }',
       '::-webkit-scrollbar-track { background: transparent; }'
-    ].join('\n');
+    );
+    return rules.join('\n');
   }
 
   function applyThemeToDocument(themeConfig) {
@@ -245,6 +320,8 @@
   var api = {
     PRESET_THEMES: PRESET_THEMES,
     deriveAccentTokens: deriveAccentTokens,
+    parseRgbLuminance: parseRgbLuminance,
+    detectHostDarkMode: detectHostDarkMode,
     resolveEffectiveMode: resolveEffectiveMode,
     getAllThemes: getAllThemes,
     resolveActivePalette: resolveActivePalette,

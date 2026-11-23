@@ -127,7 +127,8 @@
   var lastTypoSig = '';
 
   function applyVisuals() {
-    var themeSig = JSON.stringify(currentConfig.theme || {});
+    var effMode = themes.resolveEffectiveMode((currentConfig.theme && currentConfig.theme.colorMode) || 'system');
+    var themeSig = JSON.stringify(currentConfig.theme || {}) + '|' + effMode;
     if (themeSig !== lastThemeSig) {
       lastThemeSig = themeSig;
       themes.applyThemeToDocument(currentConfig.theme);
@@ -150,6 +151,7 @@
 
   function syncDomAndTurnState() {
     if (!anchors) return;
+    applyVisuals();
     var domState = anchors.sniffDomTurnState();
     var composer = anchors.findComposerTarget();
     var now = Date.now();
@@ -354,6 +356,32 @@
       syncDomAndTurnState();
     });
   }
+
+  var hostThemeRaf = 0;
+  function onHostThemeChange() {
+    if (hostThemeRaf) return;
+    var rafFn = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : function (cb) { return setTimeout(cb, 16); };
+    hostThemeRaf = rafFn(function () {
+      hostThemeRaf = 0;
+      applyVisuals();
+      hud.update(latestSnapshot, currentConfig, anchors && anchors.findComposerTarget());
+      if (drawer.isOpen()) drawer.render();
+    });
+  }
+  if (typeof MutationObserver === 'function') {
+    try {
+      var themeAttrObs = new MutationObserver(onHostThemeChange);
+      var themeObsOpts = { attributes: true, attributeFilter: ['class', 'style', 'data-theme', 'data-color-scheme', 'data-color-mode', 'data-mode'] };
+      if (document.documentElement) themeAttrObs.observe(document.documentElement, themeObsOpts);
+      if (document.body) themeAttrObs.observe(document.body, themeObsOpts);
+    } catch (_e) {}
+  }
+  try {
+    if (window.matchMedia) {
+      var mql = window.matchMedia('(prefers-color-scheme: dark)');
+      if (mql && typeof mql.addEventListener === 'function') mql.addEventListener('change', onHostThemeChange);
+    }
+  } catch (_e2) {}
 
   if (api) {
     Promise.all([

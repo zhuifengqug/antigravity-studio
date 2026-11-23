@@ -605,10 +605,10 @@ function findCurrentModelQuotaSummary(quotaUi, modelName) {
   };
 }
 
-function resolveModelHistorySpeed(modelName, cfg) {
+function resolveModelHistorySpeed(modelName, cfg, ledgerOverride = null) {
   try {
     if (typeof meterCore.summarizeSpeedByModel !== 'function') return null;
-    const ledger = meterCollector.loadPricingLedger(getGeminiAntigravityDir());
+    const ledger = ledgerOverride || meterCollector.loadPricingLedger(getGeminiAntigravityDir());
     const calls = Object.values(ledger?.calls || {});
     if (!calls.length) return null;
     const rows = meterCore.summarizeSpeedByModel(calls, { days: 30 });
@@ -626,6 +626,68 @@ function resolveModelHistorySpeed(modelName, cfg) {
   } catch {
     return null;
   }
+}
+
+function computeConversationCumulativeCost(cid, collected, modelName, turnCostUsd, cfg = {}, ledgerOverride = null) {
+  let ledger = ledgerOverride;
+  if (!ledger) {
+    try {
+      ledger = meterCollector.loadPricingLedger(getGeminiAntigravityDir());
+    } catch {
+      ledger = null;
+    }
+  }
+  const cidLower = String(cid || collected?.conversation || '').trim().toLowerCase();
+  const callMap = new Map();
+  let synthIdx = 0;
+
+  if (cidLower && ledger?.calls) {
+    for (const [entryKey, call] of Object.entries(ledger.calls)) {
+      if (!call || typeof call !== 'object') continue;
+      if (String(call.cascadeId || '').trim().toLowerCase() !== cidLower) continue;
+      const k = call.callId || call.id || entryKey || `ledger#${++synthIdx}`;
+      callMap.set(k, call);
+    }
+  }
+
+  const liveCalls = [
+    ...(Array.isArray(collected?.recentGeneratorCalls) ? collected.recentGeneratorCalls : []),
+    ...(collected?.latestCallRecord ? [collected.latestCallRecord] : []),
+  ];
+  for (const call of liveCalls) {
+    if (!call || typeof call !== 'object') continue;
+    const k = call.callId || call.id || `live#${++synthIdx}`;
+    callMap.set(k, call);
+  }
+
+  let totalUsd = 0;
+  for (const call of callMap.values()) {
+    if (typeof call.costUSD === 'number' && Number.isFinite(call.costUSD) && call.costUSD > 0) {
+      totalUsd += call.costUSD;
+      continue;
+    }
+    const inp = Number(call.inputTokens ?? call.input_tokens ?? call.input ?? 0) || 0;
+    const cache = Number(call.cacheTokens ?? call.cacheReadTokens ?? call.cache_read_tokens ?? call.cached ?? 0) || 0;
+    const out = Number(call.outputTokens ?? call.output_tokens ?? call.output ?? 0) || 0;
+    if (inp + cache + out > 0) {
+      totalUsd += estimateFallbackCostUsd({
+        inputTokens: inp + cache,
+        outputTokens: out,
+        cachedTokens: cache,
+        model: call.modelKey || call.model || call.modelLabel || modelName,
+        date: call.date || '',
+        pricingOverrides: cfg.enhance?.pricingOverrides,
+      });
+    }
+  }
+
+  const cleanTurn = Number(turnCostUsd || 0);
+  const sessionCostUsd = Math.max(totalUsd, cleanTurn);
+  return {
+    sessionCostUsd: Number(sessionCostUsd.toFixed(6)),
+    turnCostUsd: Number(cleanTurn.toFixed(6)),
+    callCount: Math.max(callMap.size, cleanTurn > 0 ? 1 : 0),
+  };
 }
 
 function shapeCollectResultForUi(collected, quotaUi, cfg, cid) {
@@ -713,12 +775,15 @@ function shapeCollectResultForUi(collected, quotaUi, cfg, cid) {
     })),
   };
 
-  let estCostUsd = 0;
+  let turnCostUsd = 0;
   if (latestCall && typeof latestCall.costUSD === 'number' && Number.isFinite(latestCall.costUSD)) {
-    estCostUsd = latestCall.costUSD;
+    turnCostUsd = latestCall.costUSD;
   } else {
-    estCostUsd = estimateFallbackCostUsd({
-      inputTokens: Number(latest?.input || (bdSystem + bdTools + bdUser)),
+    const turnInWithCache = latest?.input != null
+      ? (Number(latest.input) + cachedTokens)
+      : (bdSystem + bdTools + bdUser);
+    turnCostUsd = estimateFallbackCostUsd({
+      inputTokens: turnInWithCache,
       outputTokens: Number(latest?.output || (bdAssistant + bdThinking)),
       cachedTokens,
       model: modelName,
@@ -768,15 +833,21 @@ function shapeCollectResultForUi(collected, quotaUi, cfg, cid) {
     }
   } catch {}
 
+  let sharedLedger = null;
+  try {
+    sharedLedger = meterCollector.loadPricingLedger(getGeminiAntigravityDir());
+  } catch {}
+  const convId = cid || collected?.conversation || '';
   const configuredLimit = resolveContextLimit(modelName, cfg.context?.perModelLimits);
   const serviceLimit = Number(latest?.serviceLimit || latest?.budget || 0) || contextLimit;
-  const historyMedian = resolveModelHistorySpeed(modelName, cfg);
+  const historyMedian = resolveModelHistorySpeed(modelName, cfg, sharedLedger);
   const currentModelQuota = findCurrentModelQuotaSummary(quotaUi, modelName);
+  const costSummary = computeConversationCumulativeCost(convId, collected, modelName, turnCostUsd, cfg, sharedLedger);
 
   return {
     lsConnected: true,
     lsError: null,
-    conversationId: cid || collected?.conversation || '',
+    conversationId: convId,
     workspacePath: collected?.workspacePath || null,
     context: {
       model: modelName,
@@ -815,7 +886,9 @@ function shapeCollectResultForUi(collected, quotaUi, cfg, cid) {
     attachments,
     quota: quotaUi,
     currentModelQuota,
-    estimatedSessionCostUsd: Number(Number(estCostUsd || 0).toFixed(6)),
+    estimatedSessionCostUsd: costSummary.sessionCostUsd,
+    estimatedTurnCostUsd: costSummary.turnCostUsd,
+    sessionCallCount: costSummary.callCount,
     latest,
     latestCallRecord: latestCall,
     recentGeneratorCalls: collected?.recentGeneratorCalls || [],
@@ -852,6 +925,8 @@ function buildEmptySnapshot(cfg, quotaUi, cid = '', lsError = null) {
       lowQuotaDetected: false,
     },
     estimatedSessionCostUsd: 0,
+    estimatedTurnCostUsd: 0,
+    sessionCallCount: 0,
     timestamp: Date.now(),
   };
 }
@@ -2116,6 +2191,7 @@ module.exports = {
   readHostLanguageServerAuth,
   resolveHostAuthContext,
   computeHistoryOverview,
+  computeConversationCumulativeCost,
   formatFriendlyPoolTitle,
   normalizeQuotaForUi,
   normalizeAccountsOverviewForUi,

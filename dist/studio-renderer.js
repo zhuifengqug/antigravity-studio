@@ -64,17 +64,17 @@
         danger: '#DC2626'
       },
       dark: {
-        bgCanvas: '#0B0F19',
-        bgSidebar: '#111726',
-        bgSurface: '#161E31',
-        bgSubtle: '#1D2740',
+        bgCanvas: '#0F1117',
+        bgSidebar: '#141720',
+        bgSurface: '#1A1E28',
+        bgSubtle: '#252B39',
         accent: '#60A5FA',
         accentHover: '#7CB6FC',
-        accentSoft: 'rgba(96, 165, 250, 0.15)',
-        textPrimary: '#E8EEF9',
-        textSecondary: '#8D9BB8',
-        border: '#25314B',
-        codeBg: '#0F1524',
+        accentSoft: 'rgba(96, 165, 250, 0.16)',
+        textPrimary: '#F1F5F9',
+        textSecondary: '#94A3B8',
+        border: 'rgba(148, 163, 184, 0.22)',
+        codeBg: '#12151E',
         success: '#34D399',
         warning: '#FBBF24',
         danger: '#F87171'
@@ -111,19 +111,81 @@
     };
   }
 
-  function detectSystemDark() {
+  function parseRgbLuminance(colorStr) {
+    if (!colorStr || typeof colorStr !== 'string') return null;
+    var m = colorStr.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i);
+    if (!m) return null;
+    var alpha = m[4] !== undefined ? Number(m[4]) : 1;
+    if (Number.isFinite(alpha) && alpha < 0.2) return null;
+    var r = Number(m[1]);
+    var g = Number(m[2]);
+    var b = Number(m[3]);
+    if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) return null;
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  function detectHostDarkMode() {
+    if (typeof document !== 'undefined') {
+      try {
+        var docEl = document.documentElement;
+        var bodyEl = document.body;
+        var cls = String((docEl && docEl.className) || '') + ' ' + String((bodyEl && bodyEl.className) || '');
+        if (/\b(dark|vs-dark|theme-dark|dark-theme)\b/i.test(cls)) return true;
+        if (/\b(light|vs-light|theme-light|light-theme)\b/i.test(cls)) return false;
+
+        var attrNames = ['data-theme', 'data-color-scheme', 'data-color-mode', 'data-mode'];
+        var els = [docEl, bodyEl];
+        for (var e = 0; e < els.length; e++) {
+          var target = els[e];
+          if (!target || typeof target.getAttribute !== 'function') continue;
+          for (var a = 0; a < attrNames.length; a++) {
+            var val = String(target.getAttribute(attrNames[a]) || '').toLowerCase();
+            if (!val) continue;
+            if (val.indexOf('dark') !== -1) return true;
+            if (val.indexOf('light') !== -1) return false;
+          }
+        }
+
+        if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+          var probeSelectors = [
+            '[data-testid="agent-input-box"] .surface-composer-card',
+            '.surface-composer-card',
+            'main',
+            '[role="main"]',
+            'aside'
+          ];
+          for (var s = 0; s < probeSelectors.length; s++) {
+            var node = document.querySelector(probeSelectors[s]);
+            if (!node || (node.classList && node.classList.contains('ags-drawer'))) continue;
+            var cs = window.getComputedStyle(node);
+            if (!cs) continue;
+            var lum = parseRgbLuminance(cs.backgroundColor);
+            if (lum !== null) {
+              if (lum < 128) return true;
+              if (lum > 160) return false;
+            }
+          }
+          if (docEl) {
+            var rootScheme = String(window.getComputedStyle(docEl).colorScheme || '').trim().toLowerCase();
+            if (rootScheme === 'dark') return true;
+            if (rootScheme === 'light') return false;
+          }
+        }
+      } catch (_e) {}
+    }
+
     try {
       if (typeof window !== 'undefined' && window.matchMedia) {
         return window.matchMedia('(prefers-color-scheme: dark)').matches;
       }
-    } catch (_e) {}
+    } catch (_e2) {}
     return true;
   }
 
   function resolveEffectiveMode(colorMode) {
     if (colorMode === 'light') return 'light';
     if (colorMode === 'dark') return 'dark';
-    return detectSystemDark() ? 'dark' : 'light';
+    return detectHostDarkMode() ? 'dark' : 'light';
   }
 
   function getAllThemes(themeConfig) {
@@ -161,10 +223,12 @@
     var resolved = resolveActivePalette(themeConfig);
     var p = resolved.palette;
     var isDark = resolved.mode === 'dark';
+    var isNativeAntigravity = resolved.theme.id === 'antigravity';
     var editorialSerif = !(themeConfig && themeConfig.editorialSerif === false);
 
-    return [
+    var rules = [
       ':root {',
+      '  color-scheme: ' + (isDark ? 'dark' : 'light') + ';',
       '  --ags-bg-canvas: ' + p.bgCanvas + ';',
       '  --ags-bg-sidebar: ' + p.bgSidebar + ';',
       '  --ags-bg-surface: ' + p.bgSurface + ';',
@@ -180,43 +244,54 @@
       '  --ags-warning: ' + p.warning + ';',
       '  --ags-danger: ' + p.danger + ';',
       '  --ags-shadow: ' + (isDark ? '0 16px 40px rgba(0,0,0,0.45)' : '0 16px 40px rgba(15,23,42,0.10)') + ';',
-      '}',
-      'html, body, #root {',
-      '  background-color: var(--ags-bg-canvas) !important;',
-      '  color: var(--ags-text-primary) !important;',
-      '  font-family: var(--ags-font-ui, system-ui, -apple-system, sans-serif);',
-      '}',
-      'aside, nav {',
-      '  background-color: var(--ags-bg-sidebar);',
-      '  border-color: var(--ags-border);',
-      '}',
-      '.agy-home {',
-      '  background-color: var(--ags-bg-canvas);',
-      '}',
-      '[data-testid="agent-input-box"] .surface-composer-card, .surface-composer-card {',
-      '  background-color: var(--ags-bg-surface);',
-      '  border-color: var(--ags-border);',
-      '  transition: border-color 150ms ease;',
-      '}',
+      '}'
+    ];
+
+    if (!isNativeAntigravity) {
+      rules.push(
+        'html, body, #root {',
+        '  background-color: var(--ags-bg-canvas) !important;',
+        '  color: var(--ags-text-primary) !important;',
+        '  font-family: var(--ags-font-ui, system-ui, -apple-system, sans-serif);',
+        '}',
+        'aside:not(.ags-drawer) {',
+        '  background-color: var(--ags-bg-sidebar);',
+        '  border-color: var(--ags-border);',
+        '}',
+        '.agy-home {',
+        '  background-color: var(--ags-bg-canvas);',
+        '}',
+        '[data-testid="agent-input-box"] .surface-composer-card, .surface-composer-card {',
+        '  background-color: var(--ags-bg-surface);',
+        '  border-color: var(--ags-border);',
+        '  transition: border-color 150ms ease;',
+        '}',
+        '[data-testid="model-selector-panel"], [role="dialog"] {',
+        '  background-color: var(--ags-bg-surface);',
+        '  border-color: var(--ags-border);',
+        '  color: var(--ags-text-primary);',
+        '}'
+      );
+    }
+
+    rules.push(
       '[data-testid="agent-input-box"] .surface-composer-card:focus-within, .surface-composer-card:focus-within {',
       '  border-color: var(--ags-accent);',
       '  box-shadow: 0 0 0 1px var(--ags-accent-soft);',
-      '}',
-      '[data-testid="model-selector-panel"], [role="dialog"] {',
-      '  background-color: var(--ags-bg-surface);',
-      '  border-color: var(--ags-border);',
-      '  color: var(--ags-text-primary);',
-      '}',
-      (editorialSerif
-        ? '.prose, [data-markdown-root] { font-family: var(--ags-font-body, Georgia, "Noto Serif SC", serif); line-height: 1.68; }'
-        : ''),
+      '}'
+    );
+    if (editorialSerif) {
+      rules.push('.prose, [data-markdown-root] { font-family: var(--ags-font-body, Georgia, "Noto Serif SC", serif); line-height: 1.68; }');
+    }
+    rules.push(
       'pre, code, kbd, samp, .monaco-editor, .xterm { font-family: var(--ags-font-code, "JetBrains Mono", Consolas, monospace); }',
       'pre:not(.monaco-editor pre) { background-color: var(--ags-code-bg); border: 1px solid var(--ags-border); border-radius: 8px; }',
       'button[data-variant="primary"] { background-color: var(--ags-accent); border-color: var(--ags-accent); }',
       '::-webkit-scrollbar { width: 8px; height: 8px; }',
       '::-webkit-scrollbar-thumb { background: var(--ags-border); border-radius: 99px; }',
       '::-webkit-scrollbar-track { background: transparent; }'
-    ].join('\n');
+    );
+    return rules.join('\n');
   }
 
   function applyThemeToDocument(themeConfig) {
@@ -247,6 +322,8 @@
   var api = {
     PRESET_THEMES: PRESET_THEMES,
     deriveAccentTokens: deriveAccentTokens,
+    parseRgbLuminance: parseRgbLuminance,
+    detectHostDarkMode: detectHostDarkMode,
     resolveEffectiveMode: resolveEffectiveMode,
     getAllThemes: getAllThemes,
     resolveActivePalette: resolveActivePalette,
@@ -1869,7 +1946,7 @@
       '.ags-vial-cv { display:block; width:24px; height:38px; }',
       '.ags-hud-toolbar .ags-vial-cv { width:14px; height:22px; }',
       '.ags-hud-pill { display:inline-flex; align-items:center; gap:7px; height:26px; padding:0 10px; border-radius:999px; border:1px solid var(--ags-border, rgba(148,163,184,0.22)); background:var(--ags-bg-surface, #18181b); color:var(--ags-text-secondary, #a1a1aa); font-size:11.5px; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,0.06); transition:border-color 140ms ease, color 140ms ease; white-space:nowrap; }',
-      '.ags-hud-toolbar .ags-hud-pill { height:22px; padding:0 8px; gap:5px; font-size:11px; border-color:color-mix(in srgb, var(--ags-border) 55%, transparent); background:color-mix(in srgb, var(--ags-text-primary) 3%, transparent); box-shadow:none; }',
+      '.ags-hud-toolbar .ags-hud-pill { height:22px; padding:0 8px; gap:5px; font-size:11px; border-color:color-mix(in srgb, var(--ags-text-primary, #f4f4f5) 18%, transparent); background:color-mix(in srgb, var(--ags-text-primary, #f4f4f5) 7%, transparent); color:var(--ags-text-secondary, #cbd5e1); box-shadow:none; }',
       '.ags-hud-pill:hover { border-color:var(--ags-accent, #D97757); color:var(--ags-text-primary, #f4f4f5); }',
       '.ags-hud-sep { opacity:0.32; }',
       '.ags-hud-strong { color:var(--ags-text-primary, #f4f4f5); font-weight:600; }',
@@ -2001,7 +2078,7 @@
     var CIRC = Number((2 * Math.PI * R).toFixed(2));
     ringBtn.innerHTML =
       '<svg class="ags-ring-svg" viewBox="0 0 22 22" aria-hidden="true">' +
-      '  <circle cx="11" cy="11" r="' + R + '" fill="none" stroke="var(--ags-bg-subtle, rgba(148,163,184,0.24))" stroke-width="2.4"/>' +
+      '  <circle cx="11" cy="11" r="' + R + '" fill="none" stroke="color-mix(in srgb, var(--ags-text-primary, #f4f4f5) 20%, transparent)" stroke-width="2.4"/>' +
       '  <circle class="ags-ring-arc" cx="11" cy="11" r="' + R + '" fill="none" stroke="var(--ags-accent, #3B82F6)" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="' + CIRC + '" stroke-dashoffset="' + CIRC + '"/>' +
       '</svg>' +
       '<span class="ags-ring-num">0</span>';
@@ -2296,6 +2373,9 @@
       var ttft = Number((ctx.speed && ctx.speed.ttftMs) || 0);
       var cachePct = Math.round(Number(ctx.cacheHitRate || 0) * 100);
       var cost = Number((snapshot && snapshot.estimatedSessionCostUsd) || 0);
+      var turnCost = Number((snapshot && snapshot.estimatedTurnCostUsd) || 0);
+      var callCount = Number((snapshot && snapshot.sessionCallCount) || 0);
+      var fmtUsd = function (v) { return v >= 1 ? ('$' + v.toFixed(2)) : ('$' + v.toFixed(3)); };
       var generating = Boolean(ctx.speed && ctx.speed.isGenerating);
 
       var cmq = (snapshot && snapshot.currentModelQuota) || null;
@@ -2330,6 +2410,8 @@
         cachePct,
         Math.round(ttft),
         cost.toFixed(3),
+        turnCost.toFixed(3),
+        callCount,
         minQuotaPct == null ? 'n' : Math.round(minQuotaPct),
         estRemShort
       ].join('|');
@@ -2339,6 +2421,7 @@
         var quotaLine = minQuotaPct != null
           ? (Math.round(minQuotaPct) + '%' + (estRemShort ? (' · 约剩 ' + estRemShort) : ''))
           : '—';
+        var showTurnCost = turnCost > 0 && callCount > 1 && Math.abs(cost - turnCost) >= 0.001;
         popEl.innerHTML = [
           '<div class="ags-hud-pop-head"><span>' + (ctx.model || '当前会话') + '</span><span>' + pct + '%</span></div>',
           '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">上下文用量</span><span class="ags-hud-pop-val">' + formatCompactNumber(used) + ' / ' + formatCompactNumber(limit) + '</span></div>',
@@ -2346,7 +2429,8 @@
           '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">输出速度</span><span class="ags-hud-pop-val">' + speedStr + ' tok/s</span></div>',
           '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">缓存命中</span><span class="ags-hud-pop-val">' + cachePct + '%</span></div>',
           '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">首字延迟</span><span class="ags-hud-pop-val">' + formatDurationShort(ttft) + '</span></div>',
-          '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">本轮估算</span><span class="ags-hud-pop-val">$' + cost.toFixed(3) + '</span></div>',
+          '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">对话总费用</span><span class="ags-hud-pop-val">' + fmtUsd(cost) + '</span></div>',
+          (showTurnCost ? '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">本轮估算</span><span class="ags-hud-pop-val">' + fmtUsd(turnCost) + '</span></div>' : ''),
           '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">模型额度</span><span class="ags-hud-pop-val">' + quotaLine + '</span></div>'
         ].join('');
       }
@@ -2380,7 +2464,7 @@
             );
           }
           if (hudCfg.showSpeed !== false) parts.push('<span>' + speedStr + ' tok/s</span>');
-          if (hudCfg.showCost !== false) parts.push('<span class="ags-hud-hide-sm">$' + cost.toFixed(2) + '</span>');
+          if (hudCfg.showCost !== false) parts.push('<span class="ags-hud-hide-sm">' + fmtUsd(cost) + '</span>');
           if (hudCfg.showQuotaBadge !== false && minQuotaPct !== null) {
             var qCls = minQuotaPct <= 20 ? 'ags-hud-quota-low' : '';
             parts.push('<span class="' + qCls + '">额度 ' + Math.round(minQuotaPct) + '%</span>');
@@ -3817,7 +3901,7 @@
       perfTitle: '实时性能',
       speed: '输出速度',
       ttft: '首字延迟',
-      cost: '本轮估算',
+      cost: '对话总费用',
       timelineTitle: '逐轮调用时间线',
       attachTitle: '附件审计摘要',
       quotaTitle: '模型额度池',
@@ -3850,7 +3934,7 @@
       perfTitle: '即時效能',
       speed: '輸出速度',
       ttft: '首字延遲',
-      cost: '本輪估算',
+      cost: '對話總費用',
       timelineTitle: '逐輪呼叫時間線',
       attachTitle: '附件稽核摘要',
       quotaTitle: '模型額度池',
@@ -3883,7 +3967,7 @@
       perfTitle: 'Live Performance',
       speed: 'Speed',
       ttft: 'TTFT',
-      cost: 'Est. Cost',
+      cost: 'Session Cost',
       timelineTitle: 'Session Turn Timeline',
       attachTitle: 'Attachment Audit',
       quotaTitle: 'Model Quota Pools',
@@ -3973,6 +4057,7 @@
       '.ags-btn-ghost { border:none; background:transparent; color:var(--ags-text-secondary); padding:4px 8px; }',
       '.ags-btn-ghost:hover { color:var(--ags-text-primary); background:var(--ags-bg-subtle); }',
       '.ags-input, .ags-select { width:100%; box-sizing:border-box; height:30px; padding:0 9px; border-radius:8px; border:1px solid var(--ags-border); background:var(--ags-bg-surface); color:var(--ags-text-primary); font-size:12px; outline:none; }',
+      '.ags-select option { background:var(--ags-bg-surface,#18181b); color:var(--ags-text-primary,#f4f4f5); }',
       '.ags-input:focus, .ags-select:focus { border-color:var(--ags-accent); }',
       '.ags-pill-group { display:inline-flex; padding:2px; border-radius:8px; background:var(--ags-bg-surface); border:1px solid var(--ags-border); gap:2px; }',
       '.ags-pill-opt { border:none; background:transparent; color:var(--ags-text-secondary); padding:3px 9px; border-radius:6px; font-size:11.5px; cursor:pointer; }',
@@ -4123,6 +4208,12 @@
       var ttftVal = ttft >= 1000 ? (ttft / 1000).toFixed(1) : (ttft > 0 ? String(Math.round(ttft)) : '-');
       var ttftUnit = ttft >= 1000 ? 's' : 'ms';
       var cost = Number((snap && snap.estimatedSessionCostUsd) || 0);
+      var turnCost = Number((snap && snap.estimatedTurnCostUsd) || 0);
+      var callCount = Number((snap && snap.sessionCallCount) || 0);
+      var costStr = cost >= 1 ? ('$' + cost.toFixed(2)) : ('$' + cost.toFixed(3));
+      var costTitle = (callCount > 1 || (turnCost > 0 && Math.abs(cost - turnCost) >= 0.001))
+        ? (' title="本轮估算 $' + turnCost.toFixed(3) + (callCount > 0 ? (' · 共 ' + callCount + ' 次调用') : '') + '"')
+        : '';
       var pools = (snap && snap.quota && snap.quota.pools) || [];
       var remainingCtx = Math.max(0, limit - used);
       var cmq = (snap && snap.currentModelQuota) || null;
@@ -4268,7 +4359,7 @@
         '  <div class="ags-grid-3">',
         '    <div class="ags-metric-box"' + speedTitle + '><div class="ags-sub">' + esc(t('speed')) + '</div><div class="ags-metric-val">' + speedStr + ' <span class="ags-sub">tok/s</span></div></div>',
         '    <div class="ags-metric-box"><div class="ags-sub">' + esc(t('ttft')) + '</div><div class="ags-metric-val">' + ttftVal + ' <span class="ags-sub">' + ttftUnit + '</span></div></div>',
-        '    <div class="ags-metric-box"><div class="ags-sub">' + esc(t('cost')) + '</div><div class="ags-metric-val">$' + cost.toFixed(3) + '</div></div>',
+        '    <div class="ags-metric-box"' + costTitle + '><div class="ags-sub">' + esc(t('cost')) + '</div><div class="ags-metric-val">' + costStr + '</div></div>',
         '  </div>',
         evalHtml,
         '  <div>' + renderSparklineSvg(state.speedHistory.slice(-16)) + '</div>',
@@ -5385,7 +5476,8 @@
   var lastTypoSig = '';
 
   function applyVisuals() {
-    var themeSig = JSON.stringify(currentConfig.theme || {});
+    var effMode = themes.resolveEffectiveMode((currentConfig.theme && currentConfig.theme.colorMode) || 'system');
+    var themeSig = JSON.stringify(currentConfig.theme || {}) + '|' + effMode;
     if (themeSig !== lastThemeSig) {
       lastThemeSig = themeSig;
       themes.applyThemeToDocument(currentConfig.theme);
@@ -5408,6 +5500,7 @@
 
   function syncDomAndTurnState() {
     if (!anchors) return;
+    applyVisuals();
     var domState = anchors.sniffDomTurnState();
     var composer = anchors.findComposerTarget();
     var now = Date.now();
@@ -5612,6 +5705,32 @@
       syncDomAndTurnState();
     });
   }
+
+  var hostThemeRaf = 0;
+  function onHostThemeChange() {
+    if (hostThemeRaf) return;
+    var rafFn = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : function (cb) { return setTimeout(cb, 16); };
+    hostThemeRaf = rafFn(function () {
+      hostThemeRaf = 0;
+      applyVisuals();
+      hud.update(latestSnapshot, currentConfig, anchors && anchors.findComposerTarget());
+      if (drawer.isOpen()) drawer.render();
+    });
+  }
+  if (typeof MutationObserver === 'function') {
+    try {
+      var themeAttrObs = new MutationObserver(onHostThemeChange);
+      var themeObsOpts = { attributes: true, attributeFilter: ['class', 'style', 'data-theme', 'data-color-scheme', 'data-color-mode', 'data-mode'] };
+      if (document.documentElement) themeAttrObs.observe(document.documentElement, themeObsOpts);
+      if (document.body) themeAttrObs.observe(document.body, themeObsOpts);
+    } catch (_e) {}
+  }
+  try {
+    if (window.matchMedia) {
+      var mql = window.matchMedia('(prefers-color-scheme: dark)');
+      if (mql && typeof mql.addEventListener === 'function') mql.addEventListener('change', onHostThemeChange);
+    }
+  } catch (_e2) {}
 
   if (api) {
     Promise.all([

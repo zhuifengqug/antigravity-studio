@@ -26,6 +26,20 @@ test('Claude & Antigravity presets, custom themes, and local font scanning work 
   const derived = themes.deriveAccentTokens('#3B6CF6', true);
   assert.match(derived.accentSoft, /^rgba\(59, 108, 246,/);
 
+  assert.ok(themes.parseRgbLuminance('rgb(17, 17, 19)') < 30);
+  assert.ok(themes.parseRgbLuminance('rgb(250, 250, 250)') > 240);
+  assert.equal(themes.parseRgbLuminance('rgba(0, 0, 0, 0)'), null);
+
+  const agDarkCss = themes.buildThemeCss({ activePreset: 'antigravity', colorMode: 'dark' });
+  assert.match(agDarkCss, /color-scheme:\s*dark;/);
+  assert.doesNotMatch(agDarkCss, /html,\s*body,\s*#root/);
+  assert.doesNotMatch(agDarkCss, /aside,\s*nav/);
+
+  const claudeDarkCss = themes.buildThemeCss({ activePreset: 'claude', colorMode: 'dark' });
+  assert.match(claudeDarkCss, /color-scheme:\s*dark;/);
+  assert.match(claudeDarkCss, /aside:not\(\.ags-drawer\)/);
+  assert.doesNotMatch(claudeDarkCss, /aside,\s*nav/);
+
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-studio-fonts-'));
   try {
     const fontsDir = path.join(tmpDir, 'fonts');

@@ -8,6 +8,7 @@ const path = require('path');
 
 const {
   computeHistoryOverview,
+  computeConversationCumulativeCost,
   formatFriendlyPoolTitle,
   normalizeQuotaForUi,
   normalizeAccountsOverviewForUi,
@@ -229,4 +230,25 @@ test('meter-core pricing catalog normalization & quota formatting', () => {
   assert.equal(accUi.accounts[0].planName, 'Google One Pro');
   assert.equal(accUi.accounts[0].quotaPools.length, 1);
   assert.equal(accUi.accounts[0].quotaPools[0].buckets.length, 2);
+
+  // Verify whole-conversation cumulative cost merges ledger + live calls without double counting
+  const fakeLedger = {
+    calls: {
+      c1: { callId: 'c1', cascadeId: 'conv-sum', modelKey: 'gemini-4-hydrogen', costUSD: 0.40 },
+      c2: { callId: 'c2', cascadeId: 'conv-sum', modelKey: 'gemini-4-neon', costUSD: 0.35 },
+      other: { callId: 'other', cascadeId: 'conv-other', modelKey: 'gemini-4-neon', costUSD: 9.99 },
+    },
+  };
+  const fakeCollected = {
+    conversation: 'conv-sum',
+    latestCallRecord: { callId: 'c3', cascadeId: 'conv-sum', modelKey: 'gemini-4-neon', costUSD: 0.15 },
+    recentGeneratorCalls: [
+      { callId: 'c2', cascadeId: 'conv-sum', modelKey: 'gemini-4-neon', costUSD: 0.35 },
+      { callId: 'c3', cascadeId: 'conv-sum', modelKey: 'gemini-4-neon', costUSD: 0.15 },
+    ],
+  };
+  const cumRes = computeConversationCumulativeCost('conv-sum', fakeCollected, 'Gemini 4 Neon', 0.15, {}, fakeLedger);
+  assert.equal(cumRes.sessionCostUsd, 0.9);
+  assert.equal(cumRes.turnCostUsd, 0.15);
+  assert.equal(cumRes.callCount, 3);
 });

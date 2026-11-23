@@ -42,7 +42,7 @@
       '.ags-vial-cv { display:block; width:24px; height:38px; }',
       '.ags-hud-toolbar .ags-vial-cv { width:14px; height:22px; }',
       '.ags-hud-pill { display:inline-flex; align-items:center; gap:7px; height:26px; padding:0 10px; border-radius:999px; border:1px solid var(--ags-border, rgba(148,163,184,0.22)); background:var(--ags-bg-surface, #18181b); color:var(--ags-text-secondary, #a1a1aa); font-size:11.5px; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,0.06); transition:border-color 140ms ease, color 140ms ease; white-space:nowrap; }',
-      '.ags-hud-toolbar .ags-hud-pill { height:22px; padding:0 8px; gap:5px; font-size:11px; border-color:color-mix(in srgb, var(--ags-border) 55%, transparent); background:color-mix(in srgb, var(--ags-text-primary) 3%, transparent); box-shadow:none; }',
+      '.ags-hud-toolbar .ags-hud-pill { height:22px; padding:0 8px; gap:5px; font-size:11px; border-color:color-mix(in srgb, var(--ags-text-primary, #f4f4f5) 18%, transparent); background:color-mix(in srgb, var(--ags-text-primary, #f4f4f5) 7%, transparent); color:var(--ags-text-secondary, #cbd5e1); box-shadow:none; }',
       '.ags-hud-pill:hover { border-color:var(--ags-accent, #D97757); color:var(--ags-text-primary, #f4f4f5); }',
       '.ags-hud-sep { opacity:0.32; }',
       '.ags-hud-strong { color:var(--ags-text-primary, #f4f4f5); font-weight:600; }',
@@ -174,7 +174,7 @@
     var CIRC = Number((2 * Math.PI * R).toFixed(2));
     ringBtn.innerHTML =
       '<svg class="ags-ring-svg" viewBox="0 0 22 22" aria-hidden="true">' +
-      '  <circle cx="11" cy="11" r="' + R + '" fill="none" stroke="var(--ags-bg-subtle, rgba(148,163,184,0.24))" stroke-width="2.4"/>' +
+      '  <circle cx="11" cy="11" r="' + R + '" fill="none" stroke="color-mix(in srgb, var(--ags-text-primary, #f4f4f5) 20%, transparent)" stroke-width="2.4"/>' +
       '  <circle class="ags-ring-arc" cx="11" cy="11" r="' + R + '" fill="none" stroke="var(--ags-accent, #3B82F6)" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="' + CIRC + '" stroke-dashoffset="' + CIRC + '"/>' +
       '</svg>' +
       '<span class="ags-ring-num">0</span>';
@@ -469,6 +469,9 @@
       var ttft = Number((ctx.speed && ctx.speed.ttftMs) || 0);
       var cachePct = Math.round(Number(ctx.cacheHitRate || 0) * 100);
       var cost = Number((snapshot && snapshot.estimatedSessionCostUsd) || 0);
+      var turnCost = Number((snapshot && snapshot.estimatedTurnCostUsd) || 0);
+      var callCount = Number((snapshot && snapshot.sessionCallCount) || 0);
+      var fmtUsd = function (v) { return v >= 1 ? ('$' + v.toFixed(2)) : ('$' + v.toFixed(3)); };
       var generating = Boolean(ctx.speed && ctx.speed.isGenerating);
 
       var cmq = (snapshot && snapshot.currentModelQuota) || null;
@@ -503,6 +506,8 @@
         cachePct,
         Math.round(ttft),
         cost.toFixed(3),
+        turnCost.toFixed(3),
+        callCount,
         minQuotaPct == null ? 'n' : Math.round(minQuotaPct),
         estRemShort
       ].join('|');
@@ -512,6 +517,7 @@
         var quotaLine = minQuotaPct != null
           ? (Math.round(minQuotaPct) + '%' + (estRemShort ? (' · 约剩 ' + estRemShort) : ''))
           : '—';
+        var showTurnCost = turnCost > 0 && callCount > 1 && Math.abs(cost - turnCost) >= 0.001;
         popEl.innerHTML = [
           '<div class="ags-hud-pop-head"><span>' + (ctx.model || '当前会话') + '</span><span>' + pct + '%</span></div>',
           '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">上下文用量</span><span class="ags-hud-pop-val">' + formatCompactNumber(used) + ' / ' + formatCompactNumber(limit) + '</span></div>',
@@ -519,7 +525,8 @@
           '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">输出速度</span><span class="ags-hud-pop-val">' + speedStr + ' tok/s</span></div>',
           '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">缓存命中</span><span class="ags-hud-pop-val">' + cachePct + '%</span></div>',
           '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">首字延迟</span><span class="ags-hud-pop-val">' + formatDurationShort(ttft) + '</span></div>',
-          '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">本轮估算</span><span class="ags-hud-pop-val">$' + cost.toFixed(3) + '</span></div>',
+          '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">对话总费用</span><span class="ags-hud-pop-val">' + fmtUsd(cost) + '</span></div>',
+          (showTurnCost ? '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">本轮估算</span><span class="ags-hud-pop-val">' + fmtUsd(turnCost) + '</span></div>' : ''),
           '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">模型额度</span><span class="ags-hud-pop-val">' + quotaLine + '</span></div>'
         ].join('');
       }
@@ -553,7 +560,7 @@
             );
           }
           if (hudCfg.showSpeed !== false) parts.push('<span>' + speedStr + ' tok/s</span>');
-          if (hudCfg.showCost !== false) parts.push('<span class="ags-hud-hide-sm">$' + cost.toFixed(2) + '</span>');
+          if (hudCfg.showCost !== false) parts.push('<span class="ags-hud-hide-sm">' + fmtUsd(cost) + '</span>');
           if (hudCfg.showQuotaBadge !== false && minQuotaPct !== null) {
             var qCls = minQuotaPct <= 20 ? 'ags-hud-quota-low' : '';
             parts.push('<span class="' + qCls + '">额度 ' + Math.round(minQuotaPct) + '%</span>');

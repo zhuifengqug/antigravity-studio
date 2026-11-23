@@ -11,7 +11,7 @@
       perfTitle: '实时性能',
       speed: '输出速度',
       ttft: '首字延迟',
-      cost: '本轮估算',
+      cost: '对话总费用',
       timelineTitle: '逐轮调用时间线',
       attachTitle: '附件审计摘要',
       quotaTitle: '模型额度池',
@@ -44,7 +44,7 @@
       perfTitle: '即時效能',
       speed: '輸出速度',
       ttft: '首字延遲',
-      cost: '本輪估算',
+      cost: '對話總費用',
       timelineTitle: '逐輪呼叫時間線',
       attachTitle: '附件稽核摘要',
       quotaTitle: '模型額度池',
@@ -77,7 +77,7 @@
       perfTitle: 'Live Performance',
       speed: 'Speed',
       ttft: 'TTFT',
-      cost: 'Est. Cost',
+      cost: 'Session Cost',
       timelineTitle: 'Session Turn Timeline',
       attachTitle: 'Attachment Audit',
       quotaTitle: 'Model Quota Pools',
@@ -167,6 +167,7 @@
       '.ags-btn-ghost { border:none; background:transparent; color:var(--ags-text-secondary); padding:4px 8px; }',
       '.ags-btn-ghost:hover { color:var(--ags-text-primary); background:var(--ags-bg-subtle); }',
       '.ags-input, .ags-select { width:100%; box-sizing:border-box; height:30px; padding:0 9px; border-radius:8px; border:1px solid var(--ags-border); background:var(--ags-bg-surface); color:var(--ags-text-primary); font-size:12px; outline:none; }',
+      '.ags-select option { background:var(--ags-bg-surface,#18181b); color:var(--ags-text-primary,#f4f4f5); }',
       '.ags-input:focus, .ags-select:focus { border-color:var(--ags-accent); }',
       '.ags-pill-group { display:inline-flex; padding:2px; border-radius:8px; background:var(--ags-bg-surface); border:1px solid var(--ags-border); gap:2px; }',
       '.ags-pill-opt { border:none; background:transparent; color:var(--ags-text-secondary); padding:3px 9px; border-radius:6px; font-size:11.5px; cursor:pointer; }',
@@ -317,6 +318,12 @@
       var ttftVal = ttft >= 1000 ? (ttft / 1000).toFixed(1) : (ttft > 0 ? String(Math.round(ttft)) : '-');
       var ttftUnit = ttft >= 1000 ? 's' : 'ms';
       var cost = Number((snap && snap.estimatedSessionCostUsd) || 0);
+      var turnCost = Number((snap && snap.estimatedTurnCostUsd) || 0);
+      var callCount = Number((snap && snap.sessionCallCount) || 0);
+      var costStr = cost >= 1 ? ('$' + cost.toFixed(2)) : ('$' + cost.toFixed(3));
+      var costTitle = (callCount > 1 || (turnCost > 0 && Math.abs(cost - turnCost) >= 0.001))
+        ? (' title="本轮估算 $' + turnCost.toFixed(3) + (callCount > 0 ? (' · 共 ' + callCount + ' 次调用') : '') + '"')
+        : '';
       var pools = (snap && snap.quota && snap.quota.pools) || [];
       var remainingCtx = Math.max(0, limit - used);
       var cmq = (snap && snap.currentModelQuota) || null;
@@ -462,7 +469,7 @@
         '  <div class="ags-grid-3">',
         '    <div class="ags-metric-box"' + speedTitle + '><div class="ags-sub">' + esc(t('speed')) + '</div><div class="ags-metric-val">' + speedStr + ' <span class="ags-sub">tok/s</span></div></div>',
         '    <div class="ags-metric-box"><div class="ags-sub">' + esc(t('ttft')) + '</div><div class="ags-metric-val">' + ttftVal + ' <span class="ags-sub">' + ttftUnit + '</span></div></div>',
-        '    <div class="ags-metric-box"><div class="ags-sub">' + esc(t('cost')) + '</div><div class="ags-metric-val">$' + cost.toFixed(3) + '</div></div>',
+        '    <div class="ags-metric-box"' + costTitle + '><div class="ags-sub">' + esc(t('cost')) + '</div><div class="ags-metric-val">' + costStr + '</div></div>',
         '  </div>',
         evalHtml,
         '  <div>' + renderSparklineSvg(state.speedHistory.slice(-16)) + '</div>',
