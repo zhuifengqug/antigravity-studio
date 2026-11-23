@@ -91,6 +91,31 @@ function translateMenuTemplate(template, lang = getCurrentLanguage()) {
   return template.map((item) => translateMenuItemOptions(item, lang));
 }
 
+function translateMenuInstance(menu, lang = getCurrentLanguage()) {
+  try {
+    const cfg = new ConfigStore().load();
+    if (cfg.i18n?.translateNativeMenu === false || lang === 'en') return menu;
+  } catch {}
+  if (!menu) return menu;
+  const visit = (item) => {
+    if (!item) return;
+    if (typeof item.label === 'string') {
+      item.label = translateNativeLabel(item.label, lang);
+    }
+    if (item.submenu) {
+      if (Array.isArray(item.submenu.items)) {
+        item.submenu.items.forEach(visit);
+      } else if (Array.isArray(item.submenu)) {
+        item.submenu.forEach(visit);
+      }
+    }
+  };
+  if (Array.isArray(menu.items)) {
+    menu.items.forEach(visit);
+  }
+  return menu;
+}
+
 function translateTrayActions(actions, lang = getCurrentLanguage()) {
   try {
     const cfg = new ConfigStore().load();
@@ -117,6 +142,7 @@ module.exports = {
   translateNativeLabel,
   translateMenuItemOptions,
   translateMenuTemplate,
+  translateMenuInstance,
   translateTrayActions,
   formatTrayAgentCount,
 };

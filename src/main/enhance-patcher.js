@@ -70,7 +70,7 @@ class EnhanceManager {
     }
     const raw = fs.readFileSync(binPath);
     for (const snip of DEFAULT_TITLE_PROMPT_SNIPPETS) {
-      const zhRep = '用中文生成简短标题:';
+      const zhRep = '生成中文标题:';
       if (Buffer.byteLength(zhRep) <= Buffer.byteLength(snip)) {
         const res = patchTitleTemplateInBuffer(raw, snip, zhRep);
         if (res.matched && res.ok) {

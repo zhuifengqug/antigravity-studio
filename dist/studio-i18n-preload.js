@@ -35,8 +35,10 @@
     if (s.length < 2 || s.length > 160) return true;
     // Pure numbers, punctuation, symbols
     if (/^[\d\s.,:%+\-*/()[\]{}<>=!@#$^&|~`'"\\|/?]+$/.test(s)) return true;
-    // File paths, URLs, Windows paths, package specs
+    // File paths, URLs, Windows paths, relative POSIX paths, package specs
     if (/^(?:[A-Za-z]:\\|\/|~\/|https?:\/\/|file:\/\/|ui:\/\/)/.test(s)) return true;
+    if (!/\s/.test(s) && s.indexOf('/') !== -1 && /[a-zA-Z0-9_-]+\/[a-zA-Z0-9._-]+/.test(s)) return true;
+    if (!/\s/.test(s) && s.indexOf('\\') !== -1) return true;
     if (/^[\w.-]+\.(?:js|ts|tsx|jsx|json|py|go|rs|md|css|html|yml|yaml|asar|exe|db|vscdb|pb)$/i.test(s)) return true;
     // Code-like camelCase / snake_case / flags
     if (/^[a-z]+[A-Z][a-zA-Z0-9]+$/.test(s)) return true;

@@ -109,39 +109,51 @@ function patchPreloadJs(rawSource, preloadSnippet) {
 function patchMenuJs(rawSource) {
   let src = stripAllStudioAndLegacyBlocks(rawSource);
   const warnings = [];
-  // Hook electron_1.Menu.buildFromTemplate(...) inside menu.js safely
-  const buildMenuRegex = /electron_1\.Menu\.buildFromTemplate\(/g;
-  if (!buildMenuRegex.test(src)) {
-    warnings.push('Anchor Menu.buildFromTemplate not found in dist/menu.js; native menu i18n will be skipped.');
+
+  // Strip legacy inline menuTranslationMap / translateMenu injected by older localization tools
+  src = src.replace(/if \(typeof translateMenu === 'function'\) \{ menu\.items\.forEach\(translateMenu\); \}\s*/g, '');
+  src = src.replace(/const menuTranslationMap = \{[\s\S]*?function translateMenu\([\s\S]*?\}\r?\n?\s*\}\r?\n?/m, '');
+  src = src.replace(/item\.label === submenuLabel \|\| \(typeof menuTranslationMap !== "undefined" && item\.label === menuTranslationMap\[submenuLabel\]\)/g, 'item.label === submenuLabel');
+  src = src.replace(/item\.label === 'View' \|\| item\.label === '视图'/g, "item.label === 'View'");
+
+  const anchor = 'const electron_1 = require("electron");';
+  if (!src.includes(anchor)) {
+    warnings.push('electron_1 import not found in dist/menu.js; skipped menu hook.');
     return { content: src, warnings };
   }
-  const helperBlock = `${MARKERS.MENU_START}
-function __agTranslateMenu(tpl) {
-  try { return require("./ag-studio/native-i18n").translateMenuTemplate(tpl); } catch { return tpl; }
-}
-${MARKERS.MENU_END}`;
-  src = src.replace(/electron_1\.Menu\.buildFromTemplate\(/g, 'electron_1.Menu.buildFromTemplate(__agTranslateMenu(');
-  // Close the extra paren carefully by hooking Menu.buildFromTemplate via local wrapper instead of regex balancing parens!
-  // Revert above call replacement and use a safe local wrapper on Menu.buildFromTemplate reference
-  src = stripAllStudioAndLegacyBlocks(rawSource);
-  const anchor = 'const electron_1 = require("electron");';
-  if (src.includes(anchor)) {
-    const wrapper = `${anchor}
+
+  const hasBuild = src.includes('electron_1.Menu.buildFromTemplate(');
+  const hasSetAppMenu = src.includes('electron_1.Menu.setApplicationMenu(');
+  if (!hasBuild && !hasSetAppMenu) {
+    warnings.push('Neither Menu.setApplicationMenu nor Menu.buildFromTemplate found in dist/menu.js.');
+    return { content: src, warnings };
+  }
+
+  const wrapper = `${anchor}
 ${MARKERS.MENU_START}
 const __agOrigBuildFromTemplate = electron_1.Menu.buildFromTemplate.bind(electron_1.Menu);
+const __agOrigSetApplicationMenu = electron_1.Menu.setApplicationMenu.bind(electron_1.Menu);
 function __agBuildLocalizedMenu(tpl) {
   try {
-    const i18n = require("./ag-studio/native-i18n");
-    return __agOrigBuildFromTemplate(i18n.translateMenuTemplate(tpl));
+    return __agOrigBuildFromTemplate(require("./ag-studio/native-i18n").translateMenuTemplate(tpl));
   } catch {
     return __agOrigBuildFromTemplate(tpl);
   }
 }
+function __agSetLocalizedApplicationMenu(menu) {
+  try {
+    require("./ag-studio/native-i18n").translateMenuInstance(menu);
+  } catch {}
+  return __agOrigSetApplicationMenu(menu);
+}
 ${MARKERS.MENU_END}`;
-    src = src.replace(anchor, wrapper);
+
+  src = src.replace(anchor, wrapper);
+  if (hasBuild) {
     src = src.replace(/electron_1\.Menu\.buildFromTemplate\(/g, '__agBuildLocalizedMenu(');
-  } else {
-    warnings.push('electron_1 import not found in dist/menu.js; skipped menu hook.');
+  }
+  if (hasSetAppMenu) {
+    src = src.replace(/electron_1\.Menu\.setApplicationMenu\(/g, '__agSetLocalizedApplicationMenu(');
   }
   return { content: src, warnings };
 }
