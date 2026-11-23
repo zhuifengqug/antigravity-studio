@@ -1,0 +1,19 @@
+{
+  "name": "antigravity-studio",
+  "version": "1.0.0",
+  "description": "All-in-one desktop enhancement engine for Google Antigravity 2.x: Claude & Antigravity themes, pixel mascot, composer HUD, localization, context/quota/speed dashboard, account switching, and TUN-free local proxy.",
+  "main": "cli.js",
+  "bin": {
+    "ag-studio": "cli.js"
+  },
+  "scripts": {
+    "build": "node scripts/build-renderer.js",
+    "test": "node --test test/*.test.js",
+    "status": "node cli.js status",
+    "dry-run": "node cli.js install --dry-run"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "license": "MIT"
+}
