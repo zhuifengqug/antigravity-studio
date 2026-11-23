@@ -10,6 +10,7 @@ const {
   computeHistoryOverview,
   formatFriendlyPoolTitle,
   normalizeQuotaForUi,
+  normalizeAccountsOverviewForUi,
   shapeCollectResultForUi,
 } = require('../src/backend/studio-main');
 const meterCore = require('../src/backend/meter-core');
@@ -47,7 +48,7 @@ test('computeHistoryOverview parses real pricing_ledger_v1 and token_usage_archi
         totalTokens: 94400,
         status: 'final',
         isPriced: true,
-        costUSD: 0.145,
+        costUSD: 0.042,
         date: ymdToday,
         timestamp: ts1,
         ttftSec: 0.42,
@@ -69,7 +70,7 @@ test('computeHistoryOverview parses real pricing_ledger_v1 and token_usage_archi
         totalTokens: 27200,
         status: 'final',
         isPriced: true,
-        costUSD: 0.055,
+        costUSD: 0.042,
         date: ymdToday,
         timestamp: ts2,
         ttftSec: 0.31,
@@ -93,7 +94,7 @@ test('computeHistoryOverview parses real pricing_ledger_v1 and token_usage_archi
       desktop: { [ymdToday]: { 'Gemini 4 Hydrogen (High)': { total: 94400, input: 12000, output: 2400, cache: 80000, steps: 1 } } },
       cli: { [ymdToday]: { 'Claude Sonnet 4': { total: 27200, input: 6000, output: 1200, cache: 20000, steps: 1 } } },
     },
-    costEstimate: { pricedCostUSD: 0.2 },
+    costEstimate: { pricedCostUSD: 0.084 },
   };
   fs.writeFileSync(path.join(geminiDir, 'token_usage_archive_v2.json'), JSON.stringify(archiveV2));
 
@@ -109,7 +110,9 @@ test('computeHistoryOverview parses real pricing_ledger_v1 and token_usage_archi
     assert.ok(ov.topModel);
     assert.ok(ov.bySource.desktop.totalTokens >= 94400);
     assert.ok(ov.bySource.cli.totalTokens >= 27200);
-    assert.ok(ov.costEstimate >= 0.2);
+    assert.ok(ov.costEstimate >= 0.08);
+    const sumByModel = ov.byModel.reduce((s, m) => s + Number(m.costUsd || 0), 0);
+    assert.ok(Math.abs(ov.costEstimate - sumByModel) < 0.001);
     assert.ok(Array.isArray(ov.heatmap7xN) && ov.heatmap7xN.length >= 1);
     assert.ok(Array.isArray(ov.byModel) && ov.byModel.length >= 2);
   } finally {
@@ -124,25 +127,70 @@ test('meter-core pricing catalog normalization & quota formatting', () => {
   assert.equal(typeof meterCore.resolveModelQuota, 'function');
   assert.equal(typeof meterCore.summarizeApiCost, 'function');
 
-  assert.equal(formatFriendlyPoolTitle('shared_gemini_main'), 'Gemini 4 主力共享池');
+  assert.equal(formatFriendlyPoolTitle('shared_gemini_main'), 'Gemini 4 全系共享池');
   assert.equal(formatFriendlyPoolTitle('shared_3p_pool'), 'Claude / GPT 共享池');
-  assert.equal(formatFriendlyPoolTitle('shared_gemini_argon'), 'Gemini 4 Argon / 编排池');
+  assert.equal(
+    formatFriendlyPoolTitle('shared_gemini_argon', [
+      { productLabel: 'Gemini 4 Neon' },
+      { productLabel: 'Gemini 4 Hydrogen' },
+      { productLabel: 'Gemini 4 Argon' },
+      { productLabel: 'Gemini 3.8 Flash' },
+    ]),
+    'Gemini 4 全系共享池'
+  );
+  assert.equal(formatFriendlyPoolTitle('shared_gemini_argon'), 'Gemini 4 Argon 专属池');
   assert.equal(formatFriendlyPoolTitle('shared_gemini_carbon'), 'Gemini 4 Carbon 专属池');
+
+  const neonCost = meterCore.calculateRequestApiCost({
+    model: 'Gemini 4 Neon (High)',
+    inputTokens: 100000,
+    cacheTokens: 200000,
+    outputTokens: 1000,
+    date: '2026-11-23',
+  });
+  assert.equal(neonCost.isPriced, true);
+  assert.equal(neonCost.modelKey, 'gemini-4-neon');
+  assert.ok(Math.abs(neonCost.costUSD - 0.345) < 1e-6);
 
   const qUi = normalizeQuotaForUi({
     ok: true,
     snapshot: {
       pools: [
         {
-          poolKey: 'shared_gemini_main',
+          poolKey: 'shared_gemini_argon',
           remainingFraction: 0.8,
           models: [{ productLabel: 'Gemini 4 Hydrogen' }, { productLabel: 'Gemini 4 Neon' }],
+          buckets: [
+            {
+              windowKey: '5h',
+              windowShort: '5h',
+              windowLabel: '5小时限额',
+              remainingFraction: 0.94,
+              resetTimeIso: '2026-11-23T18:09:11Z',
+              countdownText: '3小时48分',
+              tokenEstimate: { estRemainingTokens: 50000000, estRemainingShort: '50M', estTotalShort: '53.2M', isReliable: true },
+            },
+            {
+              windowKey: 'weekly',
+              windowShort: '7d',
+              windowLabel: '每周限额',
+              remainingFraction: 0.8,
+              resetTimeIso: '2026-11-29T12:41:15Z',
+              countdownText: '5天22小时',
+              tokenEstimate: { estRemainingTokens: 186000000, estRemainingShort: '186M', estTotalShort: '232.5M', isReliable: true },
+            },
+          ],
         },
       ],
     },
   });
-  assert.equal(qUi.pools[0].displayName, 'Gemini 4 主力共享池');
+  assert.equal(qUi.pools[0].displayName, 'Gemini 4 全系共享池');
   assert.deepEqual(qUi.pools[0].modelNames, ['Gemini 4 Hydrogen', 'Gemini 4 Neon']);
+  assert.equal(qUi.pools[0].buckets.length, 2);
+  assert.equal(qUi.pools[0].buckets[0].windowLabel, '5小时限额');
+  assert.equal(qUi.pools[0].buckets[1].windowLabel, '每周限额');
+  assert.ok(qUi.pools[0].buckets[1].resetTimeText);
+  assert.equal(qUi.pools[0].buckets[1].tokenEstimate.estRemainingShort, '186M');
 
   const shaped = shapeCollectResultForUi({
     latest: {
@@ -155,6 +203,30 @@ test('meter-core pricing catalog normalization & quota formatting', () => {
       speed: { tps: 85, streamingTps: 92, ttft: 1.4, duration: 15, streamingSec: 13.6 },
     },
   }, qUi, { i18n: { language: 'zh-CN' }, enhance: {}, context: {} }, 'conv-test');
+  assert.equal(shaped.context.speed.tokPerSec, 92);
+  assert.equal(shaped.context.speed.overallTps, 85);
+  assert.ok(shaped.currentModelQuota);
+  assert.equal(shaped.currentModelQuota.remainingPercent, 80);
+  assert.equal(shaped.currentModelQuota.estRemainingShort, '186M');
   assert.ok(shaped.context.speed.evaluation);
   assert.ok(shaped.context.speed.evaluation.comment.length > 0);
+
+  const accUi = normalizeAccountsOverviewForUi({
+    accounts: [
+      {
+        email: 'user@example.com',
+        tierId: 'g1-pro-tier',
+        isActive: true,
+        quotaSnapshot: {
+          pools: [
+            ...qUi.pools,
+            { poolKey: 'shared_chat_23310chat_23310model_chat_23310', remainingFraction: 1, models: [{ productLabel: 'chat_23310' }] },
+          ],
+        },
+      },
+    ],
+  });
+  assert.equal(accUi.accounts[0].planName, 'Google One Pro');
+  assert.equal(accUi.accounts[0].quotaPools.length, 1);
+  assert.equal(accUi.accounts[0].quotaPools[0].buckets.length, 2);
 });

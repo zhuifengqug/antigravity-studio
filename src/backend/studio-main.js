@@ -32,6 +32,23 @@ const wcProbeTimers = new WeakMap();
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+function readJsonSafe(filePath, fallback = null) {
+  try {
+    if (!fs.existsSync(filePath)) return fallback;
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return fallback;
+  }
+}
+
+function atomicWriteJson(filePath, obj) {
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmpPath, JSON.stringify(obj, null, 2), 'utf8');
+  fs.renameSync(tmpPath, filePath);
+}
+
 function getElectronSafe() {
   try {
     return require('electron');
@@ -360,9 +377,23 @@ function resolveModelPricing(modelName, overrides = {}) {
   return DEFAULT_MODEL_PRICING.default;
 }
 
-function estimateFallbackCostUsd({ inputTokens = 0, outputTokens = 0, cachedTokens = 0, model = '', pricingOverrides = {} }) {
-  const p = resolveModelPricing(model, pricingOverrides);
+function estimateFallbackCostUsd({ inputTokens = 0, outputTokens = 0, cachedTokens = 0, model = '', date = '', pricingOverrides = {} }) {
   const nonCachedIn = Math.max(0, Number(inputTokens) - Number(cachedTokens));
+  const key = String(model || '').toLowerCase();
+  const hasOverride = Object.keys(pricingOverrides || {}).some((k) => key.includes(k.toLowerCase()));
+  if (!hasOverride && typeof meterCore.calculateRequestApiCost === 'function') {
+    const calc = meterCore.calculateRequestApiCost({
+      model,
+      inputTokens: nonCachedIn,
+      cacheTokens: Number(cachedTokens),
+      outputTokens: Number(outputTokens),
+      ...(date ? { date } : {}),
+    });
+    if (calc && calc.isPriced && Number.isFinite(calc.costUSD)) {
+      return calc.costUSD;
+    }
+  }
+  const p = resolveModelPricing(model, pricingOverrides);
   const inCost = (nonCachedIn / 1e6) * Number(p.inputPer1M || 0);
   const cacheCost = (Number(cachedTokens) / 1e6) * Number(p.cachedPer1M || 0);
   const outCost = (Number(outputTokens) / 1e6) * Number(p.outputPer1M || 0);
@@ -380,17 +411,44 @@ function midEstimate(group) {
 function formatFriendlyPoolTitle(rawKey, models = []) {
   const key = String(rawKey || '').trim();
   const low = key.toLowerCase();
-  if (low === 'shared_gemini_main') return 'Gemini 4 主力共享池';
+  const labels = (Array.isArray(models) ? models : [])
+    .map((m) => String(m?.productLabel || m?.label || m?.productKey || '').trim())
+    .filter((s) => s && !/^MODEL_PLACEHOLDER/i.test(s));
+  const uniqueLabels = [...new Set(labels)];
+  const joinedLower = uniqueLabels.join(' ').toLowerCase();
+
+  // Inspect actual models inside the pool first so broad Gemini pools never get misnamed as "Argon"
+  const hasNeon = joinedLower.includes('neon');
+  const hasHydrogen = joinedLower.includes('hydrogen');
+  const hasFlash = joinedLower.includes('flash');
+  const hasArgon = joinedLower.includes('argon');
+  const hasCarbon = joinedLower.includes('carbon');
+  const hasClaude = joinedLower.includes('claude') || joinedLower.includes('opus') || joinedLower.includes('sonnet');
+  const hasGpt = joinedLower.includes('gpt');
+
+  if ((hasNeon && hasHydrogen) || (uniqueLabels.length >= 3 && (hasNeon || hasHydrogen || hasFlash))) {
+    return 'Gemini 4 全系共享池';
+  }
+  if (hasClaude || hasGpt) {
+    return 'Claude / GPT 共享池';
+  }
+  if (hasArgon && !hasNeon && !hasHydrogen) {
+    return 'Gemini 4 Argon 专属池';
+  }
+  if (hasCarbon && !hasNeon && !hasHydrogen) {
+    return 'Gemini 4 Carbon 专属池';
+  }
+  if (hasFlash && !hasNeon && !hasHydrogen) {
+    return 'Gemini Flash 轻量池';
+  }
+
+  if (low === 'shared_gemini_main') return 'Gemini 4 全系共享池';
   if (low === 'shared_3p_pool') return 'Claude / GPT 共享池';
-  if (low === 'shared_gemini_argon') return 'Gemini 4 Argon / 编排池';
+  if (low === 'shared_gemini_argon') return 'Gemini 4 Argon 专属池';
   if (low === 'shared_gemini_carbon') return 'Gemini 4 Carbon 专属池';
   if (low === 'shared_gemini_flash' || (low.includes('gemini') && low.includes('flash'))) {
     return 'Gemini Flash 轻量池';
   }
-  const labels = (Array.isArray(models) ? models : [])
-    .map((m) => String(m?.productLabel || m?.label || '').trim())
-    .filter((s) => s && !/^MODEL_PLACEHOLDER/i.test(s));
-  const uniqueLabels = [...new Set(labels)];
   if (uniqueLabels.length) {
     return uniqueLabels.slice(0, 2).join(' / ') + (uniqueLabels.length > 2 ? ' 等共享池' : ' 共享池');
   }
@@ -398,6 +456,44 @@ function formatFriendlyPoolTitle(rawKey, models = []) {
     return '模型共享额度池';
   }
   return key;
+}
+
+function normalizeQuotaBucketForUi(b, fallbackPct, fallbackResetIso, lowThreshold) {
+  const frac = typeof b?.remainingFraction === 'number' ? b.remainingFraction : null;
+  const pct = b?.remainingPercent != null
+    ? Number(b.remainingPercent)
+    : (frac !== null ? Math.round(frac * 100) : fallbackPct);
+  const wKey = String(b?.windowKey || b?.bucketId || '').toLowerCase();
+  const wShort = b?.windowShort || (wKey.includes('week') || wKey.includes('7d') ? '周' : (wKey.includes('5h') || wKey.includes('primary') ? '5h' : ''));
+  const wLabel = b?.windowLabel || (wShort === '周' ? '周额度' : (wShort === '5h' ? '5小时额度' : '当前周期额度'));
+  const resetIso = b?.resetTimeIso || b?.resetTime || fallbackResetIso || null;
+  const resetTimeText = b?.resetTimeText || (resetIso && typeof meterCore.formatResetTimeZh === 'function' ? meterCore.formatResetTimeZh(resetIso) : '');
+  const te = b?.tokenEstimate && typeof b.tokenEstimate === 'object'
+    ? {
+        estRemainingTokens: b.tokenEstimate.estRemainingTokens ?? null,
+        estRemainingShort: b.tokenEstimate.estRemainingShort || null,
+        estTotalTokens: b.tokenEstimate.estTotalTokens ?? null,
+        estTotalShort: b.tokenEstimate.estTotalShort || null,
+        cycleTokensUsed: Number(b.tokenEstimate.cycleTokensUsed || 0),
+        sampleCount: Number(b.tokenEstimate.sampleCount || 0),
+        isReliable: Boolean(b.tokenEstimate.isReliable),
+        estBasis: b.tokenEstimate.estBasis || '',
+      }
+    : null;
+
+  return {
+    bucketId: b?.bucketId || 'primary',
+    windowKey: b?.windowKey || 'primary',
+    windowShort: wShort,
+    windowLabel: wLabel,
+    remainingFraction: frac,
+    remainingPercent: pct,
+    resetTime: resetIso,
+    resetTimeText: resetTimeText || null,
+    countdownText: b?.countdownText || null,
+    isLow: frac !== null ? frac <= lowThreshold : (pct !== null ? pct / 100 <= lowThreshold : false),
+    tokenEstimate: te,
+  };
 }
 
 function normalizeQuotaForUi(quotaRes, lowThreshold = 0.2) {
@@ -416,14 +512,33 @@ function normalizeQuotaForUi(quotaRes, lowThreshold = 0.2) {
         .filter((s) => s && !/^MODEL_PLACEHOLDER/i.test(s))
     )];
     const displayName = formatFriendlyPoolTitle(rawKey, poolModels);
+    const resetIso = p.resetTime || p.resetTimeIso || null;
+    const rawBuckets = Array.isArray(p.buckets) && p.buckets.length
+      ? p.buckets
+      : [{
+          bucketId: 'primary',
+          windowKey: rawKey.includes('argon') ? 'weekly' : 'primary',
+          windowShort: rawKey.includes('argon') ? '周' : '5h',
+          windowLabel: rawKey.includes('argon') ? '周额度' : '5小时额度',
+          remainingFraction: frac,
+          remainingPercent: pct,
+          resetTimeIso: resetIso,
+          resetTimeText: p.resetTimeText || null,
+          countdownText: p.countdownText || null,
+          tokenEstimate: p.tokenEstimate || null,
+        }];
+    const buckets = rawBuckets.map((b) => normalizeQuotaBucketForUi(b, pct, resetIso, lowThreshold));
     return {
       ...p,
       poolKey: rawKey,
       displayName,
       modelNames,
+      buckets,
       remainingFraction: frac,
       remainingPercent: pct,
-      resetTime: p.resetTime || p.resetTimeIso || null,
+      resetTime: resetIso,
+      resetTimeText: p.resetTimeText || (buckets[0]?.resetTimeText || null),
+      countdownText: p.countdownText || (buckets[0]?.countdownText || null),
       isLow: p.isLow !== undefined ? Boolean(p.isLow) : (frac !== null ? frac <= lowThreshold : false),
     };
   });
@@ -457,6 +572,60 @@ function normalizeQuotaForUi(quotaRes, lowThreshold = 0.2) {
     error: quotaRes?.error || null,
     snapshot: snap,
   };
+}
+
+function findCurrentModelQuotaSummary(quotaUi, modelName) {
+  const pools = Array.isArray(quotaUi?.pools) ? quotaUi.pools : [];
+  if (!pools.length) return null;
+  const targetLower = String(modelName || '').toLowerCase();
+  let matchedPool = null;
+  if (targetLower) {
+    for (const p of pools) {
+      const names = (p.modelNames || []).join(' ').toLowerCase();
+      if (names && (names.includes(targetLower) || targetLower.split(/\s+/).some((w) => w.length > 3 && names.includes(w)))) {
+        matchedPool = p;
+        break;
+      }
+    }
+  }
+  if (!matchedPool) matchedPool = pools[0];
+  const buckets = Array.isArray(matchedPool.buckets) ? matchedPool.buckets : [];
+  const tightest = buckets.slice().sort((a, b) => (a.remainingPercent ?? 100) - (b.remainingPercent ?? 100))[0] || null;
+  return {
+    poolKey: matchedPool.poolKey,
+    poolName: matchedPool.displayName || matchedPool.poolKey,
+    remainingPercent: tightest?.remainingPercent ?? matchedPool.remainingPercent,
+    windowLabel: tightest?.windowLabel || '',
+    countdownText: tightest?.countdownText || matchedPool.countdownText || null,
+    resetTimeText: tightest?.resetTimeText || matchedPool.resetTimeText || null,
+    estRemainingShort: tightest?.tokenEstimate?.estRemainingShort || null,
+    estTotalShort: tightest?.tokenEstimate?.estTotalShort || null,
+    cycleTokensUsed: tightest?.tokenEstimate?.cycleTokensUsed || 0,
+    isReliable: Boolean(tightest?.tokenEstimate?.isReliable),
+  };
+}
+
+function resolveModelHistorySpeed(modelName, cfg) {
+  try {
+    if (typeof meterCore.summarizeSpeedByModel !== 'function') return null;
+    const ledger = meterCollector.loadPricingLedger(getGeminiAntigravityDir());
+    const calls = Object.values(ledger?.calls || {});
+    if (!calls.length) return null;
+    const rows = meterCore.summarizeSpeedByModel(calls, { days: 30 });
+    const low = String(modelName || '').toLowerCase();
+    const hit = rows.find((r) => {
+      const lbl = String(r.modelLabel || r.model || r.modelExactId || '').toLowerCase();
+      return lbl && (low.includes(lbl) || lbl.includes(low.replace(/\s*[（(].*?[）)]/, '').trim()));
+    }) || rows[0];
+    if (!hit) return null;
+    return {
+      medianTps: hit.medianTps ?? hit.avgTps ?? null,
+      medianTtftSec: hit.medianTtftSec ?? null,
+      sampleCount: Number(hit.sampleCount || hit.count || 0),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function shapeCollectResultForUi(collected, quotaUi, cfg, cid) {
@@ -513,7 +682,9 @@ function shapeCollectResultForUi(collected, quotaUi, cfg, cid) {
   const usageRatio = contextLimit > 0 ? Number(Math.min(1, usedTokens / contextLimit).toFixed(4)) : 0;
 
   const speedObj = latest?.speed || {};
-  const tokPerSec = Number(speedObj.tps || speedObj.streamingTps || latestCall?.tps || 0);
+  const streamingTps = Number(speedObj.streamingTps || latestCall?.streamingTps || 0);
+  const overallTps = Number(speedObj.tps || latestCall?.tps || 0);
+  const tokPerSec = streamingTps > 0 ? streamingTps : overallTps;
   const ttftMs = speedObj.ttft != null
     ? Math.round(Number(speedObj.ttft) * 1000)
     : (latestCall?.ttftSec != null ? Math.round(Number(latestCall.ttftSec) * 1000) : 0);
@@ -566,7 +737,7 @@ function shapeCollectResultForUi(collected, quotaUi, cfg, cid) {
       const streamingSec = speedObj.streamingSec != null
         ? Number(speedObj.streamingSec)
         : (latestCall?.streamingSec != null ? Number(latestCall.streamingSec) : null);
-      const streamSpeed = Number(speedObj.streamingTps || speedObj.tps || latestCall?.tps || 0) || null;
+      const streamSpeed = tokPerSec > 0 ? tokPerSec : null;
       const phase = isGenerating ? 'streaming' : (outTok > 0 || durSec ? 'final' : '');
       if (phase) {
         const ev = meterCore.evaluateGenerationExperience({
@@ -578,7 +749,7 @@ function shapeCollectResultForUi(collected, quotaUi, cfg, cid) {
           streamingSec,
           totalDurationSec: durSec,
           streamSpeed,
-          overallTps: tokPerSec > 0 ? tokPerSec : null,
+          overallTps: overallTps > 0 ? overallTps : null,
         }, lang);
         if (ev) {
           evaluation = {
@@ -597,6 +768,11 @@ function shapeCollectResultForUi(collected, quotaUi, cfg, cid) {
     }
   } catch {}
 
+  const configuredLimit = resolveContextLimit(modelName, cfg.context?.perModelLimits);
+  const serviceLimit = Number(latest?.serviceLimit || latest?.budget || 0) || contextLimit;
+  const historyMedian = resolveModelHistorySpeed(modelName, cfg);
+  const currentModelQuota = findCurrentModelQuotaSummary(quotaUi, modelName);
+
   return {
     lsConnected: true,
     lsError: null,
@@ -607,6 +783,8 @@ function shapeCollectResultForUi(collected, quotaUi, cfg, cid) {
       modelId: latest?.modelId || null,
       usedTokens,
       contextLimit,
+      configuredLimit,
+      serviceLimit,
       remainingTokens: Math.max(0, contextLimit - usedTokens),
       usageRatio,
       cacheHitRate,
@@ -622,18 +800,21 @@ function shapeCollectResultForUi(collected, quotaUi, cfg, cid) {
       speed: {
         tokPerSec,
         tps: tokPerSec,
-        streamingTps: Number(speedObj.streamingTps || 0),
+        streamingTps: streamingTps > 0 ? streamingTps : tokPerSec,
+        overallTps,
         ttftMs,
         durationMs,
         isGenerating,
         eScore: speedObj.eScore ?? evaluation?.score ?? null,
         eGrade: speedObj.eGrade ?? evaluation?.grade ?? null,
         evaluation,
+        historyMedian,
       },
       attachments,
     },
     attachments,
     quota: quotaUi,
+    currentModelQuota,
     estimatedSessionCostUsd: Number(Number(estCostUsd || 0).toFixed(6)),
     latest,
     latestCallRecord: latestCall,
@@ -694,6 +875,29 @@ async function fetchQuotaWithHostAuth(authCtx, opts = {}, cfg = null) {
       lastRes = { ok: false, error: err.message, snapshot: {} };
     }
   }
+
+  // Apply real quota token estimates using recent ledger events & calibration cache
+  try {
+    if (lastRes && lastRes.snapshot && Array.isArray(lastRes.snapshot.pools) && typeof meterCore.applyQuotaTokenEstimates === 'function') {
+      const agDir = getGeminiAntigravityDir();
+      const ledger = meterCollector.loadPricingLedger(agDir);
+      const usageEvents = Object.values(ledger?.calls || {}).slice(-800);
+      const store = new ConfigStore();
+      const calPath = path.join(store.stateDir, 'quota_calibration.json');
+      const prevCal = readJsonSafe(calPath, {}) || {};
+      const estRes = meterCore.applyQuotaTokenEstimates(lastRes.snapshot, {
+        usageEvents,
+        accountScopeKey: lastRes.accountScopeKey || 'anonymous',
+        calibrationMap: prevCal,
+        nowMs: Date.now(),
+      });
+      if (estRes?.snapshot) lastRes.snapshot = estRes.snapshot;
+      if (estRes?.nextCalibrationMap) {
+        try { atomicWriteJson(calPath, estRes.nextCalibrationMap); } catch {}
+      }
+    }
+  } catch {}
+
   return {
     raw: lastRes,
     ui: normalizeQuotaForUi(lastRes, lowThreshold),
@@ -1088,6 +1292,7 @@ async function computeHistoryOverview(days, authCtx, store) {
         outputTokens: out,
         cachedTokens: cache,
         model: meta.modelKey || label,
+        date: dateKey,
         pricingOverrides: cfg.enhance?.pricingOverrides,
       })).toFixed(4));
       modelAgg.set(label, cur);
@@ -1112,16 +1317,24 @@ async function computeHistoryOverview(days, authCtx, store) {
     : sessionIds.size;
   const calls = Math.max(ledgerCallCount, callsFromDaily);
 
-  const modelSumCost = byModel.reduce((s, m) => s + Number(m.costUsd || 0), 0);
+  const modelSumCost = Number(byModel.reduce((s, m) => s + Number(m.costUsd || 0), 0).toFixed(4));
   const fullHistoryCost = Number(history?.costEstimate?.pricedCostUSD ?? history?.referenceCost?.hybrid?.costUSD ?? 0);
   const costEstimate = Number((
-    ledgerCostUsd > 0
-      ? ledgerCostUsd
-      : (modelSumCost > 0 ? modelSumCost : (reqDays <= 0 ? fullHistoryCost : 0))
+    modelSumCost > 0
+      ? modelSumCost
+      : (ledgerCostUsd > 0 ? ledgerCostUsd : (reqDays <= 0 ? fullHistoryCost : 0))
   ).toFixed(4));
 
   const subMonthlyUsd = Number(cfg.enhance?.subscriptionMonthlyUsd ?? 20);
   const savingsVsSub = Number((costEstimate - subMonthlyUsd).toFixed(2));
+  let speedByModel = [];
+  try {
+    if (typeof meterCore.summarizeSpeedByModel === 'function') {
+      speedByModel = meterCore.summarizeSpeedByModel(Object.values(callsMap), {
+        days: reqDays > 0 ? reqDays : undefined,
+      }).slice(0, 8);
+    }
+  } catch {}
 
   return {
     days: reqDays,
@@ -1139,6 +1352,7 @@ async function computeHistoryOverview(days, authCtx, store) {
       cli: cliStats,
     },
     byModel,
+    speedByModel,
     costEstimate,
     totalCostUsd: costEstimate,
     subscriptionMonthlyUsd: subMonthlyUsd,
@@ -1149,23 +1363,54 @@ async function computeHistoryOverview(days, authCtx, store) {
   };
 }
 
+function formatPlanDisplayName(rawPlan, fallbackSource) {
+  const tierMap = {
+    'g1-pro-tier': 'Google One Pro',
+    'g1-ultra-tier': 'Google One Ultra',
+    'g1-plus-tier': 'Google One Plus',
+    'free-tier': 'Free',
+  };
+  const low = String(rawPlan || '').trim().toLowerCase();
+  if (tierMap[low]) return tierMap[low];
+  return rawPlan || fallbackSource || 'Standard';
+}
+
 function normalizeAccountsOverviewForUi(overview, detectedActive = null) {
   const ov = overview || { accounts: [] };
   const accounts = (Array.isArray(ov.accounts) ? ov.accounts : []).map((acc) => {
     const snap = acc.quotaSnapshot || null;
+    let quotaPools = [];
     let minRem = snap?.minRemainingPercent ?? null;
-    if (minRem === null && Array.isArray(snap?.pools) && snap.pools.length) {
-      for (const p of snap.pools) {
-        const pct = p.remainingPercent != null
-          ? Number(p.remainingPercent)
-          : (typeof p.remainingFraction === 'number' ? Math.round(p.remainingFraction * 100) : null);
-        if (pct !== null && (minRem === null || pct < minRem)) minRem = pct;
+
+    if (snap && Array.isArray(snap.pools) && snap.pools.length) {
+      const uiQuota = normalizeQuotaForUi({ ok: true, snapshot: snap });
+      const allPools = Array.isArray(uiQuota.pools) ? uiQuota.pools : [];
+      const nonStub = allPools.filter((p) => {
+        const isChatStub = /^shared_chat_\d+/i.test(String(p.poolKey || '')) ||
+          (Array.isArray(p.modelNames) && p.modelNames.length === 1 && /^chat_\d+$/i.test(p.modelNames[0]));
+        return !isChatStub;
+      });
+      quotaPools = nonStub.length > 0 ? nonStub : allPools;
+
+      if (minRem === null && quotaPools.length) {
+        for (const p of quotaPools) {
+          const bList = Array.isArray(p.buckets) && p.buckets.length ? p.buckets : [p];
+          for (const b of bList) {
+            const pct = b.remainingPercent != null
+              ? Number(b.remainingPercent)
+              : (typeof b.remainingFraction === 'number' ? Math.round(b.remainingFraction * 100) : null);
+            if (pct !== null && (minRem === null || pct < minRem)) minRem = pct;
+          }
+        }
       }
     }
+
+    const planName = formatPlanDisplayName(acc.planName || acc.tierId, acc.source);
     return {
       ...acc,
       id: acc.id || acc.email || acc.accountScopeKey,
-      planName: acc.planName || acc.tierId || acc.source || 'Standard',
+      planName,
+      quotaPools,
       quotaSnapshot: snap ? { ...snap, minRemainingPercent: minRem } : null,
     };
   });
@@ -1873,6 +2118,7 @@ module.exports = {
   computeHistoryOverview,
   formatFriendlyPoolTitle,
   normalizeQuotaForUi,
+  normalizeAccountsOverviewForUi,
   shapeCollectResultForUi,
   getAppQuitting: () => isAppQuitting,
 };

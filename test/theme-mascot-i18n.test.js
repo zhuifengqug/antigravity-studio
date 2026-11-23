@@ -62,6 +62,10 @@ test('Home overview card 7xN heatmap normalization, book comparison, and effort 
   assert.match(bookLine, /平凡的世界/);
   assert.equal(effortSlider.detectEffortFromText('Gemini 4 Neon (High)'), 'high');
   assert.equal(effortSlider.detectEffortFromText('Gemini 4 Neon (XHigh)'), 'xhigh');
+  const parsedXHigh = effortSlider.parseModelLabel('Gemini 4 Neon Extra High');
+  assert.equal(parsedXHigh.base, 'Gemini 4 Neon');
+  assert.equal(parsedXHigh.effort, 'xhigh');
+  assert.equal(parsedXHigh.effortLabel, 'Extra High');
   assert.equal(effortSlider.extractModelFamily('Gemini 4 Neon (XHigh)'), 'gemini 4 neon');
   assert.equal(effortSlider.itemMatchesEffort('Gemini 4 Neon (XHigh)', 'high'), false);
   assert.equal(effortSlider.itemMatchesEffort('Gemini 4 Neon (High)', 'high'), true);
@@ -76,6 +80,9 @@ test('Home overview card 7xN heatmap normalization, book comparison, and effort 
       { label: 'Gemini 4 Neon (Low)', value: 'm0' },
       { label: 'Gemini 4 Neon (High)', value: 'm1' },
       { label: 'Gemini 4 Neon (XHigh)', value: 'm2' },
+      { label: 'Gemini 4 Argon (Low)', value: 'a0' },
+      { label: 'Gemini 4 Argon (Medium)', value: 'a1' },
+      { label: 'Gemini 4 Argon (High)', value: 'a2' },
     ],
     setModelConfigByLabelForConversation: (label, cid, keepOpen) => {
       calls.push({ type: 'model', label, cid, keepOpen });
@@ -84,6 +91,8 @@ test('Home overview card 7xN heatmap normalization, book comparison, and effort 
   const prof = effortSlider.resolveActiveModelProfile(mockCtx, 'Gemini 4 Neon (High)');
   assert.equal(prof.currentEffort, 'high');
   assert.deepEqual(prof.levels.map((l) => l.id), ['low', 'high', 'xhigh']);
+  const argonProf = effortSlider.resolveActiveModelProfile(mockCtx, '', 'Gemini 4 Argon');
+  assert.deepEqual(argonProf.levels.map((l) => l.id), ['low', 'medium', 'high']);
   const xhighOpt = prof.levels.find((l) => l.id === 'xhigh').option;
   assert.equal(effortSlider.commitEffortOption(mockCtx, xhighOpt, false, true), true);
   assert.deepEqual(calls[0], { type: 'model', label: 'Gemini 4 Neon (XHigh)', cid: 'conv-abc', keepOpen: true });

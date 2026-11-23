@@ -1155,57 +1155,45 @@
     tickle: 'tickle'
   };
 
-  // ── Astra 24x22 Pixel Star-Spirit Matrix Engine ──────────────────────────────
-  // Palette:
-  //   '.': transparent
-  //   'W': #FFFFFF (star core white)
-  //   'C': #E0F2FE (ice starlight)
-  //   'B': #60A5FA (astral blue)
-  //   'D': #2563EB (deep orbit blue)
-  //   'N': #0F172A (visor/pupil dark)
-  //   'E': #38BDF8 (glowing cyan pupil/visor)
-  //   'G': #FBBF24 (amber star/alert)
-  //   'R': #F87171 (crimson alert)
-  //   'M': #34D399 (emerald spark)
-  //   'P': #94A3B8 (sleep Z / quiet ink)
+  // ── Astra 24x22 Pixel Star-Spirit Matrix Engine (1px Deepy-style indigo outline) ──
   var ASTRA_PALETTE = {
+    O: '#1E293B', // crisp 1px dark indigo outline (matches Deepy)
     W: '#FFFFFF',
-    C: '#E0F2FE',
-    B: '#60A5FA',
-    D: '#2563EB',
-    N: '#0F172A',
-    E: '#38BDF8',
-    G: '#FBBF24',
-    R: '#F87171',
-    M: '#34D399',
-    P: '#94A3B8'
+    C: '#EFF6FF', // bright starlight highlight
+    L: '#93C5FD', // soft sky highlight
+    B: '#3B82F6', // aurora royal blue (matches Deepy body)
+    D: '#1D4ED8', // deep shade blue
+    N: '#0F172A', // visor/pupil dark
+    E: '#38BDF8', // glowing cyan star halo / cheek
+    G: '#FBBF24', // amber star/alert
+    R: '#F87171', // crimson alert
+    M: '#34D399', // emerald spark
+    P: '#94A3B8'  // sleep / subtle gray
   };
 
-  // Base 24x22 silhouette rows (rows 0..21, cols 0..23).
-  // Star-orbit blue-white body, floating ear-wings on cols 3-5 & 18-20,
-  // 1x2 vertical pupils inside visor, glowing star core on chest.
+  // Chubby cosmic starlight spirit with crisp dark outline, tiny star halo, and cute ear-wings
   var ASTRA_BASE_ROWS = [
     '........................', // 0
-    '........................', // 1
-    '........................', // 2
+    '...........EE...........', // 1  tiny floating star halo
+    '..........EWWEE.........', // 2
     '........................', // 3
-    '....BB............BB....', // 4  ear-wing tips
-    '...BCCB..........BCCB...', // 5  ear-wings
-    '...BDDB..CCCCCC..BDDB...', // 6  head top
-    '....BB..CCCCCCCC..BB....', // 7
-    '.......CCNNNNNNCC.......', // 8  visor top
-    '......CCNNENNEENCC......', // 9  1x2 vertical eyes (col 10 & 13)
-    '......CCNNENNEENCC......', // 10
-    '.......CCNNNNNNCC.......', // 11 visor bottom
-    '........CCCCCCCC........', // 12 chin
-    '......BBBBWWWWBBBB......', // 13 collar + star core
-    '.....BBDDWWWWWWDDDB.....', // 14 body + bright star core
-    '....BB.DDWWCCWWDD.BB....', // 15 floating arm-wings + core
-    '...CB..DDDDCCDDDD..BC...', // 16
-    '.......DDDDDDDDDD.......', // 17
-    '........DDDDDDDD........', // 18
-    '........BB....BB........', // 19 feet
-    '.......CC......CC.......', // 20
+    '....OO............OO....', // 4  ear-wing tips
+    '...OBBO..OOOOOO..OBBO...', // 5  crisp 1px outline + head top
+    '...OBLOOOBBBBBBOOOBBO...', // 6
+    '....OOBBBBBBBBBBBBOO....', // 7
+    '.....OBBCCCCCCCCBBO.....', // 8  bright face shield
+    '....OBBCCNCCCCNCCBBO....', // 9  1x2 cute dark pixel eyes (cols 9 & 14)
+    '....OBBCCNCCCCNCCBBO....', // 10
+    '....OBBCCWWWWWWCCBBO....', // 11 starlight cheeks + chin
+    '.....OOBBCCCCCCBBOO.....', // 12
+    '....OOBBBWWWWWWBBBOO....', // 13 chubby body + star core
+    '...OBBDBBWWCCWWBBDBBO...', // 14
+    '...OB.ODDBBBBBBDDO.BO...', // 15 cute mini fins
+    '......ODDDDDDDDDDO......', // 16
+    '.......OODDDDDDOO.......', // 17
+    '........OOB..BOO........', // 18 feet
+    '........OO....OO........', // 19
+    '........................', // 20
     '........................'  // 21
   ];
 
@@ -1261,7 +1249,10 @@
         }
         // 1x2 pupil blink on frame 6
         if (f === 6) {
-          for (var ex = 9; ex <= 14; ex++) paintPixel(g, ex, 9, 'N');
+          for (var ex = 9; ex <= 14; ex++) {
+            if (ex === 9 || ex === 14) paintPixel(g, ex, 9, 'C');
+          }
+          paintPixel(g, 9, 10, 'N'); paintPixel(g, 14, 10, 'N');
         }
         // Star core pulse
         if (f % 4 === 0) {
@@ -1448,8 +1439,6 @@
       '.ags-mascot-stage[data-align="left"] { left:16px; transform-origin:bottom left; }',
       '.ags-mascot-hit { position:relative; display:inline-flex; align-items:flex-end; justify-content:center; pointer-events:auto; cursor:pointer; }',
       '.ags-mascot-canvas { display:block; image-rendering:pixelated; image-rendering:crisp-edges; }',
-      '.ags-mascot-badge { position:absolute; bottom:calc(100% + 2px); left:50%; transform:translateX(-50%) translateY(4px); font-family:var(--ags-font-ui,system-ui,sans-serif); font-size:11px; line-height:1.2; white-space:nowrap; padding:3px 8px; border-radius:999px; background:var(--ags-bg-surface,#18181b); color:var(--ags-text-primary,#f4f4f5); border:1px solid var(--ags-border,rgba(148,163,184,.26)); box-shadow:0 4px 12px rgba(0,0,0,.18); opacity:0; pointer-events:none; transition:opacity 140ms ease, transform 140ms ease; }',
-      '.ags-mascot-hit:hover .ags-mascot-badge, .ags-mascot-stage[data-pinned-tip="1"] .ags-mascot-badge { opacity:1; transform:translateX(-50%) translateY(0); }',
       '.ags-mascot-stage[data-state="sleeping"] .ags-mascot-canvas { opacity:0.82; }'
     ].join('\n');
     (document.head || document.documentElement).appendChild(s);
@@ -1473,11 +1462,7 @@
     canvas.className = 'ags-mascot-canvas';
     var ctx = canvas.getContext('2d');
 
-    var badge = document.createElement('span');
-    badge.className = 'ags-mascot-badge';
-
     hitEl.appendChild(canvas);
-    hitEl.appendChild(badge);
     stageEl.appendChild(hitEl);
 
     var scratchCanvas = document.createElement('canvas');
@@ -1546,8 +1531,14 @@
         w = 104;
         h = 104;
       } else if (cur.style === 'astra') {
-        w = 48;
-        h = 44;
+        var astraSprite = globalScope.__AG_STUDIO_ASTRA_SPRITE__ || null;
+        if (astraSprite && astraSprite.width) {
+          w = astraSprite.displayWidth || 76;
+          h = astraSprite.displayHeight || 68;
+        } else {
+          w = 48;
+          h = 44;
+        }
       }
       if (canvas.width !== w || canvas.height !== h) {
         canvas.width = w;
@@ -1573,9 +1564,6 @@
         stageEl.style.right = '';
         stageEl.style.left = '50%';
       }
-
-      var info = MASCOT_STATES[cur.state] || MASCOT_STATES.idle;
-      badge.textContent = info.badge + ' ' + info.label;
     }
 
     function drawFrame() {
@@ -1586,6 +1574,23 @@
       var logicalKey = resolveLogicalKey();
 
       if (cur.style === 'astra') {
+        var astraSprite = globalScope.__AG_STUDIO_ASTRA_SPRITE__ || null;
+        if (astraSprite && astraSprite.frames) {
+          var aKey = astraSprite.stateMap && astraSprite.stateMap[logicalKey] ? astraSprite.stateMap[logicalKey] : 'idle';
+          var aList = astraSprite.frames[aKey] || astraSprite.frames.idle || [];
+          if (aList.length) {
+            var aUri = aList[isMotionReduced() ? 0 : (frameIdx % aList.length)];
+            var aImg = loadSpriteImage(aUri, drawFrame);
+            if (aImg && aImg.loaded) {
+              var bobY = (logicalKey === 'thinking' || logicalKey === 'working' || logicalKey === 'happy')
+                ? ((frameIdx % 2) === 0 ? -2 : 0)
+                : ((frameIdx % 4) === 0 ? -1 : 0);
+              ctx.drawImage(aImg.img, 0, Math.max(0, bobY + 2), canvas.width, canvas.height - 2);
+              return;
+            }
+            return;
+          }
+        }
         var aFrames = buildAstraFrames(logicalKey);
         var af = isMotionReduced() ? 0 : (frameIdx % aFrames.length);
         var grid = aFrames[af] || aFrames[0];
@@ -1831,16 +1836,33 @@
     return String(Math.round(num));
   }
 
+  function formatDurationShort(ms) {
+    var v = Number(ms || 0);
+    if (!Number.isFinite(v) || v <= 0) return '—';
+    if (v >= 1000) return (v / 1000).toFixed(1) + 's';
+    return Math.round(v) + 'ms';
+  }
+
   function ensureHudStyles() {
     if (typeof document === 'undefined') return;
     if (document.getElementById('ag-studio-hud-style')) return;
     var s = document.createElement('style');
     s.id = 'ag-studio-hud-style';
     s.textContent = [
-      '.ags-hud-wrap { display:inline-flex; align-items:center; justify-content:center; gap:6px; pointer-events:auto; z-index:2147483000; font-family:var(--ags-font-ui, system-ui, sans-serif); font-variant-numeric:tabular-nums; }',
+      '.ags-hud-wrap { position:relative; display:inline-flex; align-items:center; justify-content:center; gap:6px; pointer-events:auto; z-index:2147483000; font-family:var(--ags-font-ui, system-ui, sans-serif); font-variant-numeric:tabular-nums; -webkit-app-region:no-drag; app-region:no-drag; }',
       '.ags-hud-floating { position:fixed; right:18px; bottom:16px; }',
       '.ags-hud-inline { margin:2px auto; }',
-      '.ags-hud-toolbar { gap:5px; max-width:100%; overflow:hidden; }',
+      '.ags-hud-toolbar { gap:4px; max-width:100%; overflow:visible; }',
+      '.ags-ring-btn { position:relative; display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; padding:0; border:none; border-radius:50%; background:transparent; cursor:pointer; flex-shrink:0; transition:transform 140ms ease; }',
+      '.ags-ring-btn:hover { transform:scale(1.08); }',
+      '.ags-ring-svg { display:block; width:22px; height:22px; transform:rotate(-90deg); }',
+      '.ags-ring-num { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:8.5px; font-weight:700; color:var(--ags-text-primary, #f4f4f5); letter-spacing:-0.04em; pointer-events:none; }',
+      '.ags-hud-popover { position:fixed; z-index:2147483580; min-width:196px; max-width:250px; padding:9px 11px; border-radius:11px; border:1px solid var(--ags-border, rgba(148,163,184,0.28)); background:var(--ags-bg-surface, #18181b); color:var(--ags-text-primary, #f4f4f5); box-shadow:0 10px 28px rgba(0,0,0,0.26); display:none; flex-direction:column; gap:5px; font-family:var(--ags-font-ui, system-ui, sans-serif); font-size:11.5px; font-variant-numeric:tabular-nums; pointer-events:none; }',
+      '.ags-hud-popover[data-open="1"] { display:flex; }',
+      '.ags-hud-pop-head { display:flex; align-items:center; justify-content:space-between; gap:8px; padding-bottom:4px; border-bottom:1px solid var(--ags-border, rgba(148,163,184,0.18)); font-weight:600; font-size:11.5px; }',
+      '.ags-hud-pop-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }',
+      '.ags-hud-pop-lbl { color:var(--ags-text-secondary, #94a3b8); }',
+      '.ags-hud-pop-val { color:var(--ags-text-primary, #f4f4f5); font-weight:500; }',
       '.ags-vial-btn { position:relative; display:inline-flex; align-items:center; justify-content:center; width:24px; height:38px; padding:0; border:none; background:transparent; cursor:pointer; flex-shrink:0; transition:transform 140ms ease; }',
       '.ags-hud-toolbar .ags-vial-btn { width:14px; height:22px; }',
       '.ags-vial-btn:hover { transform:translateY(-1px) scale(1.06); }',
@@ -1858,9 +1880,6 @@
     (document.head || document.documentElement).appendChild(s);
   }
 
-  /**
-   * Compact 12-node damped shallow-water physics kernel (0fps when settled).
-   */
   function createMiniVialPhysics() {
     var N = 12;
     var waveH = new Float32Array(N);
@@ -1971,7 +1990,31 @@
     wrap.setAttribute('data-ag-studio-ignore', 'true');
     wrap.setAttribute('data-ag-no-i18n', 'true');
 
-    // 1. Mini Breathing Water Vial Button
+    // Ring HUD (compact default)
+    var ringBtn = document.createElement('button');
+    ringBtn.type = 'button';
+    ringBtn.className = 'ags-ring-btn';
+    var ringArc = null;
+    var ringNum = null;
+
+    var R = 8.5;
+    var CIRC = Number((2 * Math.PI * R).toFixed(2));
+    ringBtn.innerHTML =
+      '<svg class="ags-ring-svg" viewBox="0 0 22 22" aria-hidden="true">' +
+      '  <circle cx="11" cy="11" r="' + R + '" fill="none" stroke="var(--ags-bg-subtle, rgba(148,163,184,0.24))" stroke-width="2.4"/>' +
+      '  <circle class="ags-ring-arc" cx="11" cy="11" r="' + R + '" fill="none" stroke="var(--ags-accent, #3B82F6)" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="' + CIRC + '" stroke-dashoffset="' + CIRC + '"/>' +
+      '</svg>' +
+      '<span class="ags-ring-num">0</span>';
+    ringArc = ringBtn.querySelector('.ags-ring-arc');
+    ringNum = ringBtn.querySelector('.ags-ring-num');
+
+    // Vertical hover card popover
+    var popEl = document.createElement('div');
+    popEl.className = 'ags-hud-popover';
+    popEl.setAttribute('data-ag-studio-ignore', 'true');
+    popEl.setAttribute('data-ag-no-i18n', 'true');
+
+    // Capsule / Vial mode (optional in settings)
     var vialBtn = document.createElement('button');
     vialBtn.type = 'button';
     vialBtn.className = 'ags-vial-btn';
@@ -1980,18 +2023,49 @@
     vialCv.className = 'ags-vial-cv';
     vialBtn.appendChild(vialCv);
 
-    // 2. Minimalist Capsule Pill
     var pill = document.createElement('button');
     pill.type = 'button';
     pill.className = 'ags-hud-pill';
 
-    var onOpen = function () {
+    var hidePopTimer = 0;
+    function showPopover() {
+      if (hidePopTimer) { clearTimeout(hidePopTimer); hidePopTimer = 0; }
+      var root = document.getElementById('ag-studio-root') || document.body;
+      if (popEl.parentElement !== root) root.appendChild(popEl);
+      popEl.setAttribute('data-open', '1');
+      try {
+        var r = ringBtn.getBoundingClientRect();
+        var pr = popEl.getBoundingClientRect();
+        var pw = pr.width || 210;
+        var ph = pr.height || 175;
+        var left = Math.max(8, Math.min((window.innerWidth || 1200) - pw - 8, r.left + r.width / 2 - pw / 2));
+        var top = r.top - ph - 8;
+        if (top < 8) top = r.bottom + 8;
+        popEl.style.left = Math.round(left) + 'px';
+        popEl.style.top = Math.round(top) + 'px';
+      } catch (_e) {}
+    }
+
+    function hidePopoverDelayed() {
+      if (hidePopTimer) clearTimeout(hidePopTimer);
+      hidePopTimer = setTimeout(function () {
+        hidePopTimer = 0;
+        popEl.removeAttribute('data-open');
+      }, 100);
+    }
+
+    var onOpen = function (ev) {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
       if (typeof opts.onToggleDrawer === 'function') opts.onToggleDrawer();
     };
-    vialBtn.addEventListener('click', function () {
+    ringBtn.addEventListener('click', onOpen);
+    ringBtn.addEventListener('pointerenter', showPopover);
+    ringBtn.addEventListener('pointerleave', hidePopoverDelayed);
+
+    vialBtn.addEventListener('click', function (ev) {
       phys.impulse(1.4);
       wakeVial();
-      onOpen();
+      onOpen(ev);
     });
     vialBtn.addEventListener('pointerenter', function () {
       phys.impulse(0.65);
@@ -1999,6 +2073,7 @@
     });
     pill.addEventListener('click', onOpen);
 
+    wrap.appendChild(ringBtn);
     wrap.appendChild(vialBtn);
     wrap.appendChild(pill);
 
@@ -2008,26 +2083,22 @@
     var currentCtx = vialCv.getContext('2d');
     var lastVisualSig = '';
     var lastPillKey = '';
+    var lastPopKey = '';
     var isCompactToolbar = false;
     var isDark = true;
     var accentHex = '#3B82F6';
-    var isStreaming = false;
     var isCritical = false;
 
     function resolveVialColors() {
       var mode = document.documentElement.getAttribute('data-ags-mode');
       isDark = mode !== 'light';
       var themeId = document.documentElement.getAttribute('data-ags-theme') || 'claude';
-      var accentCss = '';
-      try {
-        accentCss = getComputedStyle(document.documentElement).getPropertyValue('--ags-accent').trim();
-      } catch (_e) {}
       if (isCritical) {
         accentHex = '#EA580C';
       } else if (themeId === 'claude') {
-        accentHex = accentCss || (isDark ? '#E08666' : '#D97757');
+        accentHex = isDark ? '#E08666' : '#D97757';
       } else {
-        accentHex = accentCss || (isDark ? '#60A5FA' : '#2563EB');
+        accentHex = isDark ? '#60A5FA' : '#2563EB';
       }
     }
 
@@ -2047,7 +2118,7 @@
     }
 
     function renderVialFrame() {
-      if (!currentCtx) return;
+      if (!currentCtx || vialBtn.style.display === 'none') return;
       var cssW = isCompactToolbar ? 14 : 24;
       var cssH = isCompactToolbar ? 22 : 38;
       var dpr = Math.min((typeof window !== 'undefined' && window.devicePixelRatio) || 1, 2);
@@ -2071,12 +2142,10 @@
       var tubeH = isCompactToolbar ? 20 : 34;
       var tubeR = isCompactToolbar ? 4.5 : 6.5;
 
-      // 1. Glass air chamber background
       drawRoundedRectPath(ctx, tubeX, tubeY, tubeW, tubeH, tubeR);
       ctx.fillStyle = isDark ? 'rgba(15, 23, 42, 0.55)' : 'rgba(226, 232, 240, 0.55)';
       ctx.fill();
 
-      // 2. Clipped shallow-water liquid column
       var fillFrac = phys.getFill();
       if (fillFrac > 0.005) {
         ctx.save();
@@ -2113,45 +2182,8 @@
         }
         ctx.fillStyle = grad;
         ctx.fill();
-
-        // Crisp meniscus highlight
-        ctx.beginPath();
-        for (var m = 0; m <= segs; m++) {
-          var mu = m / segs;
-          var mx = (tubeX + 1) + mu * (tubeW - 2);
-          var mSlope = Math.tan(tilt) * (mx - cx) * 0.85;
-          var my = baseSurfY + mSlope + (waveH[m] || 0) * 0.65;
-          if (m === 0) ctx.moveTo(mx, my);
-          else ctx.lineTo(mx, my);
-        }
-        ctx.strokeStyle = isDark ? 'rgba(224, 242, 254, 0.88)' : 'rgba(255, 255, 255, 0.92)';
-        ctx.lineWidth = 1.1;
-        ctx.stroke();
-
-        // Streaming rising micro-bubbles
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
-        for (var b = 0; b < phys.bubbles.length; b++) {
-          var bub = phys.bubbles[b];
-          var by = innerBot - (1 - bub.y) * (innerBot - innerTop);
-          if (by > baseSurfY + 2) {
-            ctx.beginPath();
-            ctx.arc(cx + bub.x * 0.4, by, bub.r, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
         ctx.restore();
       }
-
-      // 3. Laser tick marks on right glass wall
-      ctx.fillStyle = isDark ? 'rgba(148, 163, 184, 0.45)' : 'rgba(51, 65, 85, 0.35)';
-      for (var t = 1; t <= 3; t++) {
-        var ty = tubeY + (tubeH * t) / 4;
-        ctx.fillRect(tubeX + tubeW - 3.5, ty, 2.2, 0.8);
-      }
-
-      // 4. Vertical glass refraction thread + outer borosilicate outline
-      ctx.fillStyle = isDark ? 'rgba(226, 232, 240, 0.25)' : 'rgba(255, 255, 255, 0.55)';
-      ctx.fillRect(tubeX + 2.5, tubeY + 6, 1, tubeH - 12);
 
       drawRoundedRectPath(ctx, tubeX, tubeY, tubeW, tubeH, tubeR);
       ctx.strokeStyle = isCritical
@@ -2176,6 +2208,7 @@
     }
 
     function wakeVial() {
+      if (vialBtn.style.display === 'none') return;
       renderVialFrame();
       if (rafId || phys.isSettled()) return;
       if (typeof document !== 'undefined' && document.hidden) return;
@@ -2189,7 +2222,6 @@
       var anchors = globalScope.__AG_STUDIO_ANCHORS__;
       var mode = positionMode || 'composer';
       if (mode !== 'floating' && anchors && composer) {
-        // Primary: inside composer toolbar right next to the model selector button
         if (typeof anchors.ensureComposerToolbarSlot === 'function') {
           var toolbarSlot = anchors.ensureComposerToolbarSlot(composer);
           if (toolbarSlot) {
@@ -2202,7 +2234,6 @@
             return;
           }
         }
-        // Fallback: below composer
         if (typeof anchors.parkComposerToolbarSlot === 'function') anchors.parkComposerToolbarSlot();
         var bottomSlot = anchors.ensureComposerBottomSlot(composer);
         if (bottomSlot) {
@@ -2230,116 +2261,149 @@
       var hudCfg = (cfg && cfg.hud) || {};
       if (hudCfg.enabled === false) {
         wrap.style.display = 'none';
+        popEl.removeAttribute('data-open');
         if (rafId && typeof cancelAnimationFrame === 'function') {
           cancelAnimationFrame(rafId);
           rafId = 0;
         }
         return;
       }
+
+      var displayStyle = hudCfg.displayStyle === 'capsule' ? 'capsule' : 'ring';
       wrap.style.display = 'inline-flex';
-      vialBtn.style.display = hudCfg.showVial === false ? 'none' : 'inline-flex';
       mountToSlot(hudCfg.position || 'composer', composer);
+
+      if (displayStyle === 'ring') {
+        ringBtn.style.display = 'inline-flex';
+        vialBtn.style.display = 'none';
+        pill.style.display = 'none';
+      } else {
+        ringBtn.style.display = 'none';
+        vialBtn.style.display = hudCfg.showVial === false ? 'none' : 'inline-flex';
+        pill.style.display = 'inline-flex';
+      }
 
       var ctx = (snapshot && snapshot.context) || {};
       var used = Number(ctx.usedTokens || 0);
       var limit = Number(ctx.contextLimit || 200000);
+      var remainingCtx = Math.max(0, limit - used);
       var ratio = ctx.usageRatio != null ? Number(ctx.usageRatio) : (limit > 0 ? used / limit : 0);
       if (!Number.isFinite(ratio) || ratio < 0) ratio = 0;
+      ratio = Math.min(1, ratio);
       var pct = Math.min(100, Math.round(ratio * 100));
-      var speed = Number((ctx.speed && (ctx.speed.tokPerSec || ctx.speed.tps)) || 0);
+      var speed = Number((ctx.speed && (ctx.speed.streamingTps || ctx.speed.tokPerSec || ctx.speed.tps)) || 0);
+      var speedStr = speed > 0 ? Number(speed).toFixed(1).replace(/\.0$/, '') : '0';
       var ttft = Number((ctx.speed && ctx.speed.ttftMs) || 0);
       var cachePct = Math.round(Number(ctx.cacheHitRate || 0) * 100);
       var cost = Number((snapshot && snapshot.estimatedSessionCostUsd) || 0);
       var generating = Boolean(ctx.speed && ctx.speed.isGenerating);
 
+      var cmq = (snapshot && snapshot.currentModelQuota) || null;
       var pools = (snapshot && snapshot.quota && snapshot.quota.pools) || [];
-      var minQuotaPct = null;
-      for (var i = 0; i < pools.length; i++) {
-        if (typeof pools[i].remainingPercent === 'number') {
-          if (minQuotaPct === null || pools[i].remainingPercent < minQuotaPct) {
-            minQuotaPct = pools[i].remainingPercent;
+      var minQuotaPct = cmq && cmq.remainingPercent != null ? Number(cmq.remainingPercent) : null;
+      if (minQuotaPct === null) {
+        for (var i = 0; i < pools.length; i++) {
+          if (typeof pools[i].remainingPercent === 'number') {
+            if (minQuotaPct === null || pools[i].remainingPercent < minQuotaPct) {
+              minQuotaPct = pools[i].remainingPercent;
+            }
           }
         }
       }
 
       isCritical = ratio >= 0.85;
-      isStreaming = generating;
-      phys.setTargetFill(ratio);
-      phys.setStreaming(generating);
 
-      var visSig = [
-        Math.round(ratio * 100),
-        generating ? 1 : 0,
-        isCompactToolbar ? 1 : 0,
-        document.documentElement.getAttribute('data-ags-theme') || '',
-        document.documentElement.getAttribute('data-ags-mode') || ''
-      ].join('|');
-      if (visSig !== lastVisualSig) {
-        lastVisualSig = visSig;
-        if (generating) phys.impulse(0.45);
-        wakeVial();
+      // Update Ring SVG
+      if (ringArc && ringNum) {
+        var offset = Number((CIRC * (1 - ratio)).toFixed(2));
+        ringArc.setAttribute('stroke-dashoffset', String(offset));
+        ringArc.setAttribute('stroke', isCritical ? 'var(--ags-danger, #EF4444)' : ratio >= 0.68 ? 'var(--ags-warning, #D9822B)' : 'var(--ags-accent, #3B82F6)');
+        ringNum.textContent = String(pct);
       }
 
-      var pillKey = [
+      // Vertical hover popover content (dirty-checked)
+      var estRemShort = (cmq && cmq.estRemainingShort) || '';
+      var popKey = [
         ctx.model || '',
-        pct,
-        used,
-        limit,
-        Math.round(speed),
-        cost.toFixed(2),
-        minQuotaPct === null ? 'n' : Math.round(minQuotaPct),
+        pct, used, limit,
+        speedStr,
         cachePct,
         Math.round(ttft),
-        hudCfg.showContext !== false ? 1 : 0,
-        hudCfg.showSpeed !== false ? 1 : 0,
-        hudCfg.showCost !== false ? 1 : 0,
-        hudCfg.showQuotaBadge !== false ? 1 : 0
+        cost.toFixed(3),
+        minQuotaPct == null ? 'n' : Math.round(minQuotaPct),
+        estRemShort
       ].join('|');
 
-      if (pillKey === lastPillKey) return;
-      lastPillKey = pillKey;
+      if (popKey !== lastPopKey) {
+        lastPopKey = popKey;
+        var quotaLine = minQuotaPct != null
+          ? (Math.round(minQuotaPct) + '%' + (estRemShort ? (' · 约剩 ' + estRemShort) : ''))
+          : '—';
+        popEl.innerHTML = [
+          '<div class="ags-hud-pop-head"><span>' + (ctx.model || '当前会话') + '</span><span>' + pct + '%</span></div>',
+          '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">上下文用量</span><span class="ags-hud-pop-val">' + formatCompactNumber(used) + ' / ' + formatCompactNumber(limit) + '</span></div>',
+          '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">剩余上下文</span><span class="ags-hud-pop-val">' + formatCompactNumber(remainingCtx) + '</span></div>',
+          '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">输出速度</span><span class="ags-hud-pop-val">' + speedStr + ' tok/s</span></div>',
+          '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">缓存命中</span><span class="ags-hud-pop-val">' + cachePct + '%</span></div>',
+          '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">首字延迟</span><span class="ags-hud-pop-val">' + formatDurationShort(ttft) + '</span></div>',
+          '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">本轮估算</span><span class="ags-hud-pop-val">$' + cost.toFixed(3) + '</span></div>',
+          '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">模型额度</span><span class="ags-hud-pop-val">' + quotaLine + '</span></div>'
+        ].join('');
+      }
 
-      pill.title = '模型: ' + (ctx.model || '未检测') +
-        ' · 缓存命中: ' + cachePct + '%' +
-        (ttft > 0 ? (' · 首字延迟: ' + Math.round(ttft) + 'ms') : '') +
-        ' — 点击打开 Antigravity Studio (Ctrl+Shift+G)';
+      if (displayStyle !== 'ring') {
+        phys.setTargetFill(ratio);
+        phys.setStreaming(generating);
+        var visSig = [
+          Math.round(ratio * 100),
+          generating ? 1 : 0,
+          isCompactToolbar ? 1 : 0,
+          document.documentElement.getAttribute('data-ags-theme') || '',
+          document.documentElement.getAttribute('data-ags-mode') || ''
+        ].join('|');
+        if (visSig !== lastVisualSig) {
+          lastVisualSig = visSig;
+          if (generating) phys.impulse(0.45);
+          wakeVial();
+        }
 
-      var parts = [];
-      if (hudCfg.showContext !== false) {
-        var pctCls = pct >= 85 ? 'ags-hud-crit' : 'ags-hud-strong';
-        parts.push(
-          '<span class="' + pctCls + '">' + pct + '%</span>' +
-          '<span class="ags-hud-sep">·</span>' +
-          '<span>' + formatCompactNumber(used) + '/' + formatCompactNumber(limit) + '</span>'
-        );
+        var pillKey = popKey + '|' + (hudCfg.showContext !== false ? 1 : 0) + (hudCfg.showSpeed !== false ? 1 : 0) + (hudCfg.showCost !== false ? 1 : 0) + (hudCfg.showQuotaBadge !== false ? 1 : 0);
+        if (pillKey !== lastPillKey) {
+          lastPillKey = pillKey;
+          var parts = [];
+          if (hudCfg.showContext !== false) {
+            var pctCls = pct >= 85 ? 'ags-hud-crit' : 'ags-hud-strong';
+            parts.push(
+              '<span class="' + pctCls + '">' + pct + '%</span>' +
+              '<span class="ags-hud-sep">·</span>' +
+              '<span>' + formatCompactNumber(used) + '/' + formatCompactNumber(limit) + '</span>'
+            );
+          }
+          if (hudCfg.showSpeed !== false) parts.push('<span>' + speedStr + ' tok/s</span>');
+          if (hudCfg.showCost !== false) parts.push('<span class="ags-hud-hide-sm">$' + cost.toFixed(2) + '</span>');
+          if (hudCfg.showQuotaBadge !== false && minQuotaPct !== null) {
+            var qCls = minQuotaPct <= 20 ? 'ags-hud-quota-low' : '';
+            parts.push('<span class="' + qCls + '">额度 ' + Math.round(minQuotaPct) + '%</span>');
+          }
+          if (!parts.length) parts.push('<span class="ags-hud-strong">Studio</span>');
+          pill.innerHTML = parts.join('<span class="ags-hud-sep">·</span>');
+        }
       }
-      if (hudCfg.showSpeed !== false) {
-        parts.push('<span>' + Math.round(speed) + ' tok/s</span>');
-      }
-      if (hudCfg.showCost !== false) {
-        parts.push('<span class="ags-hud-hide-sm">$' + cost.toFixed(2) + '</span>');
-      }
-      if (hudCfg.showQuotaBadge !== false && minQuotaPct !== null) {
-        var qCls = minQuotaPct <= 20 ? 'ags-hud-quota-low' : '';
-        parts.push('<span class="' + qCls + '">额度 ' + Math.round(minQuotaPct) + '%</span>');
-      }
-      if (!parts.length) {
-        parts.push('<span class="ags-hud-strong">Studio</span>');
-      }
-      pill.innerHTML = parts.join('<span class="ags-hud-sep">·</span>');
     }
 
     function destroy() {
+      if (hidePopTimer) clearTimeout(hidePopTimer);
       if (rafId && typeof cancelAnimationFrame === 'function') {
         cancelAnimationFrame(rafId);
         rafId = 0;
       }
+      if (popEl.parentElement) popEl.parentElement.removeChild(popEl);
       if (wrap.parentElement) wrap.parentElement.removeChild(wrap);
     }
 
     return {
       element: wrap,
-      mountToBestSpot: function (mode, comp) { mountToSlot(mode, comp); },
+      mountToSlot: mountToSlot,
       update: update,
       destroy: destroy
     };
@@ -2347,7 +2411,6 @@
 
   var api = {
     formatCompactNumber: formatCompactNumber,
-    createMiniVialPhysics: createMiniVialPhysics,
     createComposerHud: createComposerHud
   };
 
@@ -3126,16 +3189,15 @@
   'use strict';
 
   var EFFORT_LEVELS = [
-    { id: 'off', labelZh: '关', labelEn: 'Off', keywords: ['off', 'none', 'disabled', '关'] },
-    { id: 'minimal', labelZh: '极简', labelEn: 'Min', keywords: ['minimal', 'min', '极简'] },
-    { id: 'low', labelZh: '低', labelEn: 'Low', keywords: ['low', 'lite', '低'] },
-    { id: 'medium', labelZh: '中', labelEn: 'Medium', keywords: ['medium', 'med', '中'] },
-    { id: 'high', labelZh: '高', labelEn: 'High', keywords: ['high', 'thinking', '高', '深度思考'] },
-    { id: 'xhigh', labelZh: '极高', labelEn: 'xHigh', keywords: ['xhigh', 'x-high', 'extra high', 'extra', '极高', '超高'] },
-    { id: 'max', labelZh: '最大', labelEn: 'Max', keywords: ['max', 'ultra', '最大'] }
+    { id: 'off', labelEn: 'Off', keywords: ['off', 'none', 'disabled'] },
+    { id: 'minimal', labelEn: 'Minimal', keywords: ['minimal', 'min'] },
+    { id: 'low', labelEn: 'Low', keywords: ['low', 'lite'] },
+    { id: 'medium', labelEn: 'Medium', keywords: ['medium', 'med'] },
+    { id: 'high', labelEn: 'High', keywords: ['high', 'thinking'] },
+    { id: 'xhigh', labelEn: 'Extra High', keywords: ['xhigh', 'x-high', 'extra high', 'extra'] },
+    { id: 'max', labelEn: 'Max', keywords: ['max', 'ultra'] }
   ];
 
-  var DEFAULT_DISPLAY_ORDER = ['low', 'medium', 'high', 'xhigh'];
   var EFFORT_RANK = { off: 0, minimal: 1, low: 2, medium: 3, high: 4, xhigh: 5, max: 6 };
 
   function ensureEffortStyles() {
@@ -3150,7 +3212,7 @@
       '.ags-effort-title { color:var(--ags-text-secondary, #94a3b8); font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }',
       '.ags-effort-val { color:var(--ags-accent, #D97757); font-weight:600; flex-shrink:0; }',
       '.ags-effort-steps { position:relative; display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:4px; padding:2px; border-radius:8px; background:var(--ags-bg-canvas, rgba(24,24,27,.6)); border:1px solid var(--ags-border, rgba(148,163,184,.16)); }',
-      '.ags-effort-btn { border:none; background:transparent; color:var(--ags-text-secondary, #94a3b8); font-size:11px; font-weight:500; padding:4px 2px; border-radius:6px; cursor:pointer; transition:color 100ms ease, background-color 100ms ease; }',
+      '.ags-effort-btn { border:none; background:transparent; color:var(--ags-text-secondary, #94a3b8); font-size:11px; font-weight:500; padding:4px 4px; border-radius:6px; cursor:pointer; white-space:nowrap; transition:color 100ms ease, background-color 100ms ease; }',
       '.ags-effort-btn:hover { color:var(--ags-text-primary, #f4f4f5); }',
       '.ags-effort-btn.active { background:var(--ags-accent-soft, rgba(217,119,87,.16)); color:var(--ags-accent, #D97757); font-weight:600; }'
     ].join('\n');
@@ -3171,7 +3233,9 @@
 
   function extractModelFamily(text) {
     return String(text || '')
+      .replace(/\b(?:new|notice|beta|preview|recommended|default)\b|默认|自动/gi, ' ')
       .replace(/[（(][^（）()]*[）)]/g, ' ')
+      .replace(/\b(?:orchestrator|编排)\b/gi, ' ')
       .replace(/\b(?:off|none|minimal|min|low|medium|med|high|xhigh|x-high|extra\s*high|max)\b/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim()
@@ -3186,7 +3250,7 @@
       var eff1 = detectEffortFromText(mParen[2]);
       return { base: mParen[1].trim(), effort: eff1, effortLabel: mParen[2].trim() };
     }
-    var mTail = s.match(/^(.*?)\s+(off|minimal|min|low|medium|med|high|xhigh|x-high|extra\s*high|max)$/i);
+    var mTail = s.match(/^(.*?)\s+(extra\s*high|x-high|xhigh|minimal|medium|high|low|min|med|off|max)$/i);
     if (mTail) {
       var eff2 = detectEffortFromText(mTail[2]);
       return { base: mTail[1].trim(), effort: eff2, effortLabel: mTail[2].trim() };
@@ -3301,7 +3365,7 @@
     return /\borchestrator\b|编排/i.test(txt);
   }
 
-  function collectEffortOptionsForBase(optionsList, targetBaseSlug) {
+  function collectEffortOptionsForBase(optionsList, targetBaseSlug, extraIndexMap) {
     var map = new Map();
     for (var i = 0; i < (optionsList || []).length; i++) {
       var opt = optionsList[i];
@@ -3311,13 +3375,26 @@
       if (!parsed || !parsed.base) continue;
       if (extractModelFamily(parsed.base) === targetBaseSlug) {
         if (!map.has(parsed.effort)) {
-          map.set(parsed.effort, opt);
+          map.set(parsed.effort, { id: parsed.effort, label: parsed.effortLabel, option: opt });
         }
       }
     }
+    if (extraIndexMap instanceof Map) {
+      extraIndexMap.forEach(function (inner, baseKey) {
+        if (extractModelFamily(baseKey) === targetBaseSlug && inner instanceof Map) {
+          inner.forEach(function (opt, effKey) {
+            var normId = detectEffortFromText(effKey);
+            if (!map.has(normId) && opt && opt.label) {
+              var p2 = parseModelLabel(opt.label);
+              map.set(normId, { id: normId, label: (p2 && p2.effortLabel) || effKey, option: opt });
+            }
+          });
+        }
+      });
+    }
     var levels = [];
-    map.forEach(function (opt, effId) {
-      levels.push({ id: effId, option: opt });
+    map.forEach(function (entry) {
+      levels.push(entry);
     });
     levels.sort(function (a, b) {
       return (EFFORT_RANK[a.id] ?? 99) - (EFFORT_RANK[b.id] ?? 99);
@@ -3325,27 +3402,58 @@
     return levels;
   }
 
-  function resolveActiveModelProfile(ctx, triggerText) {
+  function resolveActiveModelProfile(ctx, triggerText, hoveredBaseText) {
     if (!ctx) return null;
+
+    // 1. If user is hovering over a specific non-orchestrator model row in the open menu, inspect THAT model's real efforts
+    if (hoveredBaseText && !isOrchestratorModel(hoveredBaseText)) {
+      var hovSlug = extractModelFamily(hoveredBaseText);
+      var hovLevels = collectEffortOptionsForBase(ctx.modelOptions, hovSlug, ctx.effortIndex);
+      if (hovLevels.length) {
+        var selParsed = ctx.selectedModel ? parseModelLabel(ctx.selectedModel.label) : null;
+        var isSameAsSelected = selParsed && extractModelFamily(selParsed.base) === hovSlug;
+        return {
+          isOrchPlan: false,
+          isHovered: true,
+          baseName: hoveredBaseText.trim(),
+          currentEffort: isSameAsSelected ? selParsed.effort : (hovLevels[0].id),
+          levels: hovLevels
+        };
+      }
+    }
+
     var selected = ctx.selectedModel;
     var isOrch = isOrchestratorModel(selected) || isOrchestratorModel(triggerText);
 
     if (isOrch && Array.isArray(ctx.orchPlanners) && ctx.orchPlanners.length) {
       var pk = ctx.orchPick;
       var activePlanner = null;
-      if (pk && pk.selected != null) {
+      if (pk && pk.selected != null && pk.selected !== 0) {
         activePlanner = ctx.orchPlanners.find(function (p) { return p && p.value === pk.selected; }) || null;
+      }
+      if (!activePlanner && triggerText) {
+        var trigFam = extractModelFamily(triggerText);
+        var trigEff = detectEffortFromText(triggerText);
+        activePlanner = ctx.orchPlanners.find(function (p) {
+          if (!p || !p.label) return false;
+          var pp = parseModelLabel(p.label);
+          return pp && extractModelFamily(pp.base) === trigFam && pp.effort === trigEff;
+        }) || null;
       }
       if (!activePlanner) activePlanner = ctx.orchDef || ctx.orchPlanners[0];
       var pParsed = activePlanner ? parseModelLabel(activePlanner.label) : null;
       var pBase = pParsed ? pParsed.base : (activePlanner && activePlanner.label) || '';
       var pSlug = extractModelFamily(pBase);
-      var pLevels = collectEffortOptionsForBase(ctx.orchPlanners, pSlug);
+      var pLevels = collectEffortOptionsForBase(ctx.orchPlanners, pSlug, ctx.orchIdx);
       if (pLevels.length) {
+        var realOrchEffort = (triggerText && pSlug && extractModelFamily(triggerText) === pSlug)
+          ? detectEffortFromText(triggerText)
+          : (pParsed ? pParsed.effort : 'medium');
         return {
           isOrchPlan: true,
+          isHovered: false,
           baseName: pBase,
-          currentEffort: pParsed ? pParsed.effort : 'medium',
+          currentEffort: realOrchEffort,
           levels: pLevels
         };
       }
@@ -3355,12 +3463,16 @@
     var parsed = parseModelLabel(baseLabel);
     var baseName = parsed ? parsed.base : baseLabel;
     var baseSlug = extractModelFamily(baseName);
-    var levels = collectEffortOptionsForBase(ctx.modelOptions, baseSlug);
+    var levels = collectEffortOptionsForBase(ctx.modelOptions, baseSlug, ctx.effortIndex);
     if (!levels.length) return null;
+    var realEff = (triggerText && baseSlug && extractModelFamily(triggerText) === baseSlug)
+      ? detectEffortFromText(triggerText)
+      : (parsed ? parsed.effort : 'medium');
     return {
       isOrchPlan: false,
+      isHovered: false,
       baseName: baseName,
-      currentEffort: parsed ? parsed.effort : 'medium',
+      currentEffort: realEff,
       levels: levels
     };
   }
@@ -3372,7 +3484,8 @@
       var pk = ctx.orchPick || ctx.orchestratorPick;
       if (isOrchPlan && pk && typeof pk.select === 'function') {
         var def = ctx.orchDef || ctx.orchestratorDefaultPlanner;
-        pk.select(def && def.value === targetOption.value ? 0 : targetOption.value);
+        var nextVal = (def && def.value === targetOption.value) ? 0 : targetOption.value;
+        pk.select(nextVal);
         if (shouldKeep && typeof ctx.setIsOpen === 'function') {
           try { ctx.setIsOpen(true); } catch (_e) {}
         }
@@ -3410,29 +3523,23 @@
     }
   }
 
-  function createEffortSliderController(options) {
+  function createEffortSliderController() {
     if (typeof document === 'undefined') {
       return { sync: function () {}, destroy: function () {} };
     }
     ensureEffortStyles();
-    var opts = options || {};
     var barEl = null;
     var titleEl = null;
     var valEl = null;
     var stepsEl = null;
     var currentEffort = 'medium';
-    var currentLevels = DEFAULT_DISPLAY_ORDER.slice();
     var activeProfile = null;
     var liveCtx = null;
     var lastRenderedKey = '';
     var mountedPanel = null;
+    var hoveredModelText = '';
+    var optimisticLock = null;
     var syncTimer = 0;
-
-    function isZh() {
-      var cfg = typeof opts.getConfig === 'function' ? opts.getConfig() : {};
-      var lang = (cfg && cfg.i18n && cfg.i18n.language) || 'zh-CN';
-      return lang !== 'en';
-    }
 
     function readHostTriggerRaw() {
       var trig = document.querySelector('[data-testid="model-selector-trigger"]');
@@ -3482,38 +3589,35 @@
       var panel = mountedPanel || document.querySelector('[data-testid="model-selector-panel"]');
       var trigInfo = readHostTriggerRaw();
       var ctx = readAgFiberContext(panel || trigInfo.trig) || liveCtx;
-      var prof = ctx ? resolveActiveModelProfile(ctx, trigInfo.raw) : activeProfile;
+      var prof = ctx ? resolveActiveModelProfile(ctx, trigInfo.raw, hoveredModelText) : activeProfile;
+      if (!prof || !Array.isArray(prof.levels)) return;
 
-      var committed = false;
-      if (ctx && prof && Array.isArray(prof.levels)) {
-        var match = prof.levels.find(function (l) { return l.id === levelId; });
-        if (match && match.option) {
-          committed = commitEffortOption(ctx, match.option, prof.isOrchPlan, true);
-        }
-      }
+      var match = prof.levels.find(function (l) { return l.id === levelId; });
+      if (!match || !match.option) return;
 
+      var committed = commitEffortOption(ctx, match.option, prof.isOrchPlan, true);
       if (!committed) {
-        committed = tryApplyEffortDomFallback(panel, levelId, trigInfo.family);
+        tryApplyEffortDomFallback(panel, levelId, extractModelFamily(prof.baseName) || trigInfo.family);
       }
 
       currentEffort = levelId;
+      optimisticLock = { base: prof.baseName, effort: levelId, until: Date.now() + 450 };
       updateBarDom();
 
       if (syncTimer) clearTimeout(syncTimer);
       syncTimer = setTimeout(function () {
         syncTimer = 0;
+        optimisticLock = null;
         var curPanel = document.querySelector('[data-testid="model-selector-panel"]');
         var curTrig = readHostTriggerRaw();
         var nextCtx = readAgFiberContext(curPanel || curTrig.trig);
-        var nextProf = nextCtx ? resolveActiveModelProfile(nextCtx, curTrig.raw) : null;
+        var nextProf = nextCtx ? resolveActiveModelProfile(nextCtx, curTrig.raw, hoveredModelText) : null;
         if (nextProf && nextProf.currentEffort) {
+          activeProfile = nextProf;
           currentEffort = nextProf.currentEffort;
           updateBarDom();
-        } else if (curTrig.effort) {
-          currentEffort = curTrig.effort;
-          updateBarDom();
         }
-      }, 120);
+      }, 140);
     }
 
     function ensureBarBuilt() {
@@ -3547,31 +3651,71 @@
       barEl.appendChild(stepsEl);
     }
 
+    function getDisplayLabel(levelId, prof) {
+      if (prof && Array.isArray(prof.levels)) {
+        var found = prof.levels.find(function (l) { return l.id === levelId; });
+        if (found && found.label) return found.label;
+      }
+      var meta = EFFORT_LEVELS.find(function (l) { return l.id === levelId; });
+      return meta ? meta.labelEn : levelId;
+    }
+
     function updateBarDom() {
+      if (!activeProfile || !Array.isArray(activeProfile.levels) || activeProfile.levels.length < 2) {
+        if (barEl && barEl.parentElement) barEl.parentElement.removeChild(barEl);
+        return;
+      }
       ensureBarBuilt();
-      var zh = isZh();
-      var levelIds = (activeProfile && Array.isArray(activeProfile.levels) && activeProfile.levels.length)
-        ? activeProfile.levels.map(function (l) { return l.id; })
-        : DEFAULT_DISPLAY_ORDER;
-      var baseName = (activeProfile && activeProfile.baseName) || '';
-      var key = currentEffort + '|' + levelIds.join(',') + '|' + baseName + '|' + (zh ? '1' : '0');
+
+      var levelIds = activeProfile.levels.map(function (l) { return l.id; });
+      var baseName = activeProfile.baseName || '';
+      var key = currentEffort + '|' + levelIds.join(',') + '|' + baseName;
       if (key === lastRenderedKey) return;
       lastRenderedKey = key;
-      currentLevels = levelIds;
 
-      var activeLvl = EFFORT_LEVELS.find(function (l) { return l.id === currentEffort; }) || EFFORT_LEVELS[3];
-      titleEl.textContent = (zh ? '推理等级' : 'Reasoning Effort') + (baseName ? (' · ' + baseName) : '');
-      valEl.textContent = zh ? activeLvl.labelZh : activeLvl.labelEn;
+      titleEl.textContent = baseName || 'Thinking effort';
+      valEl.textContent = getDisplayLabel(currentEffort, activeProfile);
 
-      stepsEl.innerHTML = currentLevels.map(function (id) {
-        var meta = EFFORT_LEVELS.find(function (l) { return l.id === id; }) || { id: id, labelZh: id, labelEn: id };
-        return '<button type="button" class="ags-effort-btn ' + (id === currentEffort ? 'active' : '') +
-          '" data-effort="' + id + '">' + (zh ? meta.labelZh : meta.labelEn) + '</button>';
+      stepsEl.innerHTML = activeProfile.levels.map(function (lvl) {
+        return '<button type="button" class="ags-effort-btn ' + (lvl.id === currentEffort ? 'active' : '') +
+          '" data-effort="' + lvl.id + '">' + (lvl.label || getDisplayLabel(lvl.id, activeProfile)) + '</button>';
       }).join('');
     }
 
+    function onPanelPointerOver(ev) {
+      var item = ev.target && ev.target.closest && ev.target.closest('[role="menuitem"], [role="option"], [data-testid="model-selector-item"]');
+      if (!item || !mountedPanel || !mountedPanel.contains(item)) return;
+      var raw = item.getAttribute('data-model-base') || item.getAttribute('data-model-label') || item.textContent || '';
+      var fam = extractModelFamily(raw);
+      if (!fam || fam === extractModelFamily(hoveredModelText)) return;
+      if (isOrchestratorModel(raw)) {
+        hoveredModelText = '';
+      } else {
+        hoveredModelText = raw.replace(/\b(?:new|notice|beta|preview|recommended)\b/gi, '').trim();
+      }
+      var trigInfo = readHostTriggerRaw();
+      var ctx = readAgFiberContext(mountedPanel) || liveCtx;
+      if (ctx) {
+        activeProfile = resolveActiveModelProfile(ctx, trigInfo.raw, hoveredModelText);
+        if (activeProfile && activeProfile.currentEffort) currentEffort = activeProfile.currentEffort;
+        updateBarDom();
+        if (activeProfile && activeProfile.levels && activeProfile.levels.length >= 2) {
+          var studioRoot = document.getElementById('ag-studio-root') || document.body;
+          if (barEl && barEl.parentElement !== studioRoot) studioRoot.appendChild(barEl);
+        }
+      }
+    }
+
+    function detachPanelListener() {
+      if (mountedPanel) {
+        try { mountedPanel.removeEventListener('pointerover', onPanelPointerOver, true); } catch (_e) {}
+      }
+    }
+
     function removeBar() {
+      detachPanelListener();
       mountedPanel = null;
+      hoveredModelText = '';
       if (barEl && barEl.parentElement) barEl.parentElement.removeChild(barEl);
     }
 
@@ -3587,25 +3731,36 @@
         return;
       }
 
+      if (mountedPanel !== panel) {
+        detachPanelListener();
+        mountedPanel = panel;
+        hoveredModelText = '';
+        panel.addEventListener('pointerover', onPanelPointerOver, { capture: true, passive: true });
+      }
+
       var trigInfo = readHostTriggerRaw();
       liveCtx = readAgFiberContext(panel) || readAgFiberContext(trigInfo.trig);
-      activeProfile = liveCtx ? resolveActiveModelProfile(liveCtx, trigInfo.raw) : null;
+      activeProfile = liveCtx ? resolveActiveModelProfile(liveCtx, trigInfo.raw, hoveredModelText) : null;
 
-      if (activeProfile && activeProfile.currentEffort) {
+      if (optimisticLock && Date.now() < optimisticLock.until && activeProfile && activeProfile.baseName === optimisticLock.base) {
+        currentEffort = optimisticLock.effort;
+      } else if (activeProfile && activeProfile.currentEffort) {
         currentEffort = activeProfile.currentEffort;
       } else if (trigInfo.effort) {
         currentEffort = trigInfo.effort;
       }
 
       updateBarDom();
+      if (!activeProfile || !activeProfile.levels || activeProfile.levels.length < 2) {
+        return;
+      }
       var studioRoot = document.getElementById('ag-studio-root') || document.body;
-      if (barEl.parentElement !== studioRoot) {
+      if (barEl && barEl.parentElement !== studioRoot) {
         studioRoot.appendChild(barEl);
       }
-      mountedPanel = panel;
       try {
         var r = panel.getBoundingClientRect();
-        if (r && r.width > 0) {
+        if (r && r.width > 0 && barEl) {
           var w = Math.max(220, Math.min(340, Math.round(r.width)));
           barEl.style.width = w + 'px';
           barEl.style.left = Math.max(8, Math.round(r.left)) + 'px';
@@ -3825,7 +3980,9 @@
       '.ags-theme-cards { display:grid; grid-template-columns:1fr 1fr; gap:8px; }',
       '.ags-theme-card { padding:10px; border-radius:10px; border:1px solid var(--ags-border); background:var(--ags-bg-surface); cursor:pointer; text-align:left; transition:border-color 120ms ease; }',
       '.ags-theme-card.active { border-color:var(--ags-accent); box-shadow:0 0 0 1px var(--ags-accent); }',
-      '.ags-acc-item { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-radius:10px; border:1px solid var(--ags-border); background:var(--ags-bg-surface); }',
+      '.ags-acc-item { display:flex; flex-direction:column; gap:8px; padding:10px 12px; border-radius:10px; border:1px solid var(--ags-border); background:var(--ags-bg-surface); }',
+      '.ags-acc-quota-box { display:flex; flex-direction:column; gap:6px; padding-top:8px; border-top:1px solid var(--ags-border); }',
+      '.ags-acc-pool { display:flex; flex-direction:column; gap:3px; }',
       '.ags-avatar { width:30px; height:30px; border-radius:50%; background:var(--ags-accent-soft); color:var(--ags-accent); display:flex; align-items:center; justify-content:center; font-weight:600; flex-shrink:0; }',
       '.ags-details { border:1px solid var(--ags-border); border-radius:10px; background:var(--ags-bg-surface); padding:8px 11px; }',
       '.ags-details summary { cursor:pointer; font-size:12px; color:var(--ags-text-secondary); font-weight:500; outline:none; user-select:none; }',
@@ -3872,6 +4029,7 @@
       open: false,
       activeTab: 'overview',
       days: 30,
+      currency: 'USD', // USD | CNY
       speedHistory: [],
       proxyTestResult: null,
       timelineOpen: false,
@@ -3958,10 +4116,17 @@
         segChat = pct;
       }
 
-      var speed = Number((ctx.speed && (ctx.speed.tokPerSec || ctx.speed.tps)) || 0);
+      var speed = Number((ctx.speed && (ctx.speed.streamingTps || ctx.speed.tokPerSec || ctx.speed.tps)) || 0);
+      var overallTps = Number((ctx.speed && ctx.speed.overallTps) || 0);
+      var speedStr = speed > 0 ? Number(speed).toFixed(1).replace(/\.0$/, '') : '0';
       var ttft = Number((ctx.speed && ctx.speed.ttftMs) || 0);
+      var ttftVal = ttft >= 1000 ? (ttft / 1000).toFixed(1) : (ttft > 0 ? String(Math.round(ttft)) : '-');
+      var ttftUnit = ttft >= 1000 ? 's' : 'ms';
       var cost = Number((snap && snap.estimatedSessionCostUsd) || 0);
       var pools = (snap && snap.quota && snap.quota.pools) || [];
+      var remainingCtx = Math.max(0, limit - used);
+      var cmq = (snap && snap.currentModelQuota) || null;
+      var histMed = ctx.speed && ctx.speed.historyMedian;
       var legend = t('ctxLegend');
 
       var attachInfo = (snap && snap.attachments) || ctx.attachments || null;
@@ -3970,6 +4135,9 @@
         var files = Array.isArray(attachInfo.files) ? attachInfo.files : [];
         attachHtml = '<div class="ags-row"><span>已挂载 ' + esc(attachInfo.count || files.length) + ' 个附件</span>' +
           '<span class="ags-sub">' + (attachInfo.totalTokens ? ('≈ ' + fmtTok(attachInfo.totalTokens) + ' tok') : '') + '</span></div>' +
+          ((attachInfo.unknownFiles > 0 || attachInfo.complete === false)
+            ? '<div class="ags-sub" style="color:var(--ags-warning)">含 ' + Number(attachInfo.unknownFiles || 0) + ' 个无法解析的文件，总计为部分估算</div>'
+            : '') +
           (files.length
             ? '<div style="display:flex;flex-direction:column;gap:4px;margin-top:4px">' + files.slice(0, 5).map(function (f) {
                 var nm = typeof f === 'string' ? f : (f.name || f.path || 'file');
@@ -3981,13 +4149,15 @@
 
       var evalInfo = ctx.speed && ctx.speed.evaluation;
       var evalHtml = '';
-      if (evalInfo && (evalInfo.comment || evalInfo.shortTitle)) {
+      if (evalInfo && (evalInfo.comment || evalInfo.shortTitle || (evalInfo.badge && evalInfo.badge.text))) {
         var evColor = (evalInfo.badge && evalInfo.badge.color) || 'var(--ags-accent)';
         var evGlyph = (evalInfo.badge && evalInfo.badge.glyph) || '⚡';
-        var evBadgeTxt = (evalInfo.badge && evalInfo.badge.text) || evalInfo.shortTitle || '';
-        var gradeTxt = evalInfo.grade ? (evalInfo.grade + '级' + (evalInfo.score != null ? (' ' + Math.round(evalInfo.score) + '分') : '') + ' · ') : '';
+        var evBadgeTxt = (evalInfo.badge && evalInfo.badge.text) || '';
+        var titleText = evBadgeTxt
+          ? evBadgeTxt
+          : ((evalInfo.grade ? (evalInfo.grade + '级' + (evalInfo.score != null ? (' ' + Number(evalInfo.score).toFixed(1) + '分') : '') + ' · ') : '') + (evalInfo.shortTitle || ''));
         evalHtml = '<div class="ags-eval-box">' +
-          '<div class="ags-row"><span class="ags-eval-badge" style="color:' + esc(evColor) + '">' + esc(evGlyph + ' ' + gradeTxt + evBadgeTxt) + '</span>' +
+          '<div class="ags-row"><span class="ags-eval-badge" style="color:' + esc(evColor) + '">' + esc(evGlyph + ' ' + titleText) + '</span>' +
           (evalInfo.subLabel ? '<span class="ags-sub">' + esc(evalInfo.subLabel) + '</span>' : '') + '</div>' +
           (evalInfo.comment ? '<div class="ags-sub" style="line-height:1.45">' + esc(evalInfo.comment) + '</div>' : '') +
           '</div>';
@@ -4007,28 +4177,77 @@
             }).join('')
           : '<div class="ags-sub">' + (snap && snap.conversationId ? '暂无逐轮记录' : '进入会话后可查看逐轮调用记录') + '</div>');
 
+      var quotaMetaHtml = (snap && snap.quota && (snap.quota.planName || snap.quota.creditsBalance != null))
+        ? '<div class="ags-row" style="font-size:11px;margin-top:-2px">' +
+            '<span class="ags-sub">' + esc(snap.quota.planName || 'Subscription') + '</span>' +
+            (snap.quota.creditsBalance != null ? ('<span class="ags-sub">AI Credits: ' + esc(snap.quota.creditsBalance) + '</span>') : '') +
+          '</div>'
+        : '';
+
       var quotaHtml = pools.length
         ? pools.map(function (p) {
-            var pPct = p.remainingPercent == null ? 100 : Math.round(p.remainingPercent);
-            var eta = formatResetEta(p.resetTime);
-            var barColor = p.isLow ? 'var(--ags-warning)' : 'var(--ags-accent)';
             var poolTitle = p.displayName || p.poolKey || p.title || '模型共享池';
+            var bList = Array.isArray(p.buckets) && p.buckets.length
+              ? p.buckets
+              : [{
+                  windowLabel: '当前周期额度',
+                  remainingPercent: p.remainingPercent,
+                  resetTime: p.resetTime,
+                  resetTimeText: p.resetTimeText,
+                  countdownText: p.countdownText,
+                  isLow: p.isLow,
+                  tokenEstimate: p.tokenEstimate || null
+                }];
+
+            var bucketsHtml = bList.map(function (b) {
+              var bPct = b.remainingPercent == null ? 100 : Math.round(b.remainingPercent);
+              var bEta = b.countdownText || formatResetEta(b.resetTime);
+              var bReset = b.resetTimeText ? (' (' + b.resetTimeText + ' 重置)') : '';
+              var bColor = b.isLow ? 'var(--ags-warning)' : 'var(--ags-accent)';
+              var te = b.tokenEstimate;
+              var tokLine = '';
+              if (te && te.estRemainingShort) {
+                tokLine = '<div class="ags-sub" style="font-size:10.5px">预计剩余 ≈ ' + esc(te.estRemainingShort) +
+                  (te.estTotalShort ? (' / 周期总额 ≈ ' + esc(te.estTotalShort)) : '') +
+                  (te.isReliable ? '' : ' (校准中)') + '</div>';
+              } else if (te && te.cycleTokensUsed > 0) {
+                tokLine = '<div class="ags-sub" style="font-size:10.5px">本周期已用 ' + fmtTok(te.cycleTokensUsed) + ' (样本校准中)</div>';
+              }
+              return '<div style="display:flex;flex-direction:column;gap:3px">' +
+                '<div class="ags-row"><span class="ags-sub">' + esc(b.windowLabel || '周期额度') + '</span>' +
+                '<span class="ags-sub">' + bPct + '%' + (bEta ? (' · ' + esc(bEta)) : '') + esc(bReset) + '</span></div>' +
+                '<div class="ags-prog"><div class="ags-prog-fill" style="width:' + bPct + '%;background:' + bColor + '"></div></div>' +
+                tokLine +
+                '</div>';
+            }).join('');
+
             var subModels = Array.isArray(p.modelNames) && p.modelNames.length
               ? '<div class="ags-sub" style="font-size:10.5px;opacity:0.8">' + esc(p.modelNames.join(' · ')) + '</div>'
               : '';
-            return '<div style="display:flex;flex-direction:column;gap:4px">' +
-              '<div class="ags-row"><span style="font-size:12px;font-weight:500">' + esc(poolTitle) + '</span>' +
-              '<span class="ags-sub">' + pPct + '%' + (eta ? (' · ' + eta) : '') + '</span></div>' +
-              '<div class="ags-prog"><div class="ags-prog-fill" style="width:' + pPct + '%;background:' + barColor + '"></div></div>' +
+            return '<div style="display:flex;flex-direction:column;gap:5px;padding-top:4px;border-top:1px dashed var(--ags-border)">' +
+              '<div style="font-size:12px;font-weight:600">' + esc(poolTitle) + '</div>' +
+              bucketsHtml +
               subModels +
               '</div>';
           }).join('')
         : '<div class="ags-sub">' + esc(t('noQuota')) + '</div>';
 
+      var cmqHtml = (cmq && cmq.remainingPercent != null)
+        ? '<div class="ags-row" style="padding-top:6px;border-top:1px solid var(--ags-border);font-size:11.5px">' +
+            '<span class="ags-sub">当前模型额度' + (cmq.windowLabel ? (' (' + esc(cmq.windowLabel) + ')') : '') + '</span>' +
+            '<span style="font-weight:500">' + Math.round(cmq.remainingPercent) + '%' +
+            (cmq.estRemainingShort ? (' · 约剩 ' + esc(cmq.estRemainingShort)) : '') +
+            (cmq.countdownText ? (' · ' + esc(cmq.countdownText)) : '') + '</span></div>'
+        : '';
+
+      var speedTitle = (overallTps > 0 && Math.abs(overallTps - speed) >= 1)
+        ? (' title="纯流式输出速率（含首字综合 ' + Math.round(overallTps) + ' tok/s）"')
+        : '';
+
       return [
         '<div class="ags-card">',
         '  <div class="ags-card-head"><span>' + esc(t('ctxTitle')) + '</span><span>' + esc(ctx.model || '未检测会话') + '</span></div>',
-        '  <div class="ags-row"><span class="ags-big">' + pct + '%</span><span class="ags-sub">' + fmtTok(used) + ' / ' + fmtTok(limit) + '</span></div>',
+        '  <div class="ags-row"><span class="ags-big">' + pct + '%</span><span class="ags-sub">' + fmtTok(used) + ' / ' + fmtTok(limit) + ' · 剩 ' + fmtTok(remainingCtx) + '</span></div>',
         '  <div class="ags-seg-bar">' +
         '    <div style="width:' + segSys + '%;background:var(--ags-accent)"></div>' +
         '    <div style="width:' + segTool + '%;background:var(--ags-success)"></div>' +
@@ -4041,13 +4260,14 @@
         '    <span class="ags-legend-item"><span class="ags-swatch" style="background:#60A5FA"></span>' + legend.chat + ' ' + fmtTok(bdChat) + '</span>' +
         '    <span class="ags-legend-item"><span class="ags-swatch" style="background:var(--ags-warning)"></span>' + legend.think + ' ' + fmtTok(bdThink) + '</span>' +
         '  </div>',
+        cmqHtml,
         '</div>',
 
         '<div class="ags-card">',
-        '  <div class="ags-card-head"><span>' + esc(t('perfTitle')) + '</span><span>缓存命中 ' + Math.round((ctx.cacheHitRate || 0) * 100) + '%</span></div>',
+        '  <div class="ags-card-head"><span>' + esc(t('perfTitle')) + '</span><span>缓存命中 ' + Math.round((ctx.cacheHitRate || 0) * 100) + '%' + (histMed && histMed.medianTps ? (' · 历史中位 ' + Math.round(histMed.medianTps) + ' tok/s') : '') + '</span></div>',
         '  <div class="ags-grid-3">',
-        '    <div class="ags-metric-box"><div class="ags-sub">' + esc(t('speed')) + '</div><div class="ags-metric-val">' + Math.round(speed) + ' <span class="ags-sub">tok/s</span></div></div>',
-        '    <div class="ags-metric-box"><div class="ags-sub">' + esc(t('ttft')) + '</div><div class="ags-metric-val">' + (ttft ? Math.round(ttft) : '-') + ' <span class="ags-sub">ms</span></div></div>',
+        '    <div class="ags-metric-box"' + speedTitle + '><div class="ags-sub">' + esc(t('speed')) + '</div><div class="ags-metric-val">' + speedStr + ' <span class="ags-sub">tok/s</span></div></div>',
+        '    <div class="ags-metric-box"><div class="ags-sub">' + esc(t('ttft')) + '</div><div class="ags-metric-val">' + ttftVal + ' <span class="ags-sub">' + ttftUnit + '</span></div></div>',
         '    <div class="ags-metric-box"><div class="ags-sub">' + esc(t('cost')) + '</div><div class="ags-metric-val">$' + cost.toFixed(3) + '</div></div>',
         '  </div>',
         evalHtml,
@@ -4068,6 +4288,7 @@
         '<div class="ags-card">',
         '  <div class="ags-card-head"><span>' + esc(t('quotaTitle')) + '</span>' +
         '    <div style="display:flex;gap:6px"><button class="ags-btn" data-action="refresh-quota-only">刷新</button><button class="ags-btn" data-action="launch-cli">' + esc(t('launchCli')) + '</button></div></div>',
+        quotaMetaHtml,
         quotaHtml,
         '</div>'
       ].join('\n');
@@ -4099,13 +4320,27 @@
       var deskPct = deskTok + cliTok > 0 ? Math.round((deskTok / sumSrc) * 100) : 100;
       var cliPct = deskTok + cliTok > 0 ? (100 - deskPct) : 0;
 
-      var topModels = (h.byModel || []).slice(0, 6);
+      var isCny = state.currency === 'CNY';
+      var fxRate = isCny ? 7.25 : 1;
+      var curSym = isCny ? '¥' : '$';
+      var fmtMoney = function (usd) { return curSym + (Number(usd || 0) * fxRate).toFixed(2); };
+
+      var allModels = Array.isArray(h.byModel) ? h.byModel : [];
+      var topModels = allModels.slice(0, 12);
+      if (allModels.length > 12) {
+        var restModels = allModels.slice(12);
+        topModels = topModels.concat([{
+          model: '其他模型 (' + restModels.length + ')',
+          totalTokens: restModels.reduce(function (s, m) { return s + Number(m.totalTokens || 0); }, 0),
+          costUsd: restModels.reduce(function (s, m) { return s + Number(m.costUsd || 0); }, 0)
+        }]);
+      }
       var maxModel = Math.max.apply(null, topModels.map(function (m) { return m.totalTokens || 0; }).concat([1]));
       var modelHtml = topModels.length
         ? topModels.map(function (m) {
             var w = Math.round(((m.totalTokens || 0) / maxModel) * 100);
             return '<div style="display:flex;flex-direction:column;gap:3px">' +
-              '<div class="ags-row"><span style="font-size:12px">' + esc(m.model) + '</span><span class="ags-sub">' + fmtTok(m.totalTokens) + ' · $' + Number(m.costUsd || 0).toFixed(2) + '</span></div>' +
+              '<div class="ags-row"><span style="font-size:12px">' + esc(m.model) + '</span><span class="ags-sub">' + fmtTok(m.totalTokens) + ' · ' + fmtMoney(m.costUsd) + '</span></div>' +
               '<div class="ags-prog"><div class="ags-prog-fill" style="width:' + w + '%"></div></div></div>';
           }).join('')
         : '<div class="ags-sub">暂无历史用量记录</div>';
@@ -4113,6 +4348,15 @@
       var subPrice = Number((cfg && cfg.enhance && cfg.enhance.subscriptionMonthlyUsd) != null ? cfg.enhance.subscriptionMonthlyUsd : 20);
       var estCost = Number(h.totalCostUsd != null ? h.totalCostUsd : (h.costEstimate || 0));
       var savings = Number(h.savingsVsSub != null ? h.savingsVsSub : (h.savingsVsApiUsd != null ? h.savingsVsApiUsd : (estCost - subPrice)));
+      var speedRows = Array.isArray(h.speedByModel) ? h.speedByModel : [];
+      var speedRowsHtml = speedRows.length
+        ? speedRows.map(function (sr) {
+            return '<div class="ags-row" style="font-size:11.5px"><span>' + esc(sr.modelLabel || sr.model || 'model') + '</span>' +
+              '<span class="ags-sub">' + Math.round(sr.medianTps || sr.avgTps || 0) + ' tok/s' +
+              (sr.medianTtftSec != null ? (' · TTFT ' + Number(sr.medianTtftSec).toFixed(1) + 's') : '') +
+              ' · ' + (sr.sampleCount || sr.count || 0) + '次</span></div>';
+          }).join('')
+        : '<div class="ags-sub">暂无速度样本</div>';
 
       return [
         '<div class="ags-row">',
@@ -4122,13 +4366,13 @@
         '    <button class="ags-pill-opt ' + (state.days === 30 ? 'active' : '') + '" data-days="30">' + esc(t('days30')) + '</button>',
         '    <button class="ags-pill-opt ' + (state.days === 90 ? 'active' : '') + '" data-days="90">' + esc(t('days90')) + '</button>',
         '  </div>',
-        '  <button class="ags-btn" id="ags-sync-pricing-btn">' + esc(t('syncPricing')) + '</button>',
+        '  <div style="display:flex;gap:5px"><button class="ags-btn" id="ags-currency-btn">' + (isCny ? '¥ CNY' : '$ USD') + '</button><button class="ags-btn" id="ags-sync-pricing-btn">' + esc(t('syncPricing')) + '</button></div>',
         '</div>',
 
         '<div class="ags-grid-3">',
         '  <div class="ags-metric-box"><div class="ags-sub">' + esc(t('totalTok')) + '</div><div class="ags-metric-val">' + fmtTok(h.totalTokens) + '</div></div>',
-        '  <div class="ags-metric-box"><div class="ags-sub">' + esc(t('estApi')) + '</div><div class="ags-metric-val">$' + estCost.toFixed(2) + '</div></div>',
-        '  <div class="ags-metric-box"><div class="ags-sub">' + esc(t('vsSub')) + '</div><div class="ags-metric-val">' + (savings >= 0 ? ('+$' + savings.toFixed(1)) : ('-$' + Math.abs(savings).toFixed(1))) + '</div></div>',
+        '  <div class="ags-metric-box"><div class="ags-sub">' + esc(t('estApi')) + '</div><div class="ags-metric-val">' + fmtMoney(estCost) + '</div></div>',
+        '  <div class="ags-metric-box"><div class="ags-sub">' + esc(t('vsSub')) + '</div><div class="ags-metric-val">' + (savings >= 0 ? ('+' + fmtMoney(savings)) : ('-' + fmtMoney(Math.abs(savings)))) + '</div></div>',
         '</div>',
 
         '<div class="ags-card">',
@@ -4144,7 +4388,12 @@
         '<div class="ags-card">',
         '  <div class="ags-card-head"><span>' + esc(t('topModels')) + '</span><span class="ags-sub">订阅月费 $<input id="ags-sub-price" type="number" min="0" max="500" value="' + subPrice + '" style="width:46px;background:transparent;border:1px solid var(--ags-border);border-radius:5px;color:var(--ags-text-primary);padding:1px 4px;font-size:11px"></span></div>',
         modelHtml,
-        '</div>'
+        '</div>',
+
+        '<details class="ags-details">',
+        '  <summary>各模型历史速度中位数对比</summary>',
+        '  <div style="display:flex;flex-direction:column;gap:5px">' + speedRowsHtml + '</div>',
+        '</details>'
       ].join('\n');
     }
 
@@ -4161,21 +4410,54 @@
       var cards = list.length
         ? list.map(function (a) {
             var letter = (a.name || a.email || 'A').slice(0, 1).toUpperCase();
-            var minQ = a.quotaSnapshot && a.quotaSnapshot.minRemainingPercent;
+            var accPools = Array.isArray(a.quotaPools) && a.quotaPools.length
+              ? a.quotaPools
+              : (a.quotaSnapshot && Array.isArray(a.quotaSnapshot.pools) ? a.quotaSnapshot.pools : []);
+            var accQuotaHtml = '';
+            if (accPools.length) {
+              accQuotaHtml = '<div class="ags-acc-quota-box">' + accPools.map(function (p) {
+                var pName = p.displayName || p.title || p.poolKey || '模型池';
+                var bList = Array.isArray(p.buckets) && p.buckets.length
+                  ? p.buckets
+                  : [{ windowLabel: '当前额度', remainingPercent: p.remainingPercent, resetTime: p.resetTime, resetTimeText: p.resetTimeText, countdownText: p.countdownText, isLow: p.isLow }];
+                var bHtml = bList.map(function (b) {
+                  var bPct = b.remainingPercent != null
+                    ? Math.round(Number(b.remainingPercent))
+                    : (typeof b.remainingFraction === 'number' ? Math.round(b.remainingFraction * 100) : 100);
+                  var bEta = b.countdownText || formatResetEta(b.resetTime || b.resetTimeIso);
+                  var bColor = b.isLow || bPct <= 20 ? 'var(--ags-warning)' : 'var(--ags-accent)';
+                  return '<div class="ags-acc-pool">' +
+                    '<div class="ags-row" style="font-size:11px"><span class="ags-sub">' + esc(b.windowLabel || '周期额度') + '</span>' +
+                    '<span class="ags-sub">' + bPct + '%' + (bEta ? (' · ' + esc(bEta)) : '') + (b.resetTimeText ? (' (' + esc(b.resetTimeText) + ')') : '') + '</span></div>' +
+                    '<div class="ags-prog"><div class="ags-prog-fill" style="width:' + bPct + '%;background:' + bColor + '"></div></div>' +
+                    '</div>';
+                }).join('');
+                return '<div style="display:flex;flex-direction:column;gap:4px"><div style="font-size:11.5px;font-weight:500">' + esc(pName) + '</div>' + bHtml + '</div>';
+              }).join('') + '</div>';
+            } else {
+              accQuotaHtml = '<div class="ags-acc-quota-box"><div class="ags-sub" style="font-size:11px">' +
+                (a.lastQuotaError ? ('刷新失败: ' + esc(a.lastQuotaError)) : '尚未获取额度快照（点击右上 ↻ 或「刷新额度」拉取）') +
+                '</div></div>';
+            }
+
             return '<div class="ags-acc-item">' +
-              '  <div style="display:flex;align-items:center;gap:10px;min-width:0">' +
-              '    <div class="ags-avatar">' + esc(letter) + '</div>' +
-              '    <div style="min-width:0">' +
-              '      <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(a.email || a.name) + '</div>' +
-              '      <div class="ags-sub">' + esc(a.planName || a.source || 'Standard') + (minQ != null ? (' · 额度 ' + Math.round(minQ) + '%') : '') + '</div>' +
+              '  <div class="ags-row">' +
+              '    <div style="display:flex;align-items:center;gap:10px;min-width:0">' +
+              '      <div class="ags-avatar">' + esc(letter) + '</div>' +
+              '      <div style="min-width:0">' +
+              '        <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(a.email || a.name) + '</div>' +
+              '        <div class="ags-sub">' + esc(a.planName || a.source || 'Standard') + (a.lastQuotaUpdatedAtMs ? (' · 已同步') : '') + '</div>' +
+              '      </div>' +
               '    </div>' +
-              '  </div>' +
-              '  <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">' +
+              '    <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">' +
+              '      <button class="ags-btn ags-btn-ghost" title="刷新此账号额度" data-acc-refresh-one="' + esc(a.email || a.id) + '">↻</button>' +
               (a.isActive
                 ? '<span class="ags-pill-opt active">' + esc(t('activeTag')) + '</span>'
                 : '<button class="ags-btn ags-btn-primary" data-acc-switch="' + esc(a.id) + '">' + esc(t('switchBtn')) + '</button>') +
-              '    <button class="ags-btn ags-btn-ghost" title="移除" data-acc-remove="' + esc(a.id) + '">×</button>' +
+              '      <button class="ags-btn ags-btn-ghost" title="移除" data-acc-remove="' + esc(a.id) + '">×</button>' +
+              '    </div>' +
               '  </div>' +
+              accQuotaHtml +
               '</div>';
           }).join('')
         : '<div class="ags-card"><div class="ags-sub">尚未保存账号槽位，点击上方「导入当前」快速保存当前登录态。</div></div>';
@@ -4229,6 +4511,10 @@
           '</div>';
       }).join('');
 
+      var curModel = (state.snapshot && state.snapshot.context && state.snapshot.context.model) || 'gemini-4-neon';
+      var curPerLimits = (cfg.context && cfg.context.perModelLimits) || {};
+      var curModelLimitVal = curPerLimits[curModel] || 512000;
+
       return [
         // Section 1: Appearance, Fonts & Mascot
         '<div class="ags-card">',
@@ -4268,15 +4554,19 @@
         '      </select>' +
         '      <input type="checkbox" id="ags-mascot-enabled" ' + (mascotCfg.enabled !== false ? 'checked' : '') + '>' +
         '    </div></div>',
-        '  <div class="ags-row"><span>512K 呼吸试管</span><input type="checkbox" id="ags-vial-enabled" ' + (hudCfg.showVial !== false ? 'checked' : '') + '></div>',
-        '  <div class="ags-row"><span>HUD 状态胶囊</span>' +
-        '    <div style="display:flex;gap:6px;align-items:center">' +
-        '      <select class="ags-select" style="width:110px" id="ags-hud-pos">' +
-        '        <option value="composer" ' + (hudCfg.position !== 'floating' ? 'selected' : '') + '>对话框正下方</option>' +
-        '        <option value="floating" ' + (hudCfg.position === 'floating' ? 'selected' : '') + '>右下角悬浮</option>' +
+        '  <div class="ags-row"><span>工具栏上下文展示</span>' +
+        '    <div style="display:flex;gap:5px;align-items:center">' +
+        '      <select class="ags-select" style="width:82px" id="ags-hud-style">' +
+        '        <option value="ring" ' + ((hudCfg.displayStyle || 'ring') === 'ring' ? 'selected' : '') + '>极简圆环</option>' +
+        '        <option value="capsule" ' + (hudCfg.displayStyle === 'capsule' ? 'selected' : '') + '>完整胶囊</option>' +
+        '      </select>' +
+        '      <select class="ags-select" style="width:94px" id="ags-hud-pos">' +
+        '        <option value="composer" ' + (hudCfg.position !== 'floating' ? 'selected' : '') + '>工具栏内</option>' +
+        '        <option value="floating" ' + (hudCfg.position === 'floating' ? 'selected' : '') + '>右下悬浮</option>' +
         '      </select>' +
         '      <input type="checkbox" id="ags-hud-enabled" ' + (hudCfg.enabled !== false ? 'checked' : '') + '>' +
         '    </div></div>',
+        '  <div class="ags-row"><span>512K 呼吸试管 (胶囊模式)</span><input type="checkbox" id="ags-vial-enabled" ' + (hudCfg.showVial !== false ? 'checked' : '') + '></div>',
         '  <div class="ags-row"><span>新对话首页用量概览卡片</span><input type="checkbox" id="ags-home-card-enabled" ' + (cfg.homeOverview !== false && hudCfg.homeOverview !== false ? 'checked' : '') + '></div>',
         '  <details class="ags-details">',
         '    <summary>' + esc(t('customThemeTitle')) + ' & 三轨字体 (' + scannedFonts.length + ')</summary>',
@@ -4381,6 +4671,16 @@
 
         '      <hr style="border:none;border-top:1px solid var(--ags-border);margin:2px 0">',
 
+        '      <div class="ags-row"><span>当前模型显示上限 (' + esc(curModel) + ')</span><input class="ags-input" style="width:100px" type="number" id="ags-per-model-limit" value="' + esc(curModelLimitVal) + '"></div>',
+        '      <div class="ags-row" style="justify-content:flex-end;gap:5px">' +
+        '        <button class="ags-btn" data-model-preset="200000">200K</button>' +
+        '        <button class="ags-btn" data-model-preset="524288">512K</button>' +
+        '        <button class="ags-btn" data-model-preset="1048576">1M</button>' +
+        '        <button class="ags-btn" id="ags-model-limit-reset-btn">恢复默认</button>' +
+        '      </div>',
+
+        '      <hr style="border:none;border-top:1px solid var(--ags-border);margin:2px 0">',
+
         '      <div class="ags-row"><span>压缩后记忆自动回填</span><input type="checkbox" id="ags-rehydrate-en" ' + (curRehydrate ? 'checked' : '') + '></div>',
         '      <div class="ags-row" style="gap:6px;flex-wrap:wrap;margin-top:4px">' +
         '        <button class="ags-btn" id="ags-restart-ls-btn">重启 LS</button>' +
@@ -4446,6 +4746,14 @@
         });
       }
 
+      var curBtn = el.querySelector('#ags-currency-btn');
+      if (curBtn) {
+        curBtn.addEventListener('click', function () {
+          state.currency = state.currency === 'CNY' ? 'USD' : 'CNY';
+          render(null, true);
+        });
+      }
+
       var subPriceEl = el.querySelector('#ags-sub-price');
       if (subPriceEl) {
         subPriceEl.addEventListener('change', function () {
@@ -4475,10 +4783,22 @@
         btn.addEventListener('click', function () {
           var action = btn.getAttribute('data-acc-action');
           if (opts.api && opts.api.accountsAction) {
-            opts.api.accountsAction({ action: action }).then(function () {
-              showToast('操作已完成');
+            opts.api.accountsAction({ action: action }).then(function (res) {
+              showToast((res && (res.message || res.error)) || '操作已完成');
               if (opts.onRefresh) opts.onRefresh(true);
             }).catch(function (err) { showToast((err && err.message) || '操作失败'); });
+          }
+        });
+      });
+
+      el.querySelectorAll('[data-acc-refresh-one]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var email = btn.getAttribute('data-acc-refresh-one');
+          if (opts.api && opts.api.accountsAction && email) {
+            opts.api.accountsAction({ action: 'refresh_quota', email: email }).then(function (res) {
+              showToast((res && (res.message || res.error)) || '额度已刷新');
+              if (opts.onRefresh) opts.onRefresh(true);
+            }).catch(function (err) { showToast((err && err.message) || '刷新失败'); });
           }
         });
       });
@@ -4577,13 +4897,22 @@
         mEn.addEventListener('change', saveMascot);
       }
 
+      var hStyle = el.querySelector('#ags-hud-style');
       var hPos = el.querySelector('#ags-hud-pos');
       var hEn = el.querySelector('#ags-hud-enabled');
       var vialEn = el.querySelector('#ags-vial-enabled');
       if (hPos && hEn && vialEn) {
         var saveHud = function () {
-          opts.saveConfig({ hud: { position: hPos.value, enabled: hEn.checked, showVial: vialEn.checked } });
+          opts.saveConfig({
+            hud: {
+              displayStyle: hStyle ? hStyle.value : 'ring',
+              position: hPos.value,
+              enabled: hEn.checked,
+              showVial: vialEn.checked
+            }
+          });
         };
+        if (hStyle) hStyle.addEventListener('change', saveHud);
         hPos.addEventListener('change', saveHud);
         hEn.addEventListener('change', saveHud);
         vialEn.addEventListener('change', saveHud);
@@ -4770,6 +5099,42 @@
       }
 
       // Rehydrate after compact
+      var curModelForLimit = (state.snapshot && state.snapshot.context && state.snapshot.context.model) || 'gemini-4-neon';
+      var perLimInp = el.querySelector('#ags-per-model-limit');
+      if (perLimInp) {
+        perLimInp.addEventListener('change', function () {
+          if (opts.api && opts.api.setContextLimit) {
+            opts.api.setContextLimit(curModelForLimit, Number(perLimInp.value || 512000)).then(function () {
+              showToast('已保存 ' + curModelForLimit + ' 上限');
+              if (opts.onRefresh) opts.onRefresh(true);
+            }).catch(function (e) { showToast(e.message || '保存失败'); });
+          }
+        });
+      }
+      el.querySelectorAll('[data-model-preset]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var v = Number(btn.getAttribute('data-model-preset'));
+          if (perLimInp) perLimInp.value = String(v);
+          if (opts.api && opts.api.setContextLimit) {
+            opts.api.setContextLimit(curModelForLimit, v).then(function () {
+              showToast('已设为 ' + fmtTok(v));
+              if (opts.onRefresh) opts.onRefresh(true);
+            }).catch(function () {});
+          }
+        });
+      });
+      var resetLimBtn = el.querySelector('#ags-model-limit-reset-btn');
+      if (resetLimBtn) {
+        resetLimBtn.addEventListener('click', function () {
+          if (opts.api && opts.api.resetContextLimit) {
+            opts.api.resetContextLimit(curModelForLimit).then(function () {
+              showToast('已恢复默认上限');
+              if (opts.onRefresh) opts.onRefresh(true);
+            }).catch(function () {});
+          }
+        });
+      }
+
       var rehEl = el.querySelector('#ags-rehydrate-en');
       if (rehEl) {
         rehEl.addEventListener('change', function () {

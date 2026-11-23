@@ -3,7 +3,7 @@
 const os = require('os');
 const path = require('path');
 
-const STUDIO_VERSION = '2.0.0';
+const STUDIO_VERSION = '2.1.0';
 const STUDIO_DIR_NAME = 'ag-studio';
 const STATE_DIR_NAME = 'AntigravityStudio';
 const LEGACY_METER_DIR_NAME = 'AntigravityContextMeter';
@@ -36,22 +36,23 @@ const LEGACY_MARKERS = [
 const DEFAULT_NO_PROXY = 'localhost,127.0.0.1,::1,127.0.0.0/8,10.0.0.0/8,192.168.0.0/16,172.16.0.0/12,<local>';
 
 const DEFAULT_MODEL_PRICING = {
-  'gemini-2.5-pro': { inputPer1M: 1.25, outputPer1M: 10.0, cachedPer1M: 0.3125 },
+  'gemini-2.5-pro': { inputPer1M: 1.25, outputPer1M: 10.0, cachedPer1M: 0.125 },
   'gemini-2.5-flash': { inputPer1M: 0.15, outputPer1M: 0.60, cachedPer1M: 0.0375 },
-  'gemini-3-pro': { inputPer1M: 2.0, outputPer1M: 12.0, cachedPer1M: 0.5 },
+  'gemini-3-pro': { inputPer1M: 2.0, outputPer1M: 12.0, cachedPer1M: 0.20 },
   'gemini-3-flash': { inputPer1M: 0.30, outputPer1M: 1.50, cachedPer1M: 0.075 },
-  'gemini-3.8-flash': { inputPer1M: 0.30, outputPer1M: 1.50, cachedPer1M: 0.075 },
-  'gemini-4-hydrogen': { inputPer1M: 2.0, outputPer1M: 12.0, cachedPer1M: 0.5 },
-  'gemini-4-argon': { inputPer1M: 2.50, outputPer1M: 15.0, cachedPer1M: 0.625 },
-  'gemini-4-carbon': { inputPer1M: 2.50, outputPer1M: 15.0, cachedPer1M: 0.625 },
-  'gemini-4-neon': { inputPer1M: 2.50, outputPer1M: 15.0, cachedPer1M: 0.625 },
+  'gemini-3.8-flash': { inputPer1M: 0.75, outputPer1M: 3.75, cachedPer1M: 0.075 },
+  'gemini-4-hydrogen': { inputPer1M: 1.50, outputPer1M: 7.50, cachedPer1M: 0.075 },
+  'gemini-4-argon': { inputPer1M: 2.00, outputPer1M: 10.0, cachedPer1M: 0.10 },
+  'gemini-4-carbon': { inputPer1M: 2.00, outputPer1M: 10.0, cachedPer1M: 0.10 },
+  'gemini-4-neon': { inputPer1M: 3.00, outputPer1M: 15.0, cachedPer1M: 0.15 },
+  'orchestrator': { inputPer1M: 3.00, outputPer1M: 15.0, cachedPer1M: 0.15 },
   'claude-sonnet-4': { inputPer1M: 3.0, outputPer1M: 15.0, cachedPer1M: 0.30 },
   'claude-opus-4': { inputPer1M: 15.0, outputPer1M: 75.0, cachedPer1M: 1.50 },
-  'claude-sonnet-5-5': { inputPer1M: 3.0, outputPer1M: 15.0, cachedPer1M: 0.30 },
-  'claude-opus-5-5': { inputPer1M: 15.0, outputPer1M: 75.0, cachedPer1M: 1.50 },
+  'claude-sonnet-5-5': { inputPer1M: 2.00, outputPer1M: 10.0, cachedPer1M: 0.10 },
+  'claude-opus-5-5': { inputPer1M: 4.00, outputPer1M: 20.0, cachedPer1M: 0.20 },
   'gpt-4o': { inputPer1M: 2.50, outputPer1M: 10.0, cachedPer1M: 1.25 },
   'gpt-oss-120b': { inputPer1M: 0.60, outputPer1M: 2.40, cachedPer1M: 0.15 },
-  'default': { inputPer1M: 1.50, outputPer1M: 8.0, cachedPer1M: 0.375 },
+  'default': { inputPer1M: 1.50, outputPer1M: 7.50, cachedPer1M: 0.075 },
 };
 
 const DEFAULT_MODEL_LIMITS = {
@@ -101,6 +102,7 @@ function getDefaultConfig() {
     },
     hud: {
       enabled: true,
+      displayStyle: 'ring', // ring | capsule
       showVial: true,
       vialEnabled: true,
       homeOverview: true,

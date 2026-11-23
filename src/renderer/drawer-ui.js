@@ -174,7 +174,9 @@
       '.ags-theme-cards { display:grid; grid-template-columns:1fr 1fr; gap:8px; }',
       '.ags-theme-card { padding:10px; border-radius:10px; border:1px solid var(--ags-border); background:var(--ags-bg-surface); cursor:pointer; text-align:left; transition:border-color 120ms ease; }',
       '.ags-theme-card.active { border-color:var(--ags-accent); box-shadow:0 0 0 1px var(--ags-accent); }',
-      '.ags-acc-item { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-radius:10px; border:1px solid var(--ags-border); background:var(--ags-bg-surface); }',
+      '.ags-acc-item { display:flex; flex-direction:column; gap:8px; padding:10px 12px; border-radius:10px; border:1px solid var(--ags-border); background:var(--ags-bg-surface); }',
+      '.ags-acc-quota-box { display:flex; flex-direction:column; gap:6px; padding-top:8px; border-top:1px solid var(--ags-border); }',
+      '.ags-acc-pool { display:flex; flex-direction:column; gap:3px; }',
       '.ags-avatar { width:30px; height:30px; border-radius:50%; background:var(--ags-accent-soft); color:var(--ags-accent); display:flex; align-items:center; justify-content:center; font-weight:600; flex-shrink:0; }',
       '.ags-details { border:1px solid var(--ags-border); border-radius:10px; background:var(--ags-bg-surface); padding:8px 11px; }',
       '.ags-details summary { cursor:pointer; font-size:12px; color:var(--ags-text-secondary); font-weight:500; outline:none; user-select:none; }',
@@ -221,6 +223,7 @@
       open: false,
       activeTab: 'overview',
       days: 30,
+      currency: 'USD', // USD | CNY
       speedHistory: [],
       proxyTestResult: null,
       timelineOpen: false,
@@ -307,10 +310,17 @@
         segChat = pct;
       }
 
-      var speed = Number((ctx.speed && (ctx.speed.tokPerSec || ctx.speed.tps)) || 0);
+      var speed = Number((ctx.speed && (ctx.speed.streamingTps || ctx.speed.tokPerSec || ctx.speed.tps)) || 0);
+      var overallTps = Number((ctx.speed && ctx.speed.overallTps) || 0);
+      var speedStr = speed > 0 ? Number(speed).toFixed(1).replace(/\.0$/, '') : '0';
       var ttft = Number((ctx.speed && ctx.speed.ttftMs) || 0);
+      var ttftVal = ttft >= 1000 ? (ttft / 1000).toFixed(1) : (ttft > 0 ? String(Math.round(ttft)) : '-');
+      var ttftUnit = ttft >= 1000 ? 's' : 'ms';
       var cost = Number((snap && snap.estimatedSessionCostUsd) || 0);
       var pools = (snap && snap.quota && snap.quota.pools) || [];
+      var remainingCtx = Math.max(0, limit - used);
+      var cmq = (snap && snap.currentModelQuota) || null;
+      var histMed = ctx.speed && ctx.speed.historyMedian;
       var legend = t('ctxLegend');
 
       var attachInfo = (snap && snap.attachments) || ctx.attachments || null;
@@ -319,6 +329,9 @@
         var files = Array.isArray(attachInfo.files) ? attachInfo.files : [];
         attachHtml = '<div class="ags-row"><span>已挂载 ' + esc(attachInfo.count || files.length) + ' 个附件</span>' +
           '<span class="ags-sub">' + (attachInfo.totalTokens ? ('≈ ' + fmtTok(attachInfo.totalTokens) + ' tok') : '') + '</span></div>' +
+          ((attachInfo.unknownFiles > 0 || attachInfo.complete === false)
+            ? '<div class="ags-sub" style="color:var(--ags-warning)">含 ' + Number(attachInfo.unknownFiles || 0) + ' 个无法解析的文件，总计为部分估算</div>'
+            : '') +
           (files.length
             ? '<div style="display:flex;flex-direction:column;gap:4px;margin-top:4px">' + files.slice(0, 5).map(function (f) {
                 var nm = typeof f === 'string' ? f : (f.name || f.path || 'file');
@@ -330,13 +343,15 @@
 
       var evalInfo = ctx.speed && ctx.speed.evaluation;
       var evalHtml = '';
-      if (evalInfo && (evalInfo.comment || evalInfo.shortTitle)) {
+      if (evalInfo && (evalInfo.comment || evalInfo.shortTitle || (evalInfo.badge && evalInfo.badge.text))) {
         var evColor = (evalInfo.badge && evalInfo.badge.color) || 'var(--ags-accent)';
         var evGlyph = (evalInfo.badge && evalInfo.badge.glyph) || '⚡';
-        var evBadgeTxt = (evalInfo.badge && evalInfo.badge.text) || evalInfo.shortTitle || '';
-        var gradeTxt = evalInfo.grade ? (evalInfo.grade + '级' + (evalInfo.score != null ? (' ' + Math.round(evalInfo.score) + '分') : '') + ' · ') : '';
+        var evBadgeTxt = (evalInfo.badge && evalInfo.badge.text) || '';
+        var titleText = evBadgeTxt
+          ? evBadgeTxt
+          : ((evalInfo.grade ? (evalInfo.grade + '级' + (evalInfo.score != null ? (' ' + Number(evalInfo.score).toFixed(1) + '分') : '') + ' · ') : '') + (evalInfo.shortTitle || ''));
         evalHtml = '<div class="ags-eval-box">' +
-          '<div class="ags-row"><span class="ags-eval-badge" style="color:' + esc(evColor) + '">' + esc(evGlyph + ' ' + gradeTxt + evBadgeTxt) + '</span>' +
+          '<div class="ags-row"><span class="ags-eval-badge" style="color:' + esc(evColor) + '">' + esc(evGlyph + ' ' + titleText) + '</span>' +
           (evalInfo.subLabel ? '<span class="ags-sub">' + esc(evalInfo.subLabel) + '</span>' : '') + '</div>' +
           (evalInfo.comment ? '<div class="ags-sub" style="line-height:1.45">' + esc(evalInfo.comment) + '</div>' : '') +
           '</div>';
@@ -356,28 +371,77 @@
             }).join('')
           : '<div class="ags-sub">' + (snap && snap.conversationId ? '暂无逐轮记录' : '进入会话后可查看逐轮调用记录') + '</div>');
 
+      var quotaMetaHtml = (snap && snap.quota && (snap.quota.planName || snap.quota.creditsBalance != null))
+        ? '<div class="ags-row" style="font-size:11px;margin-top:-2px">' +
+            '<span class="ags-sub">' + esc(snap.quota.planName || 'Subscription') + '</span>' +
+            (snap.quota.creditsBalance != null ? ('<span class="ags-sub">AI Credits: ' + esc(snap.quota.creditsBalance) + '</span>') : '') +
+          '</div>'
+        : '';
+
       var quotaHtml = pools.length
         ? pools.map(function (p) {
-            var pPct = p.remainingPercent == null ? 100 : Math.round(p.remainingPercent);
-            var eta = formatResetEta(p.resetTime);
-            var barColor = p.isLow ? 'var(--ags-warning)' : 'var(--ags-accent)';
             var poolTitle = p.displayName || p.poolKey || p.title || '模型共享池';
+            var bList = Array.isArray(p.buckets) && p.buckets.length
+              ? p.buckets
+              : [{
+                  windowLabel: '当前周期额度',
+                  remainingPercent: p.remainingPercent,
+                  resetTime: p.resetTime,
+                  resetTimeText: p.resetTimeText,
+                  countdownText: p.countdownText,
+                  isLow: p.isLow,
+                  tokenEstimate: p.tokenEstimate || null
+                }];
+
+            var bucketsHtml = bList.map(function (b) {
+              var bPct = b.remainingPercent == null ? 100 : Math.round(b.remainingPercent);
+              var bEta = b.countdownText || formatResetEta(b.resetTime);
+              var bReset = b.resetTimeText ? (' (' + b.resetTimeText + ' 重置)') : '';
+              var bColor = b.isLow ? 'var(--ags-warning)' : 'var(--ags-accent)';
+              var te = b.tokenEstimate;
+              var tokLine = '';
+              if (te && te.estRemainingShort) {
+                tokLine = '<div class="ags-sub" style="font-size:10.5px">预计剩余 ≈ ' + esc(te.estRemainingShort) +
+                  (te.estTotalShort ? (' / 周期总额 ≈ ' + esc(te.estTotalShort)) : '') +
+                  (te.isReliable ? '' : ' (校准中)') + '</div>';
+              } else if (te && te.cycleTokensUsed > 0) {
+                tokLine = '<div class="ags-sub" style="font-size:10.5px">本周期已用 ' + fmtTok(te.cycleTokensUsed) + ' (样本校准中)</div>';
+              }
+              return '<div style="display:flex;flex-direction:column;gap:3px">' +
+                '<div class="ags-row"><span class="ags-sub">' + esc(b.windowLabel || '周期额度') + '</span>' +
+                '<span class="ags-sub">' + bPct + '%' + (bEta ? (' · ' + esc(bEta)) : '') + esc(bReset) + '</span></div>' +
+                '<div class="ags-prog"><div class="ags-prog-fill" style="width:' + bPct + '%;background:' + bColor + '"></div></div>' +
+                tokLine +
+                '</div>';
+            }).join('');
+
             var subModels = Array.isArray(p.modelNames) && p.modelNames.length
               ? '<div class="ags-sub" style="font-size:10.5px;opacity:0.8">' + esc(p.modelNames.join(' · ')) + '</div>'
               : '';
-            return '<div style="display:flex;flex-direction:column;gap:4px">' +
-              '<div class="ags-row"><span style="font-size:12px;font-weight:500">' + esc(poolTitle) + '</span>' +
-              '<span class="ags-sub">' + pPct + '%' + (eta ? (' · ' + eta) : '') + '</span></div>' +
-              '<div class="ags-prog"><div class="ags-prog-fill" style="width:' + pPct + '%;background:' + barColor + '"></div></div>' +
+            return '<div style="display:flex;flex-direction:column;gap:5px;padding-top:4px;border-top:1px dashed var(--ags-border)">' +
+              '<div style="font-size:12px;font-weight:600">' + esc(poolTitle) + '</div>' +
+              bucketsHtml +
               subModels +
               '</div>';
           }).join('')
         : '<div class="ags-sub">' + esc(t('noQuota')) + '</div>';
 
+      var cmqHtml = (cmq && cmq.remainingPercent != null)
+        ? '<div class="ags-row" style="padding-top:6px;border-top:1px solid var(--ags-border);font-size:11.5px">' +
+            '<span class="ags-sub">当前模型额度' + (cmq.windowLabel ? (' (' + esc(cmq.windowLabel) + ')') : '') + '</span>' +
+            '<span style="font-weight:500">' + Math.round(cmq.remainingPercent) + '%' +
+            (cmq.estRemainingShort ? (' · 约剩 ' + esc(cmq.estRemainingShort)) : '') +
+            (cmq.countdownText ? (' · ' + esc(cmq.countdownText)) : '') + '</span></div>'
+        : '';
+
+      var speedTitle = (overallTps > 0 && Math.abs(overallTps - speed) >= 1)
+        ? (' title="纯流式输出速率（含首字综合 ' + Math.round(overallTps) + ' tok/s）"')
+        : '';
+
       return [
         '<div class="ags-card">',
         '  <div class="ags-card-head"><span>' + esc(t('ctxTitle')) + '</span><span>' + esc(ctx.model || '未检测会话') + '</span></div>',
-        '  <div class="ags-row"><span class="ags-big">' + pct + '%</span><span class="ags-sub">' + fmtTok(used) + ' / ' + fmtTok(limit) + '</span></div>',
+        '  <div class="ags-row"><span class="ags-big">' + pct + '%</span><span class="ags-sub">' + fmtTok(used) + ' / ' + fmtTok(limit) + ' · 剩 ' + fmtTok(remainingCtx) + '</span></div>',
         '  <div class="ags-seg-bar">' +
         '    <div style="width:' + segSys + '%;background:var(--ags-accent)"></div>' +
         '    <div style="width:' + segTool + '%;background:var(--ags-success)"></div>' +
@@ -390,13 +454,14 @@
         '    <span class="ags-legend-item"><span class="ags-swatch" style="background:#60A5FA"></span>' + legend.chat + ' ' + fmtTok(bdChat) + '</span>' +
         '    <span class="ags-legend-item"><span class="ags-swatch" style="background:var(--ags-warning)"></span>' + legend.think + ' ' + fmtTok(bdThink) + '</span>' +
         '  </div>',
+        cmqHtml,
         '</div>',
 
         '<div class="ags-card">',
-        '  <div class="ags-card-head"><span>' + esc(t('perfTitle')) + '</span><span>缓存命中 ' + Math.round((ctx.cacheHitRate || 0) * 100) + '%</span></div>',
+        '  <div class="ags-card-head"><span>' + esc(t('perfTitle')) + '</span><span>缓存命中 ' + Math.round((ctx.cacheHitRate || 0) * 100) + '%' + (histMed && histMed.medianTps ? (' · 历史中位 ' + Math.round(histMed.medianTps) + ' tok/s') : '') + '</span></div>',
         '  <div class="ags-grid-3">',
-        '    <div class="ags-metric-box"><div class="ags-sub">' + esc(t('speed')) + '</div><div class="ags-metric-val">' + Math.round(speed) + ' <span class="ags-sub">tok/s</span></div></div>',
-        '    <div class="ags-metric-box"><div class="ags-sub">' + esc(t('ttft')) + '</div><div class="ags-metric-val">' + (ttft ? Math.round(ttft) : '-') + ' <span class="ags-sub">ms</span></div></div>',
+        '    <div class="ags-metric-box"' + speedTitle + '><div class="ags-sub">' + esc(t('speed')) + '</div><div class="ags-metric-val">' + speedStr + ' <span class="ags-sub">tok/s</span></div></div>',
+        '    <div class="ags-metric-box"><div class="ags-sub">' + esc(t('ttft')) + '</div><div class="ags-metric-val">' + ttftVal + ' <span class="ags-sub">' + ttftUnit + '</span></div></div>',
         '    <div class="ags-metric-box"><div class="ags-sub">' + esc(t('cost')) + '</div><div class="ags-metric-val">$' + cost.toFixed(3) + '</div></div>',
         '  </div>',
         evalHtml,
@@ -417,6 +482,7 @@
         '<div class="ags-card">',
         '  <div class="ags-card-head"><span>' + esc(t('quotaTitle')) + '</span>' +
         '    <div style="display:flex;gap:6px"><button class="ags-btn" data-action="refresh-quota-only">刷新</button><button class="ags-btn" data-action="launch-cli">' + esc(t('launchCli')) + '</button></div></div>',
+        quotaMetaHtml,
         quotaHtml,
         '</div>'
       ].join('\n');
@@ -448,13 +514,27 @@
       var deskPct = deskTok + cliTok > 0 ? Math.round((deskTok / sumSrc) * 100) : 100;
       var cliPct = deskTok + cliTok > 0 ? (100 - deskPct) : 0;
 
-      var topModels = (h.byModel || []).slice(0, 6);
+      var isCny = state.currency === 'CNY';
+      var fxRate = isCny ? 7.25 : 1;
+      var curSym = isCny ? '¥' : '$';
+      var fmtMoney = function (usd) { return curSym + (Number(usd || 0) * fxRate).toFixed(2); };
+
+      var allModels = Array.isArray(h.byModel) ? h.byModel : [];
+      var topModels = allModels.slice(0, 12);
+      if (allModels.length > 12) {
+        var restModels = allModels.slice(12);
+        topModels = topModels.concat([{
+          model: '其他模型 (' + restModels.length + ')',
+          totalTokens: restModels.reduce(function (s, m) { return s + Number(m.totalTokens || 0); }, 0),
+          costUsd: restModels.reduce(function (s, m) { return s + Number(m.costUsd || 0); }, 0)
+        }]);
+      }
       var maxModel = Math.max.apply(null, topModels.map(function (m) { return m.totalTokens || 0; }).concat([1]));
       var modelHtml = topModels.length
         ? topModels.map(function (m) {
             var w = Math.round(((m.totalTokens || 0) / maxModel) * 100);
             return '<div style="display:flex;flex-direction:column;gap:3px">' +
-              '<div class="ags-row"><span style="font-size:12px">' + esc(m.model) + '</span><span class="ags-sub">' + fmtTok(m.totalTokens) + ' · $' + Number(m.costUsd || 0).toFixed(2) + '</span></div>' +
+              '<div class="ags-row"><span style="font-size:12px">' + esc(m.model) + '</span><span class="ags-sub">' + fmtTok(m.totalTokens) + ' · ' + fmtMoney(m.costUsd) + '</span></div>' +
               '<div class="ags-prog"><div class="ags-prog-fill" style="width:' + w + '%"></div></div></div>';
           }).join('')
         : '<div class="ags-sub">暂无历史用量记录</div>';
@@ -462,6 +542,15 @@
       var subPrice = Number((cfg && cfg.enhance && cfg.enhance.subscriptionMonthlyUsd) != null ? cfg.enhance.subscriptionMonthlyUsd : 20);
       var estCost = Number(h.totalCostUsd != null ? h.totalCostUsd : (h.costEstimate || 0));
       var savings = Number(h.savingsVsSub != null ? h.savingsVsSub : (h.savingsVsApiUsd != null ? h.savingsVsApiUsd : (estCost - subPrice)));
+      var speedRows = Array.isArray(h.speedByModel) ? h.speedByModel : [];
+      var speedRowsHtml = speedRows.length
+        ? speedRows.map(function (sr) {
+            return '<div class="ags-row" style="font-size:11.5px"><span>' + esc(sr.modelLabel || sr.model || 'model') + '</span>' +
+              '<span class="ags-sub">' + Math.round(sr.medianTps || sr.avgTps || 0) + ' tok/s' +
+              (sr.medianTtftSec != null ? (' · TTFT ' + Number(sr.medianTtftSec).toFixed(1) + 's') : '') +
+              ' · ' + (sr.sampleCount || sr.count || 0) + '次</span></div>';
+          }).join('')
+        : '<div class="ags-sub">暂无速度样本</div>';
 
       return [
         '<div class="ags-row">',
@@ -471,13 +560,13 @@
         '    <button class="ags-pill-opt ' + (state.days === 30 ? 'active' : '') + '" data-days="30">' + esc(t('days30')) + '</button>',
         '    <button class="ags-pill-opt ' + (state.days === 90 ? 'active' : '') + '" data-days="90">' + esc(t('days90')) + '</button>',
         '  </div>',
-        '  <button class="ags-btn" id="ags-sync-pricing-btn">' + esc(t('syncPricing')) + '</button>',
+        '  <div style="display:flex;gap:5px"><button class="ags-btn" id="ags-currency-btn">' + (isCny ? '¥ CNY' : '$ USD') + '</button><button class="ags-btn" id="ags-sync-pricing-btn">' + esc(t('syncPricing')) + '</button></div>',
         '</div>',
 
         '<div class="ags-grid-3">',
         '  <div class="ags-metric-box"><div class="ags-sub">' + esc(t('totalTok')) + '</div><div class="ags-metric-val">' + fmtTok(h.totalTokens) + '</div></div>',
-        '  <div class="ags-metric-box"><div class="ags-sub">' + esc(t('estApi')) + '</div><div class="ags-metric-val">$' + estCost.toFixed(2) + '</div></div>',
-        '  <div class="ags-metric-box"><div class="ags-sub">' + esc(t('vsSub')) + '</div><div class="ags-metric-val">' + (savings >= 0 ? ('+$' + savings.toFixed(1)) : ('-$' + Math.abs(savings).toFixed(1))) + '</div></div>',
+        '  <div class="ags-metric-box"><div class="ags-sub">' + esc(t('estApi')) + '</div><div class="ags-metric-val">' + fmtMoney(estCost) + '</div></div>',
+        '  <div class="ags-metric-box"><div class="ags-sub">' + esc(t('vsSub')) + '</div><div class="ags-metric-val">' + (savings >= 0 ? ('+' + fmtMoney(savings)) : ('-' + fmtMoney(Math.abs(savings)))) + '</div></div>',
         '</div>',
 
         '<div class="ags-card">',
@@ -493,7 +582,12 @@
         '<div class="ags-card">',
         '  <div class="ags-card-head"><span>' + esc(t('topModels')) + '</span><span class="ags-sub">订阅月费 $<input id="ags-sub-price" type="number" min="0" max="500" value="' + subPrice + '" style="width:46px;background:transparent;border:1px solid var(--ags-border);border-radius:5px;color:var(--ags-text-primary);padding:1px 4px;font-size:11px"></span></div>',
         modelHtml,
-        '</div>'
+        '</div>',
+
+        '<details class="ags-details">',
+        '  <summary>各模型历史速度中位数对比</summary>',
+        '  <div style="display:flex;flex-direction:column;gap:5px">' + speedRowsHtml + '</div>',
+        '</details>'
       ].join('\n');
     }
 
@@ -510,21 +604,54 @@
       var cards = list.length
         ? list.map(function (a) {
             var letter = (a.name || a.email || 'A').slice(0, 1).toUpperCase();
-            var minQ = a.quotaSnapshot && a.quotaSnapshot.minRemainingPercent;
+            var accPools = Array.isArray(a.quotaPools) && a.quotaPools.length
+              ? a.quotaPools
+              : (a.quotaSnapshot && Array.isArray(a.quotaSnapshot.pools) ? a.quotaSnapshot.pools : []);
+            var accQuotaHtml = '';
+            if (accPools.length) {
+              accQuotaHtml = '<div class="ags-acc-quota-box">' + accPools.map(function (p) {
+                var pName = p.displayName || p.title || p.poolKey || '模型池';
+                var bList = Array.isArray(p.buckets) && p.buckets.length
+                  ? p.buckets
+                  : [{ windowLabel: '当前额度', remainingPercent: p.remainingPercent, resetTime: p.resetTime, resetTimeText: p.resetTimeText, countdownText: p.countdownText, isLow: p.isLow }];
+                var bHtml = bList.map(function (b) {
+                  var bPct = b.remainingPercent != null
+                    ? Math.round(Number(b.remainingPercent))
+                    : (typeof b.remainingFraction === 'number' ? Math.round(b.remainingFraction * 100) : 100);
+                  var bEta = b.countdownText || formatResetEta(b.resetTime || b.resetTimeIso);
+                  var bColor = b.isLow || bPct <= 20 ? 'var(--ags-warning)' : 'var(--ags-accent)';
+                  return '<div class="ags-acc-pool">' +
+                    '<div class="ags-row" style="font-size:11px"><span class="ags-sub">' + esc(b.windowLabel || '周期额度') + '</span>' +
+                    '<span class="ags-sub">' + bPct + '%' + (bEta ? (' · ' + esc(bEta)) : '') + (b.resetTimeText ? (' (' + esc(b.resetTimeText) + ')') : '') + '</span></div>' +
+                    '<div class="ags-prog"><div class="ags-prog-fill" style="width:' + bPct + '%;background:' + bColor + '"></div></div>' +
+                    '</div>';
+                }).join('');
+                return '<div style="display:flex;flex-direction:column;gap:4px"><div style="font-size:11.5px;font-weight:500">' + esc(pName) + '</div>' + bHtml + '</div>';
+              }).join('') + '</div>';
+            } else {
+              accQuotaHtml = '<div class="ags-acc-quota-box"><div class="ags-sub" style="font-size:11px">' +
+                (a.lastQuotaError ? ('刷新失败: ' + esc(a.lastQuotaError)) : '尚未获取额度快照（点击右上 ↻ 或「刷新额度」拉取）') +
+                '</div></div>';
+            }
+
             return '<div class="ags-acc-item">' +
-              '  <div style="display:flex;align-items:center;gap:10px;min-width:0">' +
-              '    <div class="ags-avatar">' + esc(letter) + '</div>' +
-              '    <div style="min-width:0">' +
-              '      <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(a.email || a.name) + '</div>' +
-              '      <div class="ags-sub">' + esc(a.planName || a.source || 'Standard') + (minQ != null ? (' · 额度 ' + Math.round(minQ) + '%') : '') + '</div>' +
+              '  <div class="ags-row">' +
+              '    <div style="display:flex;align-items:center;gap:10px;min-width:0">' +
+              '      <div class="ags-avatar">' + esc(letter) + '</div>' +
+              '      <div style="min-width:0">' +
+              '        <div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(a.email || a.name) + '</div>' +
+              '        <div class="ags-sub">' + esc(a.planName || a.source || 'Standard') + (a.lastQuotaUpdatedAtMs ? (' · 已同步') : '') + '</div>' +
+              '      </div>' +
               '    </div>' +
-              '  </div>' +
-              '  <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">' +
+              '    <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">' +
+              '      <button class="ags-btn ags-btn-ghost" title="刷新此账号额度" data-acc-refresh-one="' + esc(a.email || a.id) + '">↻</button>' +
               (a.isActive
                 ? '<span class="ags-pill-opt active">' + esc(t('activeTag')) + '</span>'
                 : '<button class="ags-btn ags-btn-primary" data-acc-switch="' + esc(a.id) + '">' + esc(t('switchBtn')) + '</button>') +
-              '    <button class="ags-btn ags-btn-ghost" title="移除" data-acc-remove="' + esc(a.id) + '">×</button>' +
+              '      <button class="ags-btn ags-btn-ghost" title="移除" data-acc-remove="' + esc(a.id) + '">×</button>' +
+              '    </div>' +
               '  </div>' +
+              accQuotaHtml +
               '</div>';
           }).join('')
         : '<div class="ags-card"><div class="ags-sub">尚未保存账号槽位，点击上方「导入当前」快速保存当前登录态。</div></div>';
@@ -578,6 +705,10 @@
           '</div>';
       }).join('');
 
+      var curModel = (state.snapshot && state.snapshot.context && state.snapshot.context.model) || 'gemini-4-neon';
+      var curPerLimits = (cfg.context && cfg.context.perModelLimits) || {};
+      var curModelLimitVal = curPerLimits[curModel] || 512000;
+
       return [
         // Section 1: Appearance, Fonts & Mascot
         '<div class="ags-card">',
@@ -617,15 +748,19 @@
         '      </select>' +
         '      <input type="checkbox" id="ags-mascot-enabled" ' + (mascotCfg.enabled !== false ? 'checked' : '') + '>' +
         '    </div></div>',
-        '  <div class="ags-row"><span>512K 呼吸试管</span><input type="checkbox" id="ags-vial-enabled" ' + (hudCfg.showVial !== false ? 'checked' : '') + '></div>',
-        '  <div class="ags-row"><span>HUD 状态胶囊</span>' +
-        '    <div style="display:flex;gap:6px;align-items:center">' +
-        '      <select class="ags-select" style="width:110px" id="ags-hud-pos">' +
-        '        <option value="composer" ' + (hudCfg.position !== 'floating' ? 'selected' : '') + '>对话框正下方</option>' +
-        '        <option value="floating" ' + (hudCfg.position === 'floating' ? 'selected' : '') + '>右下角悬浮</option>' +
+        '  <div class="ags-row"><span>工具栏上下文展示</span>' +
+        '    <div style="display:flex;gap:5px;align-items:center">' +
+        '      <select class="ags-select" style="width:82px" id="ags-hud-style">' +
+        '        <option value="ring" ' + ((hudCfg.displayStyle || 'ring') === 'ring' ? 'selected' : '') + '>极简圆环</option>' +
+        '        <option value="capsule" ' + (hudCfg.displayStyle === 'capsule' ? 'selected' : '') + '>完整胶囊</option>' +
+        '      </select>' +
+        '      <select class="ags-select" style="width:94px" id="ags-hud-pos">' +
+        '        <option value="composer" ' + (hudCfg.position !== 'floating' ? 'selected' : '') + '>工具栏内</option>' +
+        '        <option value="floating" ' + (hudCfg.position === 'floating' ? 'selected' : '') + '>右下悬浮</option>' +
         '      </select>' +
         '      <input type="checkbox" id="ags-hud-enabled" ' + (hudCfg.enabled !== false ? 'checked' : '') + '>' +
         '    </div></div>',
+        '  <div class="ags-row"><span>512K 呼吸试管 (胶囊模式)</span><input type="checkbox" id="ags-vial-enabled" ' + (hudCfg.showVial !== false ? 'checked' : '') + '></div>',
         '  <div class="ags-row"><span>新对话首页用量概览卡片</span><input type="checkbox" id="ags-home-card-enabled" ' + (cfg.homeOverview !== false && hudCfg.homeOverview !== false ? 'checked' : '') + '></div>',
         '  <details class="ags-details">',
         '    <summary>' + esc(t('customThemeTitle')) + ' & 三轨字体 (' + scannedFonts.length + ')</summary>',
@@ -730,6 +865,16 @@
 
         '      <hr style="border:none;border-top:1px solid var(--ags-border);margin:2px 0">',
 
+        '      <div class="ags-row"><span>当前模型显示上限 (' + esc(curModel) + ')</span><input class="ags-input" style="width:100px" type="number" id="ags-per-model-limit" value="' + esc(curModelLimitVal) + '"></div>',
+        '      <div class="ags-row" style="justify-content:flex-end;gap:5px">' +
+        '        <button class="ags-btn" data-model-preset="200000">200K</button>' +
+        '        <button class="ags-btn" data-model-preset="524288">512K</button>' +
+        '        <button class="ags-btn" data-model-preset="1048576">1M</button>' +
+        '        <button class="ags-btn" id="ags-model-limit-reset-btn">恢复默认</button>' +
+        '      </div>',
+
+        '      <hr style="border:none;border-top:1px solid var(--ags-border);margin:2px 0">',
+
         '      <div class="ags-row"><span>压缩后记忆自动回填</span><input type="checkbox" id="ags-rehydrate-en" ' + (curRehydrate ? 'checked' : '') + '></div>',
         '      <div class="ags-row" style="gap:6px;flex-wrap:wrap;margin-top:4px">' +
         '        <button class="ags-btn" id="ags-restart-ls-btn">重启 LS</button>' +
@@ -795,6 +940,14 @@
         });
       }
 
+      var curBtn = el.querySelector('#ags-currency-btn');
+      if (curBtn) {
+        curBtn.addEventListener('click', function () {
+          state.currency = state.currency === 'CNY' ? 'USD' : 'CNY';
+          render(null, true);
+        });
+      }
+
       var subPriceEl = el.querySelector('#ags-sub-price');
       if (subPriceEl) {
         subPriceEl.addEventListener('change', function () {
@@ -824,10 +977,22 @@
         btn.addEventListener('click', function () {
           var action = btn.getAttribute('data-acc-action');
           if (opts.api && opts.api.accountsAction) {
-            opts.api.accountsAction({ action: action }).then(function () {
-              showToast('操作已完成');
+            opts.api.accountsAction({ action: action }).then(function (res) {
+              showToast((res && (res.message || res.error)) || '操作已完成');
               if (opts.onRefresh) opts.onRefresh(true);
             }).catch(function (err) { showToast((err && err.message) || '操作失败'); });
+          }
+        });
+      });
+
+      el.querySelectorAll('[data-acc-refresh-one]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var email = btn.getAttribute('data-acc-refresh-one');
+          if (opts.api && opts.api.accountsAction && email) {
+            opts.api.accountsAction({ action: 'refresh_quota', email: email }).then(function (res) {
+              showToast((res && (res.message || res.error)) || '额度已刷新');
+              if (opts.onRefresh) opts.onRefresh(true);
+            }).catch(function (err) { showToast((err && err.message) || '刷新失败'); });
           }
         });
       });
@@ -926,13 +1091,22 @@
         mEn.addEventListener('change', saveMascot);
       }
 
+      var hStyle = el.querySelector('#ags-hud-style');
       var hPos = el.querySelector('#ags-hud-pos');
       var hEn = el.querySelector('#ags-hud-enabled');
       var vialEn = el.querySelector('#ags-vial-enabled');
       if (hPos && hEn && vialEn) {
         var saveHud = function () {
-          opts.saveConfig({ hud: { position: hPos.value, enabled: hEn.checked, showVial: vialEn.checked } });
+          opts.saveConfig({
+            hud: {
+              displayStyle: hStyle ? hStyle.value : 'ring',
+              position: hPos.value,
+              enabled: hEn.checked,
+              showVial: vialEn.checked
+            }
+          });
         };
+        if (hStyle) hStyle.addEventListener('change', saveHud);
         hPos.addEventListener('change', saveHud);
         hEn.addEventListener('change', saveHud);
         vialEn.addEventListener('change', saveHud);
@@ -1119,6 +1293,42 @@
       }
 
       // Rehydrate after compact
+      var curModelForLimit = (state.snapshot && state.snapshot.context && state.snapshot.context.model) || 'gemini-4-neon';
+      var perLimInp = el.querySelector('#ags-per-model-limit');
+      if (perLimInp) {
+        perLimInp.addEventListener('change', function () {
+          if (opts.api && opts.api.setContextLimit) {
+            opts.api.setContextLimit(curModelForLimit, Number(perLimInp.value || 512000)).then(function () {
+              showToast('已保存 ' + curModelForLimit + ' 上限');
+              if (opts.onRefresh) opts.onRefresh(true);
+            }).catch(function (e) { showToast(e.message || '保存失败'); });
+          }
+        });
+      }
+      el.querySelectorAll('[data-model-preset]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var v = Number(btn.getAttribute('data-model-preset'));
+          if (perLimInp) perLimInp.value = String(v);
+          if (opts.api && opts.api.setContextLimit) {
+            opts.api.setContextLimit(curModelForLimit, v).then(function () {
+              showToast('已设为 ' + fmtTok(v));
+              if (opts.onRefresh) opts.onRefresh(true);
+            }).catch(function () {});
+          }
+        });
+      });
+      var resetLimBtn = el.querySelector('#ags-model-limit-reset-btn');
+      if (resetLimBtn) {
+        resetLimBtn.addEventListener('click', function () {
+          if (opts.api && opts.api.resetContextLimit) {
+            opts.api.resetContextLimit(curModelForLimit).then(function () {
+              showToast('已恢复默认上限');
+              if (opts.onRefresh) opts.onRefresh(true);
+            }).catch(function () {});
+          }
+        });
+      }
+
       var rehEl = el.querySelector('#ags-rehydrate-en');
       if (rehEl) {
         rehEl.addEventListener('change', function () {

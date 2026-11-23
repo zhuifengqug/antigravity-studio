@@ -800,6 +800,13 @@
         cacheReadPerMillion: 0.075
       }
     ],
+    'gemini-4-neon': [
+      {
+        inputPerMillion: 3.00,
+        outputPerMillion: 15.00,
+        cacheReadPerMillion: 0.15
+      }
+    ],
     'gemini-4-carbon': [
       {
         effectiveTo: '2026-11-30',
@@ -890,6 +897,7 @@
     if (!raw || typeof raw !== 'string') return null;
     const str = raw.trim().toLowerCase();
     if (str.includes('3.8-flash') || str.includes('3.8 flash') || str.includes('flash-n')) return 'gemini-3.8-flash';
+    if (str.includes('4-neon') || str.includes('4 neon') || str.includes('neon')) return 'gemini-4-neon';
     if (str.includes('4-hydrogen') || str.includes('4 hydrogen') || str.includes('hydrogen')) return 'gemini-4-hydrogen';
     if (str.includes('4-carbon') || str.includes('4 carbon') || str.includes('carbon') || str.includes('m670')) return 'gemini-4-carbon';
     if (str.includes('4-argon') || str.includes('4 argon') || str.includes('argon') || /\bgemini-pro-orchestrator(?:-(?:argon|g1(?:-pro)?))?$/.test(str) || str.includes('m668')) return 'gemini-4-argon';

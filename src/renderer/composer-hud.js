@@ -9,16 +9,33 @@
     return String(Math.round(num));
   }
 
+  function formatDurationShort(ms) {
+    var v = Number(ms || 0);
+    if (!Number.isFinite(v) || v <= 0) return '—';
+    if (v >= 1000) return (v / 1000).toFixed(1) + 's';
+    return Math.round(v) + 'ms';
+  }
+
   function ensureHudStyles() {
     if (typeof document === 'undefined') return;
     if (document.getElementById('ag-studio-hud-style')) return;
     var s = document.createElement('style');
     s.id = 'ag-studio-hud-style';
     s.textContent = [
-      '.ags-hud-wrap { display:inline-flex; align-items:center; justify-content:center; gap:6px; pointer-events:auto; z-index:2147483000; font-family:var(--ags-font-ui, system-ui, sans-serif); font-variant-numeric:tabular-nums; }',
+      '.ags-hud-wrap { position:relative; display:inline-flex; align-items:center; justify-content:center; gap:6px; pointer-events:auto; z-index:2147483000; font-family:var(--ags-font-ui, system-ui, sans-serif); font-variant-numeric:tabular-nums; -webkit-app-region:no-drag; app-region:no-drag; }',
       '.ags-hud-floating { position:fixed; right:18px; bottom:16px; }',
       '.ags-hud-inline { margin:2px auto; }',
-      '.ags-hud-toolbar { gap:5px; max-width:100%; overflow:hidden; }',
+      '.ags-hud-toolbar { gap:4px; max-width:100%; overflow:visible; }',
+      '.ags-ring-btn { position:relative; display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; padding:0; border:none; border-radius:50%; background:transparent; cursor:pointer; flex-shrink:0; transition:transform 140ms ease; }',
+      '.ags-ring-btn:hover { transform:scale(1.08); }',
+      '.ags-ring-svg { display:block; width:22px; height:22px; transform:rotate(-90deg); }',
+      '.ags-ring-num { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:8.5px; font-weight:700; color:var(--ags-text-primary, #f4f4f5); letter-spacing:-0.04em; pointer-events:none; }',
+      '.ags-hud-popover { position:fixed; z-index:2147483580; min-width:196px; max-width:250px; padding:9px 11px; border-radius:11px; border:1px solid var(--ags-border, rgba(148,163,184,0.28)); background:var(--ags-bg-surface, #18181b); color:var(--ags-text-primary, #f4f4f5); box-shadow:0 10px 28px rgba(0,0,0,0.26); display:none; flex-direction:column; gap:5px; font-family:var(--ags-font-ui, system-ui, sans-serif); font-size:11.5px; font-variant-numeric:tabular-nums; pointer-events:none; }',
+      '.ags-hud-popover[data-open="1"] { display:flex; }',
+      '.ags-hud-pop-head { display:flex; align-items:center; justify-content:space-between; gap:8px; padding-bottom:4px; border-bottom:1px solid var(--ags-border, rgba(148,163,184,0.18)); font-weight:600; font-size:11.5px; }',
+      '.ags-hud-pop-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }',
+      '.ags-hud-pop-lbl { color:var(--ags-text-secondary, #94a3b8); }',
+      '.ags-hud-pop-val { color:var(--ags-text-primary, #f4f4f5); font-weight:500; }',
       '.ags-vial-btn { position:relative; display:inline-flex; align-items:center; justify-content:center; width:24px; height:38px; padding:0; border:none; background:transparent; cursor:pointer; flex-shrink:0; transition:transform 140ms ease; }',
       '.ags-hud-toolbar .ags-vial-btn { width:14px; height:22px; }',
       '.ags-vial-btn:hover { transform:translateY(-1px) scale(1.06); }',
@@ -36,9 +53,6 @@
     (document.head || document.documentElement).appendChild(s);
   }
 
-  /**
-   * Compact 12-node damped shallow-water physics kernel (0fps when settled).
-   */
   function createMiniVialPhysics() {
     var N = 12;
     var waveH = new Float32Array(N);
@@ -149,7 +163,31 @@
     wrap.setAttribute('data-ag-studio-ignore', 'true');
     wrap.setAttribute('data-ag-no-i18n', 'true');
 
-    // 1. Mini Breathing Water Vial Button
+    // Ring HUD (compact default)
+    var ringBtn = document.createElement('button');
+    ringBtn.type = 'button';
+    ringBtn.className = 'ags-ring-btn';
+    var ringArc = null;
+    var ringNum = null;
+
+    var R = 8.5;
+    var CIRC = Number((2 * Math.PI * R).toFixed(2));
+    ringBtn.innerHTML =
+      '<svg class="ags-ring-svg" viewBox="0 0 22 22" aria-hidden="true">' +
+      '  <circle cx="11" cy="11" r="' + R + '" fill="none" stroke="var(--ags-bg-subtle, rgba(148,163,184,0.24))" stroke-width="2.4"/>' +
+      '  <circle class="ags-ring-arc" cx="11" cy="11" r="' + R + '" fill="none" stroke="var(--ags-accent, #3B82F6)" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="' + CIRC + '" stroke-dashoffset="' + CIRC + '"/>' +
+      '</svg>' +
+      '<span class="ags-ring-num">0</span>';
+    ringArc = ringBtn.querySelector('.ags-ring-arc');
+    ringNum = ringBtn.querySelector('.ags-ring-num');
+
+    // Vertical hover card popover
+    var popEl = document.createElement('div');
+    popEl.className = 'ags-hud-popover';
+    popEl.setAttribute('data-ag-studio-ignore', 'true');
+    popEl.setAttribute('data-ag-no-i18n', 'true');
+
+    // Capsule / Vial mode (optional in settings)
     var vialBtn = document.createElement('button');
     vialBtn.type = 'button';
     vialBtn.className = 'ags-vial-btn';
@@ -158,18 +196,49 @@
     vialCv.className = 'ags-vial-cv';
     vialBtn.appendChild(vialCv);
 
-    // 2. Minimalist Capsule Pill
     var pill = document.createElement('button');
     pill.type = 'button';
     pill.className = 'ags-hud-pill';
 
-    var onOpen = function () {
+    var hidePopTimer = 0;
+    function showPopover() {
+      if (hidePopTimer) { clearTimeout(hidePopTimer); hidePopTimer = 0; }
+      var root = document.getElementById('ag-studio-root') || document.body;
+      if (popEl.parentElement !== root) root.appendChild(popEl);
+      popEl.setAttribute('data-open', '1');
+      try {
+        var r = ringBtn.getBoundingClientRect();
+        var pr = popEl.getBoundingClientRect();
+        var pw = pr.width || 210;
+        var ph = pr.height || 175;
+        var left = Math.max(8, Math.min((window.innerWidth || 1200) - pw - 8, r.left + r.width / 2 - pw / 2));
+        var top = r.top - ph - 8;
+        if (top < 8) top = r.bottom + 8;
+        popEl.style.left = Math.round(left) + 'px';
+        popEl.style.top = Math.round(top) + 'px';
+      } catch (_e) {}
+    }
+
+    function hidePopoverDelayed() {
+      if (hidePopTimer) clearTimeout(hidePopTimer);
+      hidePopTimer = setTimeout(function () {
+        hidePopTimer = 0;
+        popEl.removeAttribute('data-open');
+      }, 100);
+    }
+
+    var onOpen = function (ev) {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
       if (typeof opts.onToggleDrawer === 'function') opts.onToggleDrawer();
     };
-    vialBtn.addEventListener('click', function () {
+    ringBtn.addEventListener('click', onOpen);
+    ringBtn.addEventListener('pointerenter', showPopover);
+    ringBtn.addEventListener('pointerleave', hidePopoverDelayed);
+
+    vialBtn.addEventListener('click', function (ev) {
       phys.impulse(1.4);
       wakeVial();
-      onOpen();
+      onOpen(ev);
     });
     vialBtn.addEventListener('pointerenter', function () {
       phys.impulse(0.65);
@@ -177,6 +246,7 @@
     });
     pill.addEventListener('click', onOpen);
 
+    wrap.appendChild(ringBtn);
     wrap.appendChild(vialBtn);
     wrap.appendChild(pill);
 
@@ -186,26 +256,22 @@
     var currentCtx = vialCv.getContext('2d');
     var lastVisualSig = '';
     var lastPillKey = '';
+    var lastPopKey = '';
     var isCompactToolbar = false;
     var isDark = true;
     var accentHex = '#3B82F6';
-    var isStreaming = false;
     var isCritical = false;
 
     function resolveVialColors() {
       var mode = document.documentElement.getAttribute('data-ags-mode');
       isDark = mode !== 'light';
       var themeId = document.documentElement.getAttribute('data-ags-theme') || 'claude';
-      var accentCss = '';
-      try {
-        accentCss = getComputedStyle(document.documentElement).getPropertyValue('--ags-accent').trim();
-      } catch (_e) {}
       if (isCritical) {
         accentHex = '#EA580C';
       } else if (themeId === 'claude') {
-        accentHex = accentCss || (isDark ? '#E08666' : '#D97757');
+        accentHex = isDark ? '#E08666' : '#D97757';
       } else {
-        accentHex = accentCss || (isDark ? '#60A5FA' : '#2563EB');
+        accentHex = isDark ? '#60A5FA' : '#2563EB';
       }
     }
 
@@ -225,7 +291,7 @@
     }
 
     function renderVialFrame() {
-      if (!currentCtx) return;
+      if (!currentCtx || vialBtn.style.display === 'none') return;
       var cssW = isCompactToolbar ? 14 : 24;
       var cssH = isCompactToolbar ? 22 : 38;
       var dpr = Math.min((typeof window !== 'undefined' && window.devicePixelRatio) || 1, 2);
@@ -249,12 +315,10 @@
       var tubeH = isCompactToolbar ? 20 : 34;
       var tubeR = isCompactToolbar ? 4.5 : 6.5;
 
-      // 1. Glass air chamber background
       drawRoundedRectPath(ctx, tubeX, tubeY, tubeW, tubeH, tubeR);
       ctx.fillStyle = isDark ? 'rgba(15, 23, 42, 0.55)' : 'rgba(226, 232, 240, 0.55)';
       ctx.fill();
 
-      // 2. Clipped shallow-water liquid column
       var fillFrac = phys.getFill();
       if (fillFrac > 0.005) {
         ctx.save();
@@ -291,45 +355,8 @@
         }
         ctx.fillStyle = grad;
         ctx.fill();
-
-        // Crisp meniscus highlight
-        ctx.beginPath();
-        for (var m = 0; m <= segs; m++) {
-          var mu = m / segs;
-          var mx = (tubeX + 1) + mu * (tubeW - 2);
-          var mSlope = Math.tan(tilt) * (mx - cx) * 0.85;
-          var my = baseSurfY + mSlope + (waveH[m] || 0) * 0.65;
-          if (m === 0) ctx.moveTo(mx, my);
-          else ctx.lineTo(mx, my);
-        }
-        ctx.strokeStyle = isDark ? 'rgba(224, 242, 254, 0.88)' : 'rgba(255, 255, 255, 0.92)';
-        ctx.lineWidth = 1.1;
-        ctx.stroke();
-
-        // Streaming rising micro-bubbles
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
-        for (var b = 0; b < phys.bubbles.length; b++) {
-          var bub = phys.bubbles[b];
-          var by = innerBot - (1 - bub.y) * (innerBot - innerTop);
-          if (by > baseSurfY + 2) {
-            ctx.beginPath();
-            ctx.arc(cx + bub.x * 0.4, by, bub.r, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
         ctx.restore();
       }
-
-      // 3. Laser tick marks on right glass wall
-      ctx.fillStyle = isDark ? 'rgba(148, 163, 184, 0.45)' : 'rgba(51, 65, 85, 0.35)';
-      for (var t = 1; t <= 3; t++) {
-        var ty = tubeY + (tubeH * t) / 4;
-        ctx.fillRect(tubeX + tubeW - 3.5, ty, 2.2, 0.8);
-      }
-
-      // 4. Vertical glass refraction thread + outer borosilicate outline
-      ctx.fillStyle = isDark ? 'rgba(226, 232, 240, 0.25)' : 'rgba(255, 255, 255, 0.55)';
-      ctx.fillRect(tubeX + 2.5, tubeY + 6, 1, tubeH - 12);
 
       drawRoundedRectPath(ctx, tubeX, tubeY, tubeW, tubeH, tubeR);
       ctx.strokeStyle = isCritical
@@ -354,6 +381,7 @@
     }
 
     function wakeVial() {
+      if (vialBtn.style.display === 'none') return;
       renderVialFrame();
       if (rafId || phys.isSettled()) return;
       if (typeof document !== 'undefined' && document.hidden) return;
@@ -367,7 +395,6 @@
       var anchors = globalScope.__AG_STUDIO_ANCHORS__;
       var mode = positionMode || 'composer';
       if (mode !== 'floating' && anchors && composer) {
-        // Primary: inside composer toolbar right next to the model selector button
         if (typeof anchors.ensureComposerToolbarSlot === 'function') {
           var toolbarSlot = anchors.ensureComposerToolbarSlot(composer);
           if (toolbarSlot) {
@@ -380,7 +407,6 @@
             return;
           }
         }
-        // Fallback: below composer
         if (typeof anchors.parkComposerToolbarSlot === 'function') anchors.parkComposerToolbarSlot();
         var bottomSlot = anchors.ensureComposerBottomSlot(composer);
         if (bottomSlot) {
@@ -408,116 +434,149 @@
       var hudCfg = (cfg && cfg.hud) || {};
       if (hudCfg.enabled === false) {
         wrap.style.display = 'none';
+        popEl.removeAttribute('data-open');
         if (rafId && typeof cancelAnimationFrame === 'function') {
           cancelAnimationFrame(rafId);
           rafId = 0;
         }
         return;
       }
+
+      var displayStyle = hudCfg.displayStyle === 'capsule' ? 'capsule' : 'ring';
       wrap.style.display = 'inline-flex';
-      vialBtn.style.display = hudCfg.showVial === false ? 'none' : 'inline-flex';
       mountToSlot(hudCfg.position || 'composer', composer);
+
+      if (displayStyle === 'ring') {
+        ringBtn.style.display = 'inline-flex';
+        vialBtn.style.display = 'none';
+        pill.style.display = 'none';
+      } else {
+        ringBtn.style.display = 'none';
+        vialBtn.style.display = hudCfg.showVial === false ? 'none' : 'inline-flex';
+        pill.style.display = 'inline-flex';
+      }
 
       var ctx = (snapshot && snapshot.context) || {};
       var used = Number(ctx.usedTokens || 0);
       var limit = Number(ctx.contextLimit || 200000);
+      var remainingCtx = Math.max(0, limit - used);
       var ratio = ctx.usageRatio != null ? Number(ctx.usageRatio) : (limit > 0 ? used / limit : 0);
       if (!Number.isFinite(ratio) || ratio < 0) ratio = 0;
+      ratio = Math.min(1, ratio);
       var pct = Math.min(100, Math.round(ratio * 100));
-      var speed = Number((ctx.speed && (ctx.speed.tokPerSec || ctx.speed.tps)) || 0);
+      var speed = Number((ctx.speed && (ctx.speed.streamingTps || ctx.speed.tokPerSec || ctx.speed.tps)) || 0);
+      var speedStr = speed > 0 ? Number(speed).toFixed(1).replace(/\.0$/, '') : '0';
       var ttft = Number((ctx.speed && ctx.speed.ttftMs) || 0);
       var cachePct = Math.round(Number(ctx.cacheHitRate || 0) * 100);
       var cost = Number((snapshot && snapshot.estimatedSessionCostUsd) || 0);
       var generating = Boolean(ctx.speed && ctx.speed.isGenerating);
 
+      var cmq = (snapshot && snapshot.currentModelQuota) || null;
       var pools = (snapshot && snapshot.quota && snapshot.quota.pools) || [];
-      var minQuotaPct = null;
-      for (var i = 0; i < pools.length; i++) {
-        if (typeof pools[i].remainingPercent === 'number') {
-          if (minQuotaPct === null || pools[i].remainingPercent < minQuotaPct) {
-            minQuotaPct = pools[i].remainingPercent;
+      var minQuotaPct = cmq && cmq.remainingPercent != null ? Number(cmq.remainingPercent) : null;
+      if (minQuotaPct === null) {
+        for (var i = 0; i < pools.length; i++) {
+          if (typeof pools[i].remainingPercent === 'number') {
+            if (minQuotaPct === null || pools[i].remainingPercent < minQuotaPct) {
+              minQuotaPct = pools[i].remainingPercent;
+            }
           }
         }
       }
 
       isCritical = ratio >= 0.85;
-      isStreaming = generating;
-      phys.setTargetFill(ratio);
-      phys.setStreaming(generating);
 
-      var visSig = [
-        Math.round(ratio * 100),
-        generating ? 1 : 0,
-        isCompactToolbar ? 1 : 0,
-        document.documentElement.getAttribute('data-ags-theme') || '',
-        document.documentElement.getAttribute('data-ags-mode') || ''
-      ].join('|');
-      if (visSig !== lastVisualSig) {
-        lastVisualSig = visSig;
-        if (generating) phys.impulse(0.45);
-        wakeVial();
+      // Update Ring SVG
+      if (ringArc && ringNum) {
+        var offset = Number((CIRC * (1 - ratio)).toFixed(2));
+        ringArc.setAttribute('stroke-dashoffset', String(offset));
+        ringArc.setAttribute('stroke', isCritical ? 'var(--ags-danger, #EF4444)' : ratio >= 0.68 ? 'var(--ags-warning, #D9822B)' : 'var(--ags-accent, #3B82F6)');
+        ringNum.textContent = String(pct);
       }
 
-      var pillKey = [
+      // Vertical hover popover content (dirty-checked)
+      var estRemShort = (cmq && cmq.estRemainingShort) || '';
+      var popKey = [
         ctx.model || '',
-        pct,
-        used,
-        limit,
-        Math.round(speed),
-        cost.toFixed(2),
-        minQuotaPct === null ? 'n' : Math.round(minQuotaPct),
+        pct, used, limit,
+        speedStr,
         cachePct,
         Math.round(ttft),
-        hudCfg.showContext !== false ? 1 : 0,
-        hudCfg.showSpeed !== false ? 1 : 0,
-        hudCfg.showCost !== false ? 1 : 0,
-        hudCfg.showQuotaBadge !== false ? 1 : 0
+        cost.toFixed(3),
+        minQuotaPct == null ? 'n' : Math.round(minQuotaPct),
+        estRemShort
       ].join('|');
 
-      if (pillKey === lastPillKey) return;
-      lastPillKey = pillKey;
+      if (popKey !== lastPopKey) {
+        lastPopKey = popKey;
+        var quotaLine = minQuotaPct != null
+          ? (Math.round(minQuotaPct) + '%' + (estRemShort ? (' · 约剩 ' + estRemShort) : ''))
+          : '—';
+        popEl.innerHTML = [
+          '<div class="ags-hud-pop-head"><span>' + (ctx.model || '当前会话') + '</span><span>' + pct + '%</span></div>',
+          '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">上下文用量</span><span class="ags-hud-pop-val">' + formatCompactNumber(used) + ' / ' + formatCompactNumber(limit) + '</span></div>',
+          '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">剩余上下文</span><span class="ags-hud-pop-val">' + formatCompactNumber(remainingCtx) + '</span></div>',
+          '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">输出速度</span><span class="ags-hud-pop-val">' + speedStr + ' tok/s</span></div>',
+          '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">缓存命中</span><span class="ags-hud-pop-val">' + cachePct + '%</span></div>',
+          '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">首字延迟</span><span class="ags-hud-pop-val">' + formatDurationShort(ttft) + '</span></div>',
+          '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">本轮估算</span><span class="ags-hud-pop-val">$' + cost.toFixed(3) + '</span></div>',
+          '<div class="ags-hud-pop-row"><span class="ags-hud-pop-lbl">模型额度</span><span class="ags-hud-pop-val">' + quotaLine + '</span></div>'
+        ].join('');
+      }
 
-      pill.title = '模型: ' + (ctx.model || '未检测') +
-        ' · 缓存命中: ' + cachePct + '%' +
-        (ttft > 0 ? (' · 首字延迟: ' + Math.round(ttft) + 'ms') : '') +
-        ' — 点击打开 Antigravity Studio (Ctrl+Shift+G)';
+      if (displayStyle !== 'ring') {
+        phys.setTargetFill(ratio);
+        phys.setStreaming(generating);
+        var visSig = [
+          Math.round(ratio * 100),
+          generating ? 1 : 0,
+          isCompactToolbar ? 1 : 0,
+          document.documentElement.getAttribute('data-ags-theme') || '',
+          document.documentElement.getAttribute('data-ags-mode') || ''
+        ].join('|');
+        if (visSig !== lastVisualSig) {
+          lastVisualSig = visSig;
+          if (generating) phys.impulse(0.45);
+          wakeVial();
+        }
 
-      var parts = [];
-      if (hudCfg.showContext !== false) {
-        var pctCls = pct >= 85 ? 'ags-hud-crit' : 'ags-hud-strong';
-        parts.push(
-          '<span class="' + pctCls + '">' + pct + '%</span>' +
-          '<span class="ags-hud-sep">·</span>' +
-          '<span>' + formatCompactNumber(used) + '/' + formatCompactNumber(limit) + '</span>'
-        );
+        var pillKey = popKey + '|' + (hudCfg.showContext !== false ? 1 : 0) + (hudCfg.showSpeed !== false ? 1 : 0) + (hudCfg.showCost !== false ? 1 : 0) + (hudCfg.showQuotaBadge !== false ? 1 : 0);
+        if (pillKey !== lastPillKey) {
+          lastPillKey = pillKey;
+          var parts = [];
+          if (hudCfg.showContext !== false) {
+            var pctCls = pct >= 85 ? 'ags-hud-crit' : 'ags-hud-strong';
+            parts.push(
+              '<span class="' + pctCls + '">' + pct + '%</span>' +
+              '<span class="ags-hud-sep">·</span>' +
+              '<span>' + formatCompactNumber(used) + '/' + formatCompactNumber(limit) + '</span>'
+            );
+          }
+          if (hudCfg.showSpeed !== false) parts.push('<span>' + speedStr + ' tok/s</span>');
+          if (hudCfg.showCost !== false) parts.push('<span class="ags-hud-hide-sm">$' + cost.toFixed(2) + '</span>');
+          if (hudCfg.showQuotaBadge !== false && minQuotaPct !== null) {
+            var qCls = minQuotaPct <= 20 ? 'ags-hud-quota-low' : '';
+            parts.push('<span class="' + qCls + '">额度 ' + Math.round(minQuotaPct) + '%</span>');
+          }
+          if (!parts.length) parts.push('<span class="ags-hud-strong">Studio</span>');
+          pill.innerHTML = parts.join('<span class="ags-hud-sep">·</span>');
+        }
       }
-      if (hudCfg.showSpeed !== false) {
-        parts.push('<span>' + Math.round(speed) + ' tok/s</span>');
-      }
-      if (hudCfg.showCost !== false) {
-        parts.push('<span class="ags-hud-hide-sm">$' + cost.toFixed(2) + '</span>');
-      }
-      if (hudCfg.showQuotaBadge !== false && minQuotaPct !== null) {
-        var qCls = minQuotaPct <= 20 ? 'ags-hud-quota-low' : '';
-        parts.push('<span class="' + qCls + '">额度 ' + Math.round(minQuotaPct) + '%</span>');
-      }
-      if (!parts.length) {
-        parts.push('<span class="ags-hud-strong">Studio</span>');
-      }
-      pill.innerHTML = parts.join('<span class="ags-hud-sep">·</span>');
     }
 
     function destroy() {
+      if (hidePopTimer) clearTimeout(hidePopTimer);
       if (rafId && typeof cancelAnimationFrame === 'function') {
         cancelAnimationFrame(rafId);
         rafId = 0;
       }
+      if (popEl.parentElement) popEl.parentElement.removeChild(popEl);
       if (wrap.parentElement) wrap.parentElement.removeChild(wrap);
     }
 
     return {
       element: wrap,
-      mountToBestSpot: function (mode, comp) { mountToSlot(mode, comp); },
+      mountToSlot: mountToSlot,
       update: update,
       destroy: destroy
     };
@@ -525,7 +584,6 @@
 
   var api = {
     formatCompactNumber: formatCompactNumber,
-    createMiniVialPhysics: createMiniVialPhysics,
     createComposerHud: createComposerHud
   };
 

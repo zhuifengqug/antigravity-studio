@@ -35,57 +35,45 @@
     tickle: 'tickle'
   };
 
-  // ── Astra 24x22 Pixel Star-Spirit Matrix Engine ──────────────────────────────
-  // Palette:
-  //   '.': transparent
-  //   'W': #FFFFFF (star core white)
-  //   'C': #E0F2FE (ice starlight)
-  //   'B': #60A5FA (astral blue)
-  //   'D': #2563EB (deep orbit blue)
-  //   'N': #0F172A (visor/pupil dark)
-  //   'E': #38BDF8 (glowing cyan pupil/visor)
-  //   'G': #FBBF24 (amber star/alert)
-  //   'R': #F87171 (crimson alert)
-  //   'M': #34D399 (emerald spark)
-  //   'P': #94A3B8 (sleep Z / quiet ink)
+  // ── Astra 24x22 Pixel Star-Spirit Matrix Engine (1px Deepy-style indigo outline) ──
   var ASTRA_PALETTE = {
+    O: '#1E293B', // crisp 1px dark indigo outline (matches Deepy)
     W: '#FFFFFF',
-    C: '#E0F2FE',
-    B: '#60A5FA',
-    D: '#2563EB',
-    N: '#0F172A',
-    E: '#38BDF8',
-    G: '#FBBF24',
-    R: '#F87171',
-    M: '#34D399',
-    P: '#94A3B8'
+    C: '#EFF6FF', // bright starlight highlight
+    L: '#93C5FD', // soft sky highlight
+    B: '#3B82F6', // aurora royal blue (matches Deepy body)
+    D: '#1D4ED8', // deep shade blue
+    N: '#0F172A', // visor/pupil dark
+    E: '#38BDF8', // glowing cyan star halo / cheek
+    G: '#FBBF24', // amber star/alert
+    R: '#F87171', // crimson alert
+    M: '#34D399', // emerald spark
+    P: '#94A3B8'  // sleep / subtle gray
   };
 
-  // Base 24x22 silhouette rows (rows 0..21, cols 0..23).
-  // Star-orbit blue-white body, floating ear-wings on cols 3-5 & 18-20,
-  // 1x2 vertical pupils inside visor, glowing star core on chest.
+  // Chubby cosmic starlight spirit with crisp dark outline, tiny star halo, and cute ear-wings
   var ASTRA_BASE_ROWS = [
     '........................', // 0
-    '........................', // 1
-    '........................', // 2
+    '...........EE...........', // 1  tiny floating star halo
+    '..........EWWEE.........', // 2
     '........................', // 3
-    '....BB............BB....', // 4  ear-wing tips
-    '...BCCB..........BCCB...', // 5  ear-wings
-    '...BDDB..CCCCCC..BDDB...', // 6  head top
-    '....BB..CCCCCCCC..BB....', // 7
-    '.......CCNNNNNNCC.......', // 8  visor top
-    '......CCNNENNEENCC......', // 9  1x2 vertical eyes (col 10 & 13)
-    '......CCNNENNEENCC......', // 10
-    '.......CCNNNNNNCC.......', // 11 visor bottom
-    '........CCCCCCCC........', // 12 chin
-    '......BBBBWWWWBBBB......', // 13 collar + star core
-    '.....BBDDWWWWWWDDDB.....', // 14 body + bright star core
-    '....BB.DDWWCCWWDD.BB....', // 15 floating arm-wings + core
-    '...CB..DDDDCCDDDD..BC...', // 16
-    '.......DDDDDDDDDD.......', // 17
-    '........DDDDDDDD........', // 18
-    '........BB....BB........', // 19 feet
-    '.......CC......CC.......', // 20
+    '....OO............OO....', // 4  ear-wing tips
+    '...OBBO..OOOOOO..OBBO...', // 5  crisp 1px outline + head top
+    '...OBLOOOBBBBBBOOOBBO...', // 6
+    '....OOBBBBBBBBBBBBOO....', // 7
+    '.....OBBCCCCCCCCBBO.....', // 8  bright face shield
+    '....OBBCCNCCCCNCCBBO....', // 9  1x2 cute dark pixel eyes (cols 9 & 14)
+    '....OBBCCNCCCCNCCBBO....', // 10
+    '....OBBCCWWWWWWCCBBO....', // 11 starlight cheeks + chin
+    '.....OOBBCCCCCCBBOO.....', // 12
+    '....OOBBBWWWWWWBBBOO....', // 13 chubby body + star core
+    '...OBBDBBWWCCWWBBDBBO...', // 14
+    '...OB.ODDBBBBBBDDO.BO...', // 15 cute mini fins
+    '......ODDDDDDDDDDO......', // 16
+    '.......OODDDDDDOO.......', // 17
+    '........OOB..BOO........', // 18 feet
+    '........OO....OO........', // 19
+    '........................', // 20
     '........................'  // 21
   ];
 
@@ -141,7 +129,10 @@
         }
         // 1x2 pupil blink on frame 6
         if (f === 6) {
-          for (var ex = 9; ex <= 14; ex++) paintPixel(g, ex, 9, 'N');
+          for (var ex = 9; ex <= 14; ex++) {
+            if (ex === 9 || ex === 14) paintPixel(g, ex, 9, 'C');
+          }
+          paintPixel(g, 9, 10, 'N'); paintPixel(g, 14, 10, 'N');
         }
         // Star core pulse
         if (f % 4 === 0) {
@@ -328,8 +319,6 @@
       '.ags-mascot-stage[data-align="left"] { left:16px; transform-origin:bottom left; }',
       '.ags-mascot-hit { position:relative; display:inline-flex; align-items:flex-end; justify-content:center; pointer-events:auto; cursor:pointer; }',
       '.ags-mascot-canvas { display:block; image-rendering:pixelated; image-rendering:crisp-edges; }',
-      '.ags-mascot-badge { position:absolute; bottom:calc(100% + 2px); left:50%; transform:translateX(-50%) translateY(4px); font-family:var(--ags-font-ui,system-ui,sans-serif); font-size:11px; line-height:1.2; white-space:nowrap; padding:3px 8px; border-radius:999px; background:var(--ags-bg-surface,#18181b); color:var(--ags-text-primary,#f4f4f5); border:1px solid var(--ags-border,rgba(148,163,184,.26)); box-shadow:0 4px 12px rgba(0,0,0,.18); opacity:0; pointer-events:none; transition:opacity 140ms ease, transform 140ms ease; }',
-      '.ags-mascot-hit:hover .ags-mascot-badge, .ags-mascot-stage[data-pinned-tip="1"] .ags-mascot-badge { opacity:1; transform:translateX(-50%) translateY(0); }',
       '.ags-mascot-stage[data-state="sleeping"] .ags-mascot-canvas { opacity:0.82; }'
     ].join('\n');
     (document.head || document.documentElement).appendChild(s);
@@ -353,11 +342,7 @@
     canvas.className = 'ags-mascot-canvas';
     var ctx = canvas.getContext('2d');
 
-    var badge = document.createElement('span');
-    badge.className = 'ags-mascot-badge';
-
     hitEl.appendChild(canvas);
-    hitEl.appendChild(badge);
     stageEl.appendChild(hitEl);
 
     var scratchCanvas = document.createElement('canvas');
@@ -426,8 +411,14 @@
         w = 104;
         h = 104;
       } else if (cur.style === 'astra') {
-        w = 48;
-        h = 44;
+        var astraSprite = globalScope.__AG_STUDIO_ASTRA_SPRITE__ || null;
+        if (astraSprite && astraSprite.width) {
+          w = astraSprite.displayWidth || 76;
+          h = astraSprite.displayHeight || 68;
+        } else {
+          w = 48;
+          h = 44;
+        }
       }
       if (canvas.width !== w || canvas.height !== h) {
         canvas.width = w;
@@ -453,9 +444,6 @@
         stageEl.style.right = '';
         stageEl.style.left = '50%';
       }
-
-      var info = MASCOT_STATES[cur.state] || MASCOT_STATES.idle;
-      badge.textContent = info.badge + ' ' + info.label;
     }
 
     function drawFrame() {
@@ -466,6 +454,23 @@
       var logicalKey = resolveLogicalKey();
 
       if (cur.style === 'astra') {
+        var astraSprite = globalScope.__AG_STUDIO_ASTRA_SPRITE__ || null;
+        if (astraSprite && astraSprite.frames) {
+          var aKey = astraSprite.stateMap && astraSprite.stateMap[logicalKey] ? astraSprite.stateMap[logicalKey] : 'idle';
+          var aList = astraSprite.frames[aKey] || astraSprite.frames.idle || [];
+          if (aList.length) {
+            var aUri = aList[isMotionReduced() ? 0 : (frameIdx % aList.length)];
+            var aImg = loadSpriteImage(aUri, drawFrame);
+            if (aImg && aImg.loaded) {
+              var bobY = (logicalKey === 'thinking' || logicalKey === 'working' || logicalKey === 'happy')
+                ? ((frameIdx % 2) === 0 ? -2 : 0)
+                : ((frameIdx % 4) === 0 ? -1 : 0);
+              ctx.drawImage(aImg.img, 0, Math.max(0, bobY + 2), canvas.width, canvas.height - 2);
+              return;
+            }
+            return;
+          }
+        }
         var aFrames = buildAstraFrames(logicalKey);
         var af = isMotionReduced() ? 0 : (frameIdx % aFrames.length);
         var grid = aFrames[af] || aFrames[0];
