@@ -998,8 +998,16 @@
       if (isVisible(en)) { hasError = true; break; }
     }
 
-    var modelTrig = document.querySelector('[data-testid="model-selector-trigger"]');
-    var modelLabel = modelTrig ? String(modelTrig.getAttribute('aria-label') || modelTrig.textContent || '').trim() : '';
+    var modelTrigs = document.querySelectorAll('[data-testid="model-selector-trigger"]');
+    var modelTrig = null;
+    for (var mt = 0; mt < modelTrigs.length; mt++) {
+      if (isVisible(modelTrigs[mt]) && !isOwnNode(modelTrigs[mt])) {
+        modelTrig = modelTrigs[mt];
+        break;
+      }
+    }
+    if (!modelTrig && modelTrigs.length) modelTrig = modelTrigs[0];
+    var modelLabel = modelTrig ? String(modelTrig.textContent || modelTrig.getAttribute('aria-label') || '').trim() : '';
     var modelPanel = document.querySelector('[data-testid="model-selector-panel"]');
     var isModelMenuOpen = Boolean(modelPanel && isVisible(modelPanel));
 
@@ -1289,6 +1297,15 @@
     if (y >= 0 && y < 22 && x >= 0 && x < 24) grid[y][x] = ch;
   }
 
+  function clearAstraEyes(grid, xOff, yOff) {
+    var dx = xOff || 0;
+    var dy = yOff || 0;
+    paintPixel(grid, 9 + dx, 9 + dy, 'C');
+    paintPixel(grid, 9 + dx, 10 + dy, 'C');
+    paintPixel(grid, 14 + dx, 9 + dy, 'C');
+    paintPixel(grid, 14 + dx, 10 + dy, 'C');
+  }
+
   function shiftGridY(grid, dy) {
     if (!dy) return grid;
     var out = [];
@@ -1349,8 +1366,9 @@
         paintPixel(g2, ox + 1, oy, 'E');
         paintPixel(g2, 23 - ox, oy === 1 ? 2 : 1, 'B');
         // Eyes look upward (row 8-9 instead of 9-10)
-        paintPixel(g2, 10, 8, 'E'); paintPixel(g2, 13, 8, 'E');
-        paintPixel(g2, 10, 10, 'N'); paintPixel(g2, 13, 10, 'N');
+        clearAstraEyes(g2, 0, 0);
+        paintPixel(g2, 9, 8, 'N'); paintPixel(g2, 9, 9, 'N');
+        paintPixel(g2, 14, 8, 'N'); paintPixel(g2, 14, 9, 'N');
         frames.push(g2);
       }
     } else if (st === 'typing') {
@@ -1403,19 +1421,20 @@
         paintPixel(g6, 11, 1 + bob, 'G'); paintPixel(g6, 12, 1 + bob, 'G');
         paintPixel(g6, 11, 2 + bob, 'G'); paintPixel(g6, 12, 2 + bob, 'G');
         paintPixel(g6, 11, 4 + bob, 'W'); paintPixel(g6, 12, 4 + bob, 'G');
-        // Amber eyes
-        paintPixel(g6, 10, 9, 'G'); paintPixel(g6, 10, 10, 'G');
-        paintPixel(g6, 13, 9, 'G'); paintPixel(g6, 13, 10, 'G');
+        // Amber eyes directly on base eye coordinates (cols 9 & 14)
+        paintPixel(g6, 9, 9, 'G'); paintPixel(g6, 9, 10, 'G');
+        paintPixel(g6, 14, 9, 'G'); paintPixel(g6, 14, 10, 'G');
         frames.push(g6);
       }
     } else if (st === 'happy') {
       for (f = 0; f < 6; f++) {
         var g7 = cloneGrid(ASTRA_BASE_ROWS);
-        if (f % 2 === 1) g7 = shiftGridY(g7, -1);
-        // Happy curved '^ ^' eyes
-        paintPixel(g7, 9, 10, 'N'); paintPixel(g7, 10, 9, 'M'); paintPixel(g7, 11, 10, 'N');
-        paintPixel(g7, 12, 10, 'N'); paintPixel(g7, 13, 9, 'M'); paintPixel(g7, 14, 10, 'N');
-        paintPixel(g7, 10, 10, 'N'); paintPixel(g7, 13, 10, 'N');
+        var yBounce = f % 2 === 1 ? -1 : 0;
+        if (yBounce !== 0) g7 = shiftGridY(g7, yBounce);
+        // Happy curved '^ ^' eyes replacing cols 9 & 14
+        clearAstraEyes(g7, 0, yBounce);
+        paintPixel(g7, 8, 10 + yBounce, 'N'); paintPixel(g7, 9, 9 + yBounce, 'M'); paintPixel(g7, 10, 10 + yBounce, 'N');
+        paintPixel(g7, 13, 10 + yBounce, 'N'); paintPixel(g7, 14, 9 + yBounce, 'M'); paintPixel(g7, 15, 10 + yBounce, 'N');
         // Star rain burst
         paintPixel(g7, 3, (f * 2) % 6, 'G');
         paintPixel(g7, 20, (f * 2 + 3) % 6, 'W');
@@ -1427,9 +1446,9 @@
       var offsets = [-1, 1, -1, 1, 0, 0];
       for (f = 0; f < 6; f++) {
         var g8 = shiftGridX(cloneGrid(ASTRA_BASE_ROWS), offsets[f]);
-        // Crimson visor eyes
-        paintPixel(g8, 10 + offsets[f], 9, 'R'); paintPixel(g8, 10 + offsets[f], 10, 'R');
-        paintPixel(g8, 13 + offsets[f], 9, 'R'); paintPixel(g8, 13 + offsets[f], 10, 'R');
+        // Crimson visor eyes directly on shifted cols 9 & 14
+        paintPixel(g8, 9 + offsets[f], 9, 'R'); paintPixel(g8, 9 + offsets[f], 10, 'R');
+        paintPixel(g8, 14 + offsets[f], 9, 'R'); paintPixel(g8, 14 + offsets[f], 10, 'R');
         // Alert X spark
         paintPixel(g8, 11, 1, 'R'); paintPixel(g8, 13, 1, 'R');
         paintPixel(g8, 12, 2, 'R');
@@ -1439,10 +1458,10 @@
     } else if (st === 'sleeping') {
       for (f = 0; f < 4; f++) {
         var g9 = shiftGridY(cloneGrid(ASTRA_BASE_ROWS), 2);
-        // Closed sleeping horizontal eyes
-        paintPixel(g9, 9, 12, 'P'); paintPixel(g9, 10, 12, 'P');
-        paintPixel(g9, 13, 12, 'P'); paintPixel(g9, 14, 12, 'P');
-        paintPixel(g9, 10, 11, 'N'); paintPixel(g9, 13, 11, 'N');
+        // Closed sleeping horizontal eyes replacing cols 9 & 14 at rows 11-12
+        clearAstraEyes(g9, 0, 2);
+        paintPixel(g9, 8, 12, 'P'); paintPixel(g9, 9, 12, 'P'); paintPixel(g9, 10, 12, 'P');
+        paintPixel(g9, 13, 12, 'P'); paintPixel(g9, 14, 12, 'P'); paintPixel(g9, 15, 12, 'P');
         // Floating Zzz
         var zy = 4 - (f % 3);
         paintPixel(g9, 17, zy, 'P'); paintPixel(g9, 18, zy, 'P');
@@ -4258,6 +4277,7 @@
       enhanceStatus: null,
       unlockStatus: null,
       rehydrateStatus: null,
+      customDict: {},
       snapshot: null,
       history: null,
       accounts: null,
@@ -4692,6 +4712,7 @@
 
       var ka = ov.keepalive || {};
       var asw = ov.autoSwitch || {};
+      var thPct = asw.thresholdPct != null ? Math.round(Number(asw.thresholdPct)) : Math.round(((asw.threshold) || 0.1) * 100);
 
       return [
         bannerHtml,
@@ -4706,7 +4727,7 @@
         '  <summary>' + esc(t('keepaliveTitle')) + '</summary>',
         '  <div class="ags-row" style="margin-bottom:8px"><span>启用后台保活 (Keepalive)</span><input type="checkbox" id="ags-keepalive-en" ' + (ka.enabled ? 'checked' : '') + '></div>',
         '  <div class="ags-row" style="margin-bottom:8px"><span>启用低额度自动切号</span><input type="checkbox" id="ags-auto-switch-en" ' + (asw.enabled ? 'checked' : '') + '></div>',
-        '  <div class="ags-row"><span>触发阈值 (%)</span><input class="ags-input" style="width:90px" type="number" min="1" max="50" id="ags-auto-switch-th" value="' + Math.round(((asw.threshold) || 0.05) * 100) + '"></div>',
+        '  <div class="ags-row"><span>触发阈值 (%)</span><input class="ags-input" style="width:90px" type="number" min="1" max="95" id="ags-auto-switch-th" value="' + thPct + '"></div>',
         '</details>'
       ].join('\n');
     }
@@ -4741,7 +4762,19 @@
 
       var curModel = (state.snapshot && state.snapshot.context && state.snapshot.context.model) || 'gemini-4-neon';
       var curPerLimits = (cfg.context && cfg.context.perModelLimits) || {};
-      var curModelLimitVal = curPerLimits[curModel] || 512000;
+      var curModelLimitVal = curPerLimits[curModel] ||
+        (state.snapshot && state.snapshot.context && (state.snapshot.context.configuredLimit || state.snapshot.context.contextLimit)) ||
+        512000;
+      var codeFontVal = (fonts.code === 'cascadia' || fonts.code === 'system') ? fonts.code : 'jetbrains';
+      var dictEntries = Object.entries(state.customDict || {});
+      var dictListHtml = dictEntries.length
+        ? '<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px">' + dictEntries.map(function (kv) {
+            return '<div class="ags-row" style="font-size:11.5px;padding:3px 6px;border-radius:6px;background:var(--ags-bg-canvas)">' +
+              '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(kv[0]) + ' → ' + esc(kv[1]) + '</span>' +
+              '<button type="button" class="ags-btn ags-btn-ghost" title="删除" data-del-dict="' + esc(kv[0]) + '">×</button>' +
+              '</div>';
+          }).join('') + '</div>'
+        : '<div class="ags-sub" style="margin-top:6px">暂无自定义词条</div>';
 
       return [
         // Section 1: Appearance, Fonts & Mascot
@@ -4816,9 +4849,9 @@
         '      <option value="georgia" ' + (fonts.body === 'georgia' ? 'selected' : '') + '>Georgia 经典</option>' +
         '    </select></div>',
         '    <div class="ags-row" style="margin-top:6px"><span class="ags-sub">代码字体</span><select class="ags-select" style="width:160px" id="ags-font-code">' +
-        '      <option value="jetbrains" ' + ((fonts.code || 'jetbrains') === 'jetbrains' ? 'selected' : '') + '>JetBrains Mono</option>' +
-        '      <option value="cascadia" ' + (fonts.code === 'cascadia' ? 'selected' : '') + '>Cascadia Code</option>' +
-        '      <option value="system" ' + (fonts.code === 'system' ? 'selected' : '') + '>System Monospace</option>' +
+        '      <option value="jetbrains" ' + (codeFontVal === 'jetbrains' ? 'selected' : '') + '>JetBrains Mono</option>' +
+        '      <option value="cascadia" ' + (codeFontVal === 'cascadia' ? 'selected' : '') + '>Cascadia Code</option>' +
+        '      <option value="system" ' + (codeFontVal === 'system' ? 'selected' : '') + '>System Monospace</option>' +
         '    </select></div>',
         '    <div class="ags-row" style="margin-top:6px"><span class="ags-sub">自定义正文字体名</span><input class="ags-input" style="width:160px" id="ags-custom-body-font" value="' + esc(fonts.customBodyFont || '') + '" placeholder="本地字体名"></div>',
         '    <div class="ags-row" style="margin-top:6px"><span class="ags-sub">本地字体目录 (' + scannedFonts.length + ' 已加载)</span><button class="ags-btn" data-open-path="fonts">打开目录</button></div>',
@@ -4845,12 +4878,13 @@
         '    </div></div>',
         '  <div class="ags-row"><span>原生菜单与托盘汉化</span><input type="checkbox" id="ags-native-menu-i18n" ' + (i18nCfg.translateNativeMenu !== false ? 'checked' : '') + '></div>',
         '  <details class="ags-details">',
-        '    <summary>' + esc(t('customDictTitle')) + '</summary>',
+        '    <summary>' + esc(t('customDictTitle')) + (dictEntries.length ? (' (' + dictEntries.length + ')') : '') + '</summary>',
         '    <div class="ags-row" style="gap:6px">' +
         '      <input class="ags-input" id="ags-dict-en" placeholder="英文原文">' +
         '      <input class="ags-input" id="ags-dict-zh" placeholder="自定义译文">' +
         '      <button class="ags-btn" id="ags-dict-add-btn">添加</button>' +
         '    </div>',
+        dictListHtml,
         '  </details>',
         '</div>',
 
@@ -4959,6 +4993,7 @@
       el.querySelectorAll('[data-days]').forEach(function (btn) {
         btn.addEventListener('click', function () {
           state.days = Number(btn.getAttribute('data-days'));
+          render(null, true);
           if (opts.onRefresh) opts.onRefresh(true);
         });
       });
@@ -4994,17 +5029,29 @@
         refQuotaBtn.addEventListener('click', function () {
           if (opts.api && opts.api.getQuota) {
             opts.api.getQuota({ force: true }).then(function (q) {
+              if (q && q.ok === false) {
+                showToast(q.error || '额度刷新失败');
+                return;
+              }
               if (state.snapshot && q) state.snapshot.quota = q;
               showToast('额度已刷新');
-              render();
-            }).catch(function () {});
+              render(null, true);
+            }).catch(function (e) { showToast((e && e.message) || '额度刷新失败'); });
           }
         });
       }
 
       var cliBtn = el.querySelector('[data-action="launch-cli"]');
       if (cliBtn) cliBtn.addEventListener('click', function () {
-        if (opts.api && opts.api.launchCli) opts.api.launchCli().then(function () { showToast('已唤起 CLI 终端'); });
+        if (opts.api && opts.api.launchCli) {
+          opts.api.launchCli().then(function (res) {
+            if (res && res.ok === false) {
+              showToast(res.error || '未找到 agy CLI 可执行文件');
+              return;
+            }
+            showToast('已唤起 CLI 终端');
+          }).catch(function (e) { showToast((e && e.message) || '唤起 CLI 失败'); });
+        }
       });
 
       el.querySelectorAll('[data-acc-action]').forEach(function (btn) {
@@ -5036,9 +5083,13 @@
           var id = btn.getAttribute('data-acc-switch');
           if (opts.api && opts.api.accountsAction) {
             opts.api.accountsAction({ action: 'switch', accountId: id }).then(function (res) {
-              showToast(res && res.requiresRestart ? '已切换账号，重启客户端生效' : '账号已切换');
+              if (res && res.ok === false) {
+                showToast(res.error || '切号失败');
+                return;
+              }
+              showToast((res && res.message) || (res && (res.requiresWindowReloadHint || res.requiresRestart) ? '已切换账号，请重载或重启客户端生效' : '账号已切换'));
               if (opts.onRefresh) opts.onRefresh(true);
-            }).catch(function (err) { showToast(err.message); });
+            }).catch(function (err) { showToast((err && err.message) || '切号失败'); });
           }
         });
       });
@@ -5047,9 +5098,14 @@
         btn.addEventListener('click', function () {
           var id = btn.getAttribute('data-acc-remove');
           if (opts.api && opts.api.accountsAction) {
-            opts.api.accountsAction({ action: 'remove', accountId: id }).then(function () {
+            opts.api.accountsAction({ action: 'remove', accountId: id }).then(function (res) {
+              if (res && res.ok === false) {
+                showToast(res.error || '移除失败');
+                return;
+              }
+              showToast('已移除账号槽位');
               if (opts.onRefresh) opts.onRefresh(true);
-            });
+            }).catch(function (err) { showToast((err && err.message) || '移除失败'); });
           }
         });
       });
@@ -5058,9 +5114,18 @@
       if (kaEn) {
         kaEn.addEventListener('change', function () {
           if (opts.api && opts.api.accountsAction) {
-            opts.api.accountsAction({ action: kaEn.checked ? 'update_keepalive' : 'stop_keepalive', enabled: kaEn.checked }).then(function () {
-              showToast(kaEn.checked ? '已开启账号保活' : '已关闭保活');
-            }).catch(function () {});
+            var nextOn = kaEn.checked;
+            opts.api.accountsAction({ action: nextOn ? 'update_keepalive' : 'stop_keepalive', enabled: nextOn }).then(function (res) {
+              if (res && res.ok === false) {
+                kaEn.checked = !nextOn;
+                showToast(res.error || '保活配置失败');
+                return;
+              }
+              showToast(nextOn ? '已开启账号保活' : '已关闭保活');
+            }).catch(function (err) {
+              kaEn.checked = !nextOn;
+              showToast((err && err.message) || '保活配置失败');
+            });
           }
         });
       }
@@ -5069,10 +5134,14 @@
       var autoTh = el.querySelector('#ags-auto-switch-th');
       if (autoSw && autoTh) {
         var saveAuto = function () {
-          var payload = { enabled: autoSw.checked, threshold: Number(autoTh.value || 5) / 100 };
+          var pct = Math.max(1, Math.min(95, Math.round(Number(autoTh.value || 10))));
+          var payload = { enabled: autoSw.checked, thresholdPct: pct, threshold: pct / 100 };
           opts.saveConfig({ quota: { autoSwitch: payload } });
           if (opts.api && opts.api.accountsAction) {
-            opts.api.accountsAction({ action: 'update_auto_switch', autoSwitch: payload }).catch(function () {});
+            opts.api.accountsAction({ action: 'update_auto_switch', autoSwitch: payload }).then(function (r) {
+              if (r && r.ok === false) showToast(r.error || '保存自动切号配置失败');
+              else showToast(autoSw.checked ? ('已开启低额度自动切号 (≤' + pct + '%)') : '已关闭自动切号');
+            }).catch(function (e) { showToast((e && e.message) || '保存失败'); });
           }
         };
         autoSw.addEventListener('change', saveAuto);
@@ -5217,14 +5286,36 @@
 
       var dictAddBtn = el.querySelector('#ags-dict-add-btn');
       if (dictAddBtn) dictAddBtn.addEventListener('click', function () {
-        var enVal = (el.querySelector('#ags-dict-en').value || '').trim();
-        var zhVal = (el.querySelector('#ags-dict-zh').value || '').trim();
+        var enInp = el.querySelector('#ags-dict-en');
+        var zhInp = el.querySelector('#ags-dict-zh');
+        var enVal = ((enInp && enInp.value) || '').trim();
+        var zhVal = ((zhInp && zhInp.value) || '').trim();
         if (!enVal || !zhVal || !opts.api || !opts.api.getI18nPayload) return;
         opts.api.getI18nPayload().then(function (cur) {
           var nextExact = Object.assign({}, cur.customExact || {});
           nextExact[enVal] = zhVal;
+          state.customDict = nextExact;
           return opts.api.saveCustomDictionary({ exact: nextExact, regex: cur.customRegex || [] });
-        }).then(function () { showToast('词条已保存'); });
+        }).then(function () {
+          showToast('词条已保存');
+          render(null, true);
+        }).catch(function (e) { showToast((e && e.message) || '保存失败'); });
+      });
+
+      el.querySelectorAll('[data-del-dict]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var key = btn.getAttribute('data-del-dict');
+          if (!key || !opts.api || !opts.api.getI18nPayload) return;
+          opts.api.getI18nPayload().then(function (cur) {
+            var nextExact = Object.assign({}, cur.customExact || {});
+            delete nextExact[key];
+            state.customDict = nextExact;
+            return opts.api.saveCustomDictionary({ exact: nextExact, regex: cur.customRegex || [] });
+          }).then(function () {
+            showToast('已删除词条');
+            render(null, true);
+          }).catch(function (e) { showToast((e && e.message) || '删除失败'); });
+        });
       });
 
       var proxySaveBtn = el.querySelector('#ags-proxy-save-btn');
@@ -5269,13 +5360,17 @@
         enhApplyBtn.addEventListener('click', function () {
           var tier = Number(tierSel.value || 0);
           var cn = Boolean(cnTitleEl.checked);
-          opts.saveConfig({ enhance: { promptTier: tier, chineseSessionTitle: cn } });
           if (opts.api && opts.api.applyEnhance) {
             opts.api.applyEnhance({ promptTier: tier, chineseTitle: cn }).then(function (r) {
+              if (r && r.ok === false) {
+                showToast(r.error || '应用失败');
+                return;
+              }
               state.enhanceStatus = r || { promptTier: tier, chineseTitle: cn };
-              showToast('提示词与标题增强已应用');
-              render();
-            }).catch(function (e) { showToast(e.message || '应用失败'); });
+              opts.saveConfig({ enhance: { promptTier: tier, chineseSessionTitle: cn } });
+              showToast((r && r.message) || (r && r.needsRestart ? '已应用，重启 LS 或客户端后生效' : '提示词与标题增强已应用'));
+              render(null, true);
+            }).catch(function (e) { showToast((e && e.message) || '应用失败'); });
           }
         });
       }
@@ -5283,11 +5378,15 @@
         enhRestBtn.addEventListener('click', function () {
           if (opts.api && opts.api.restoreEnhance) {
             opts.api.restoreEnhance().then(function (r) {
+              if (r && r.ok === false) {
+                showToast(r.error || '还原失败');
+                return;
+              }
               state.enhanceStatus = r || { promptTier: 0, chineseTitle: false };
               opts.saveConfig({ enhance: { promptTier: 0, chineseSessionTitle: false } });
-              showToast('已还原官方提示词与标题');
-              render();
-            }).catch(function (e) { showToast(e.message || '还原失败'); });
+              showToast((r && r.message) || '已还原官方提示词与标题');
+              render(null, true);
+            }).catch(function (e) { showToast((e && e.message) || '还原失败'); });
           }
         });
       }
@@ -5303,13 +5402,17 @@
           var mode = unlModeSel.value || 'ORIG';
           var limitTokens = Number((unlLimitInp && unlLimitInp.value) || 512000);
           var alignCli = Boolean(unlCliChk && unlCliChk.checked);
-          opts.saveConfig({ context: { unlockMode: mode, unlockLimitTokens: limitTokens, alignCli: alignCli } });
           if (opts.api && opts.api.applyContextUnlock) {
             opts.api.applyContextUnlock({ mode: mode, limitTokens: limitTokens, alignCli: alignCli }).then(function (r) {
+              if (r && r.ok === false) {
+                showToast(r.error || '应用上下文解锁失败');
+                return;
+              }
               state.unlockStatus = r || { mode: mode, limitTokens: limitTokens, alignCli: alignCli };
-              showToast('上下文解锁策略已应用');
-              render();
-            }).catch(function (e) { showToast(e.message || '应用失败'); });
+              opts.saveConfig({ context: { unlockMode: mode, unlockLimitTokens: limitTokens, alignCli: alignCli } });
+              showToast((r && r.message) || (r && r.needsRestart ? '上下文解锁已应用，重启 LS 后生效' : '上下文解锁策略已应用'));
+              render(null, true);
+            }).catch(function (e) { showToast((e && e.message) || '应用失败'); });
           }
         });
       }
@@ -5317,11 +5420,15 @@
         unlRestBtn.addEventListener('click', function () {
           if (opts.api && opts.api.restoreContextUnlock) {
             opts.api.restoreContextUnlock().then(function (r) {
+              if (r && r.ok === false) {
+                showToast(r.error || '还原失败');
+                return;
+              }
               state.unlockStatus = r || { mode: 'ORIG' };
               opts.saveConfig({ context: { unlockMode: 'ORIG' } });
-              showToast('已还原原版上下文限制');
-              render();
-            }).catch(function (e) { showToast(e.message || '还原失败'); });
+              showToast((r && r.message) || '已还原原版上下文限制');
+              render(null, true);
+            }).catch(function (e) { showToast((e && e.message) || '还原失败'); });
           }
         });
       }
@@ -5367,14 +5474,22 @@
       if (rehEl) {
         rehEl.addEventListener('change', function () {
           var on = rehEl.checked;
-          opts.saveConfig({ enhance: { rehydrateEnabled: on } });
           if (opts.api) {
             var fn = on ? opts.api.applyRehydrate : (opts.api.disableRehydrate || opts.api.restoreRehydrate);
             if (fn) {
               fn().then(function (r) {
+                if (r && r.ok === false) {
+                  rehEl.checked = !on;
+                  showToast(r.error || '操作失败');
+                  return;
+                }
                 state.rehydrateStatus = r || { enabled: on };
-                showToast(on ? '已开启压缩后记忆回填' : '已关闭压缩后记忆回填');
-              }).catch(function (e) { showToast(e.message || '操作失败'); });
+                opts.saveConfig({ enhance: { rehydrateEnabled: on } });
+                showToast((r && r.message) || (on ? '已开启压缩后记忆回填' : '已关闭压缩后记忆回填'));
+              }).catch(function (e) {
+                rehEl.checked = !on;
+                showToast((e && e.message) || '操作失败');
+              });
             }
           }
         });
@@ -5389,7 +5504,13 @@
       var restartLsBtn = el.querySelector('#ags-restart-ls-btn');
       if (restartLsBtn) restartLsBtn.addEventListener('click', function () {
         if (opts.api && opts.api.restartLanguageServers) {
-          opts.api.restartLanguageServers().then(function () { showToast('LanguageServer 已重启'); }).catch(function () {});
+          opts.api.restartLanguageServers().then(function (r) {
+            if (r && r.ok === false) {
+              showToast(r.error || '重启 LS 失败');
+              return;
+            }
+            showToast((r && r.message) || 'LanguageServer 已重启');
+          }).catch(function (e) { showToast((e && e.message) || '重启 LS 失败'); });
         }
       });
 
@@ -5408,6 +5529,7 @@
         if (dataPatch.enhanceStatus !== undefined) state.enhanceStatus = dataPatch.enhanceStatus;
         if (dataPatch.unlockStatus !== undefined) state.unlockStatus = dataPatch.unlockStatus;
         if (dataPatch.rehydrateStatus !== undefined) state.rehydrateStatus = dataPatch.rehydrateStatus;
+        if (dataPatch.i18nPayload !== undefined) state.customDict = (dataPatch.i18nPayload && dataPatch.i18nPayload.customExact) || {};
       }
 
       var bodyEl = el.querySelector('#ags-drawer-body');
@@ -5505,7 +5627,7 @@
   var currentConfig = {
     theme: { activePreset: 'claude', colorMode: 'system', customThemes: [], editorialSerif: true, fonts: {} },
     mascot: { enabled: true, style: 'clawd', scale: 1, align: 'right', sleepTimeoutMs: 300000 },
-    hud: { enabled: true, position: 'composer', showVial: true, homeOverview: true },
+    hud: { enabled: true, displayStyle: 'ring', position: 'composer', showVial: true, homeOverview: true },
     fx: { inkStream: true, smoothCaret: true, edgeAura: true, effortSlider: false },
     homeOverview: true,
     i18n: { language: 'zh-CN' },
@@ -5758,6 +5880,9 @@
     var rehFn = open && tab === 'settings' && api.getRehydrateStatus
       ? function () { return api.getRehydrateStatus(); }
       : function () { return Promise.resolve(undefined); };
+    var i18nFn = open && tab === 'settings' && api.getI18nPayload
+      ? function () { return api.getI18nPayload(); }
+      : function () { return Promise.resolve(undefined); };
 
     Promise.all([
       scanFn().catch(function () { return null; }),
@@ -5766,7 +5891,8 @@
       accFn().catch(function () { return undefined; }),
       enhFn().catch(function () { return undefined; }),
       unlFn().catch(function () { return undefined; }),
-      rehFn().catch(function () { return undefined; })
+      rehFn().catch(function () { return undefined; }),
+      i18nFn().catch(function () { return undefined; })
     ]).then(function (res) {
       refreshBusy = false;
       var snap = res[0];
@@ -5790,7 +5916,8 @@
           fonts: scannedFonts,
           enhanceStatus: res[4],
           unlockStatus: res[5],
-          rehydrateStatus: res[6]
+          rehydrateStatus: res[6],
+          i18nPayload: res[7]
         });
       }
     });
@@ -5889,6 +6016,16 @@
           syncDomAndTurnState();
           if (drawer.isOpen()) drawer.render();
         }
+      });
+    }
+
+    if (api.onI18nChanged) {
+      api.onI18nChanged(function (payload) {
+        try {
+          if (window.__AG_STUDIO_I18N__ && typeof window.__AG_STUDIO_I18N__.applyPayload === 'function') {
+            window.__AG_STUDIO_I18N__.applyPayload(payload);
+          }
+        } catch (_e) {}
       });
     }
   } else {

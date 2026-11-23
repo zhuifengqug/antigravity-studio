@@ -235,6 +235,7 @@
       enhanceStatus: null,
       unlockStatus: null,
       rehydrateStatus: null,
+      customDict: {},
       snapshot: null,
       history: null,
       accounts: null,
@@ -669,6 +670,7 @@
 
       var ka = ov.keepalive || {};
       var asw = ov.autoSwitch || {};
+      var thPct = asw.thresholdPct != null ? Math.round(Number(asw.thresholdPct)) : Math.round(((asw.threshold) || 0.1) * 100);
 
       return [
         bannerHtml,
@@ -683,7 +685,7 @@
         '  <summary>' + esc(t('keepaliveTitle')) + '</summary>',
         '  <div class="ags-row" style="margin-bottom:8px"><span>启用后台保活 (Keepalive)</span><input type="checkbox" id="ags-keepalive-en" ' + (ka.enabled ? 'checked' : '') + '></div>',
         '  <div class="ags-row" style="margin-bottom:8px"><span>启用低额度自动切号</span><input type="checkbox" id="ags-auto-switch-en" ' + (asw.enabled ? 'checked' : '') + '></div>',
-        '  <div class="ags-row"><span>触发阈值 (%)</span><input class="ags-input" style="width:90px" type="number" min="1" max="50" id="ags-auto-switch-th" value="' + Math.round(((asw.threshold) || 0.05) * 100) + '"></div>',
+        '  <div class="ags-row"><span>触发阈值 (%)</span><input class="ags-input" style="width:90px" type="number" min="1" max="95" id="ags-auto-switch-th" value="' + thPct + '"></div>',
         '</details>'
       ].join('\n');
     }
@@ -718,7 +720,19 @@
 
       var curModel = (state.snapshot && state.snapshot.context && state.snapshot.context.model) || 'gemini-4-neon';
       var curPerLimits = (cfg.context && cfg.context.perModelLimits) || {};
-      var curModelLimitVal = curPerLimits[curModel] || 512000;
+      var curModelLimitVal = curPerLimits[curModel] ||
+        (state.snapshot && state.snapshot.context && (state.snapshot.context.configuredLimit || state.snapshot.context.contextLimit)) ||
+        512000;
+      var codeFontVal = (fonts.code === 'cascadia' || fonts.code === 'system') ? fonts.code : 'jetbrains';
+      var dictEntries = Object.entries(state.customDict || {});
+      var dictListHtml = dictEntries.length
+        ? '<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px">' + dictEntries.map(function (kv) {
+            return '<div class="ags-row" style="font-size:11.5px;padding:3px 6px;border-radius:6px;background:var(--ags-bg-canvas)">' +
+              '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(kv[0]) + ' → ' + esc(kv[1]) + '</span>' +
+              '<button type="button" class="ags-btn ags-btn-ghost" title="删除" data-del-dict="' + esc(kv[0]) + '">×</button>' +
+              '</div>';
+          }).join('') + '</div>'
+        : '<div class="ags-sub" style="margin-top:6px">暂无自定义词条</div>';
 
       return [
         // Section 1: Appearance, Fonts & Mascot
@@ -793,9 +807,9 @@
         '      <option value="georgia" ' + (fonts.body === 'georgia' ? 'selected' : '') + '>Georgia 经典</option>' +
         '    </select></div>',
         '    <div class="ags-row" style="margin-top:6px"><span class="ags-sub">代码字体</span><select class="ags-select" style="width:160px" id="ags-font-code">' +
-        '      <option value="jetbrains" ' + ((fonts.code || 'jetbrains') === 'jetbrains' ? 'selected' : '') + '>JetBrains Mono</option>' +
-        '      <option value="cascadia" ' + (fonts.code === 'cascadia' ? 'selected' : '') + '>Cascadia Code</option>' +
-        '      <option value="system" ' + (fonts.code === 'system' ? 'selected' : '') + '>System Monospace</option>' +
+        '      <option value="jetbrains" ' + (codeFontVal === 'jetbrains' ? 'selected' : '') + '>JetBrains Mono</option>' +
+        '      <option value="cascadia" ' + (codeFontVal === 'cascadia' ? 'selected' : '') + '>Cascadia Code</option>' +
+        '      <option value="system" ' + (codeFontVal === 'system' ? 'selected' : '') + '>System Monospace</option>' +
         '    </select></div>',
         '    <div class="ags-row" style="margin-top:6px"><span class="ags-sub">自定义正文字体名</span><input class="ags-input" style="width:160px" id="ags-custom-body-font" value="' + esc(fonts.customBodyFont || '') + '" placeholder="本地字体名"></div>',
         '    <div class="ags-row" style="margin-top:6px"><span class="ags-sub">本地字体目录 (' + scannedFonts.length + ' 已加载)</span><button class="ags-btn" data-open-path="fonts">打开目录</button></div>',
@@ -822,12 +836,13 @@
         '    </div></div>',
         '  <div class="ags-row"><span>原生菜单与托盘汉化</span><input type="checkbox" id="ags-native-menu-i18n" ' + (i18nCfg.translateNativeMenu !== false ? 'checked' : '') + '></div>',
         '  <details class="ags-details">',
-        '    <summary>' + esc(t('customDictTitle')) + '</summary>',
+        '    <summary>' + esc(t('customDictTitle')) + (dictEntries.length ? (' (' + dictEntries.length + ')') : '') + '</summary>',
         '    <div class="ags-row" style="gap:6px">' +
         '      <input class="ags-input" id="ags-dict-en" placeholder="英文原文">' +
         '      <input class="ags-input" id="ags-dict-zh" placeholder="自定义译文">' +
         '      <button class="ags-btn" id="ags-dict-add-btn">添加</button>' +
         '    </div>',
+        dictListHtml,
         '  </details>',
         '</div>',
 
@@ -936,6 +951,7 @@
       el.querySelectorAll('[data-days]').forEach(function (btn) {
         btn.addEventListener('click', function () {
           state.days = Number(btn.getAttribute('data-days'));
+          render(null, true);
           if (opts.onRefresh) opts.onRefresh(true);
         });
       });
@@ -971,17 +987,29 @@
         refQuotaBtn.addEventListener('click', function () {
           if (opts.api && opts.api.getQuota) {
             opts.api.getQuota({ force: true }).then(function (q) {
+              if (q && q.ok === false) {
+                showToast(q.error || '额度刷新失败');
+                return;
+              }
               if (state.snapshot && q) state.snapshot.quota = q;
               showToast('额度已刷新');
-              render();
-            }).catch(function () {});
+              render(null, true);
+            }).catch(function (e) { showToast((e && e.message) || '额度刷新失败'); });
           }
         });
       }
 
       var cliBtn = el.querySelector('[data-action="launch-cli"]');
       if (cliBtn) cliBtn.addEventListener('click', function () {
-        if (opts.api && opts.api.launchCli) opts.api.launchCli().then(function () { showToast('已唤起 CLI 终端'); });
+        if (opts.api && opts.api.launchCli) {
+          opts.api.launchCli().then(function (res) {
+            if (res && res.ok === false) {
+              showToast(res.error || '未找到 agy CLI 可执行文件');
+              return;
+            }
+            showToast('已唤起 CLI 终端');
+          }).catch(function (e) { showToast((e && e.message) || '唤起 CLI 失败'); });
+        }
       });
 
       el.querySelectorAll('[data-acc-action]').forEach(function (btn) {
@@ -1013,9 +1041,13 @@
           var id = btn.getAttribute('data-acc-switch');
           if (opts.api && opts.api.accountsAction) {
             opts.api.accountsAction({ action: 'switch', accountId: id }).then(function (res) {
-              showToast(res && res.requiresRestart ? '已切换账号，重启客户端生效' : '账号已切换');
+              if (res && res.ok === false) {
+                showToast(res.error || '切号失败');
+                return;
+              }
+              showToast((res && res.message) || (res && (res.requiresWindowReloadHint || res.requiresRestart) ? '已切换账号，请重载或重启客户端生效' : '账号已切换'));
               if (opts.onRefresh) opts.onRefresh(true);
-            }).catch(function (err) { showToast(err.message); });
+            }).catch(function (err) { showToast((err && err.message) || '切号失败'); });
           }
         });
       });
@@ -1024,9 +1056,14 @@
         btn.addEventListener('click', function () {
           var id = btn.getAttribute('data-acc-remove');
           if (opts.api && opts.api.accountsAction) {
-            opts.api.accountsAction({ action: 'remove', accountId: id }).then(function () {
+            opts.api.accountsAction({ action: 'remove', accountId: id }).then(function (res) {
+              if (res && res.ok === false) {
+                showToast(res.error || '移除失败');
+                return;
+              }
+              showToast('已移除账号槽位');
               if (opts.onRefresh) opts.onRefresh(true);
-            });
+            }).catch(function (err) { showToast((err && err.message) || '移除失败'); });
           }
         });
       });
@@ -1035,9 +1072,18 @@
       if (kaEn) {
         kaEn.addEventListener('change', function () {
           if (opts.api && opts.api.accountsAction) {
-            opts.api.accountsAction({ action: kaEn.checked ? 'update_keepalive' : 'stop_keepalive', enabled: kaEn.checked }).then(function () {
-              showToast(kaEn.checked ? '已开启账号保活' : '已关闭保活');
-            }).catch(function () {});
+            var nextOn = kaEn.checked;
+            opts.api.accountsAction({ action: nextOn ? 'update_keepalive' : 'stop_keepalive', enabled: nextOn }).then(function (res) {
+              if (res && res.ok === false) {
+                kaEn.checked = !nextOn;
+                showToast(res.error || '保活配置失败');
+                return;
+              }
+              showToast(nextOn ? '已开启账号保活' : '已关闭保活');
+            }).catch(function (err) {
+              kaEn.checked = !nextOn;
+              showToast((err && err.message) || '保活配置失败');
+            });
           }
         });
       }
@@ -1046,10 +1092,14 @@
       var autoTh = el.querySelector('#ags-auto-switch-th');
       if (autoSw && autoTh) {
         var saveAuto = function () {
-          var payload = { enabled: autoSw.checked, threshold: Number(autoTh.value || 5) / 100 };
+          var pct = Math.max(1, Math.min(95, Math.round(Number(autoTh.value || 10))));
+          var payload = { enabled: autoSw.checked, thresholdPct: pct, threshold: pct / 100 };
           opts.saveConfig({ quota: { autoSwitch: payload } });
           if (opts.api && opts.api.accountsAction) {
-            opts.api.accountsAction({ action: 'update_auto_switch', autoSwitch: payload }).catch(function () {});
+            opts.api.accountsAction({ action: 'update_auto_switch', autoSwitch: payload }).then(function (r) {
+              if (r && r.ok === false) showToast(r.error || '保存自动切号配置失败');
+              else showToast(autoSw.checked ? ('已开启低额度自动切号 (≤' + pct + '%)') : '已关闭自动切号');
+            }).catch(function (e) { showToast((e && e.message) || '保存失败'); });
           }
         };
         autoSw.addEventListener('change', saveAuto);
@@ -1194,14 +1244,36 @@
 
       var dictAddBtn = el.querySelector('#ags-dict-add-btn');
       if (dictAddBtn) dictAddBtn.addEventListener('click', function () {
-        var enVal = (el.querySelector('#ags-dict-en').value || '').trim();
-        var zhVal = (el.querySelector('#ags-dict-zh').value || '').trim();
+        var enInp = el.querySelector('#ags-dict-en');
+        var zhInp = el.querySelector('#ags-dict-zh');
+        var enVal = ((enInp && enInp.value) || '').trim();
+        var zhVal = ((zhInp && zhInp.value) || '').trim();
         if (!enVal || !zhVal || !opts.api || !opts.api.getI18nPayload) return;
         opts.api.getI18nPayload().then(function (cur) {
           var nextExact = Object.assign({}, cur.customExact || {});
           nextExact[enVal] = zhVal;
+          state.customDict = nextExact;
           return opts.api.saveCustomDictionary({ exact: nextExact, regex: cur.customRegex || [] });
-        }).then(function () { showToast('词条已保存'); });
+        }).then(function () {
+          showToast('词条已保存');
+          render(null, true);
+        }).catch(function (e) { showToast((e && e.message) || '保存失败'); });
+      });
+
+      el.querySelectorAll('[data-del-dict]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var key = btn.getAttribute('data-del-dict');
+          if (!key || !opts.api || !opts.api.getI18nPayload) return;
+          opts.api.getI18nPayload().then(function (cur) {
+            var nextExact = Object.assign({}, cur.customExact || {});
+            delete nextExact[key];
+            state.customDict = nextExact;
+            return opts.api.saveCustomDictionary({ exact: nextExact, regex: cur.customRegex || [] });
+          }).then(function () {
+            showToast('已删除词条');
+            render(null, true);
+          }).catch(function (e) { showToast((e && e.message) || '删除失败'); });
+        });
       });
 
       var proxySaveBtn = el.querySelector('#ags-proxy-save-btn');
@@ -1246,13 +1318,17 @@
         enhApplyBtn.addEventListener('click', function () {
           var tier = Number(tierSel.value || 0);
           var cn = Boolean(cnTitleEl.checked);
-          opts.saveConfig({ enhance: { promptTier: tier, chineseSessionTitle: cn } });
           if (opts.api && opts.api.applyEnhance) {
             opts.api.applyEnhance({ promptTier: tier, chineseTitle: cn }).then(function (r) {
+              if (r && r.ok === false) {
+                showToast(r.error || '应用失败');
+                return;
+              }
               state.enhanceStatus = r || { promptTier: tier, chineseTitle: cn };
-              showToast('提示词与标题增强已应用');
-              render();
-            }).catch(function (e) { showToast(e.message || '应用失败'); });
+              opts.saveConfig({ enhance: { promptTier: tier, chineseSessionTitle: cn } });
+              showToast((r && r.message) || (r && r.needsRestart ? '已应用，重启 LS 或客户端后生效' : '提示词与标题增强已应用'));
+              render(null, true);
+            }).catch(function (e) { showToast((e && e.message) || '应用失败'); });
           }
         });
       }
@@ -1260,11 +1336,15 @@
         enhRestBtn.addEventListener('click', function () {
           if (opts.api && opts.api.restoreEnhance) {
             opts.api.restoreEnhance().then(function (r) {
+              if (r && r.ok === false) {
+                showToast(r.error || '还原失败');
+                return;
+              }
               state.enhanceStatus = r || { promptTier: 0, chineseTitle: false };
               opts.saveConfig({ enhance: { promptTier: 0, chineseSessionTitle: false } });
-              showToast('已还原官方提示词与标题');
-              render();
-            }).catch(function (e) { showToast(e.message || '还原失败'); });
+              showToast((r && r.message) || '已还原官方提示词与标题');
+              render(null, true);
+            }).catch(function (e) { showToast((e && e.message) || '还原失败'); });
           }
         });
       }
@@ -1280,13 +1360,17 @@
           var mode = unlModeSel.value || 'ORIG';
           var limitTokens = Number((unlLimitInp && unlLimitInp.value) || 512000);
           var alignCli = Boolean(unlCliChk && unlCliChk.checked);
-          opts.saveConfig({ context: { unlockMode: mode, unlockLimitTokens: limitTokens, alignCli: alignCli } });
           if (opts.api && opts.api.applyContextUnlock) {
             opts.api.applyContextUnlock({ mode: mode, limitTokens: limitTokens, alignCli: alignCli }).then(function (r) {
+              if (r && r.ok === false) {
+                showToast(r.error || '应用上下文解锁失败');
+                return;
+              }
               state.unlockStatus = r || { mode: mode, limitTokens: limitTokens, alignCli: alignCli };
-              showToast('上下文解锁策略已应用');
-              render();
-            }).catch(function (e) { showToast(e.message || '应用失败'); });
+              opts.saveConfig({ context: { unlockMode: mode, unlockLimitTokens: limitTokens, alignCli: alignCli } });
+              showToast((r && r.message) || (r && r.needsRestart ? '上下文解锁已应用，重启 LS 后生效' : '上下文解锁策略已应用'));
+              render(null, true);
+            }).catch(function (e) { showToast((e && e.message) || '应用失败'); });
           }
         });
       }
@@ -1294,11 +1378,15 @@
         unlRestBtn.addEventListener('click', function () {
           if (opts.api && opts.api.restoreContextUnlock) {
             opts.api.restoreContextUnlock().then(function (r) {
+              if (r && r.ok === false) {
+                showToast(r.error || '还原失败');
+                return;
+              }
               state.unlockStatus = r || { mode: 'ORIG' };
               opts.saveConfig({ context: { unlockMode: 'ORIG' } });
-              showToast('已还原原版上下文限制');
-              render();
-            }).catch(function (e) { showToast(e.message || '还原失败'); });
+              showToast((r && r.message) || '已还原原版上下文限制');
+              render(null, true);
+            }).catch(function (e) { showToast((e && e.message) || '还原失败'); });
           }
         });
       }
@@ -1344,14 +1432,22 @@
       if (rehEl) {
         rehEl.addEventListener('change', function () {
           var on = rehEl.checked;
-          opts.saveConfig({ enhance: { rehydrateEnabled: on } });
           if (opts.api) {
             var fn = on ? opts.api.applyRehydrate : (opts.api.disableRehydrate || opts.api.restoreRehydrate);
             if (fn) {
               fn().then(function (r) {
+                if (r && r.ok === false) {
+                  rehEl.checked = !on;
+                  showToast(r.error || '操作失败');
+                  return;
+                }
                 state.rehydrateStatus = r || { enabled: on };
-                showToast(on ? '已开启压缩后记忆回填' : '已关闭压缩后记忆回填');
-              }).catch(function (e) { showToast(e.message || '操作失败'); });
+                opts.saveConfig({ enhance: { rehydrateEnabled: on } });
+                showToast((r && r.message) || (on ? '已开启压缩后记忆回填' : '已关闭压缩后记忆回填'));
+              }).catch(function (e) {
+                rehEl.checked = !on;
+                showToast((e && e.message) || '操作失败');
+              });
             }
           }
         });
@@ -1366,7 +1462,13 @@
       var restartLsBtn = el.querySelector('#ags-restart-ls-btn');
       if (restartLsBtn) restartLsBtn.addEventListener('click', function () {
         if (opts.api && opts.api.restartLanguageServers) {
-          opts.api.restartLanguageServers().then(function () { showToast('LanguageServer 已重启'); }).catch(function () {});
+          opts.api.restartLanguageServers().then(function (r) {
+            if (r && r.ok === false) {
+              showToast(r.error || '重启 LS 失败');
+              return;
+            }
+            showToast((r && r.message) || 'LanguageServer 已重启');
+          }).catch(function (e) { showToast((e && e.message) || '重启 LS 失败'); });
         }
       });
 
@@ -1385,6 +1487,7 @@
         if (dataPatch.enhanceStatus !== undefined) state.enhanceStatus = dataPatch.enhanceStatus;
         if (dataPatch.unlockStatus !== undefined) state.unlockStatus = dataPatch.unlockStatus;
         if (dataPatch.rehydrateStatus !== undefined) state.rehydrateStatus = dataPatch.rehydrateStatus;
+        if (dataPatch.i18nPayload !== undefined) state.customDict = (dataPatch.i18nPayload && dataPatch.i18nPayload.customExact) || {};
       }
 
       var bodyEl = el.querySelector('#ags-drawer-body');

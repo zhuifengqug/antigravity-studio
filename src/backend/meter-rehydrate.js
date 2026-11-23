@@ -17,6 +17,27 @@ function resolveRehydrateScriptPath() {
   return candidates.find((p) => fs.existsSync(p)) || null;
 }
 
+function materializeRehydrateScriptIfAsar(scriptPath, options = {}) {
+  if (!scriptPath) return null;
+  if (!/\.asar(?:[\\/]|$)/i.test(scriptPath)) return scriptPath;
+  try {
+    const stateDir = options.stateDir || getStateDir();
+    const outPath = path.join(stateDir, 'scripts', 'rehydrate_after_compact.py');
+    const content = fs.readFileSync(scriptPath, 'utf8');
+    fs.mkdirSync(path.dirname(outPath), { recursive: true });
+    let existing = '';
+    try {
+      if (fs.existsSync(outPath)) existing = fs.readFileSync(outPath, 'utf8');
+    } catch {}
+    if (existing !== content) {
+      fs.writeFileSync(outPath, content, 'utf8');
+    }
+    return outPath;
+  } catch {
+    return scriptPath;
+  }
+}
+
 function getRehydrateStatePath(options = {}) {
   const stateDir = options.stateDir || getStateDir();
   return path.join(stateDir, 'rehydrate-state.json');
@@ -80,7 +101,7 @@ function syncHostHookConfig(enable, options = {}) {
   }
   const hookPath = getHostHooksConfigPath(options);
   const bakPath = getRehydrateHookBackupPath(options);
-  const scriptPath = resolveRehydrateScriptPath();
+  const scriptPath = materializeRehydrateScriptIfAsar(resolveRehydrateScriptPath(), options);
   if (!fs.existsSync(path.dirname(hookPath))) {
     return { synced: false, reason: 'host_dir_missing' };
   }
@@ -326,6 +347,7 @@ function extractRehydrateMemory(conversationId, options = {}) {
 
 module.exports = {
   resolveRehydrateScriptPath,
+  materializeRehydrateScriptIfAsar,
   getRehydrateStatus,
   applyRehydrate,
   disableRehydrate,

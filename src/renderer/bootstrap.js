@@ -19,7 +19,7 @@
   var currentConfig = {
     theme: { activePreset: 'claude', colorMode: 'system', customThemes: [], editorialSerif: true, fonts: {} },
     mascot: { enabled: true, style: 'clawd', scale: 1, align: 'right', sleepTimeoutMs: 300000 },
-    hud: { enabled: true, position: 'composer', showVial: true, homeOverview: true },
+    hud: { enabled: true, displayStyle: 'ring', position: 'composer', showVial: true, homeOverview: true },
     fx: { inkStream: true, smoothCaret: true, edgeAura: true, effortSlider: false },
     homeOverview: true,
     i18n: { language: 'zh-CN' },
@@ -272,6 +272,9 @@
     var rehFn = open && tab === 'settings' && api.getRehydrateStatus
       ? function () { return api.getRehydrateStatus(); }
       : function () { return Promise.resolve(undefined); };
+    var i18nFn = open && tab === 'settings' && api.getI18nPayload
+      ? function () { return api.getI18nPayload(); }
+      : function () { return Promise.resolve(undefined); };
 
     Promise.all([
       scanFn().catch(function () { return null; }),
@@ -280,7 +283,8 @@
       accFn().catch(function () { return undefined; }),
       enhFn().catch(function () { return undefined; }),
       unlFn().catch(function () { return undefined; }),
-      rehFn().catch(function () { return undefined; })
+      rehFn().catch(function () { return undefined; }),
+      i18nFn().catch(function () { return undefined; })
     ]).then(function (res) {
       refreshBusy = false;
       var snap = res[0];
@@ -304,7 +308,8 @@
           fonts: scannedFonts,
           enhanceStatus: res[4],
           unlockStatus: res[5],
-          rehydrateStatus: res[6]
+          rehydrateStatus: res[6],
+          i18nPayload: res[7]
         });
       }
     });
@@ -403,6 +408,16 @@
           syncDomAndTurnState();
           if (drawer.isOpen()) drawer.render();
         }
+      });
+    }
+
+    if (api.onI18nChanged) {
+      api.onI18nChanged(function (payload) {
+        try {
+          if (window.__AG_STUDIO_I18N__ && typeof window.__AG_STUDIO_I18N__.applyPayload === 'function') {
+            window.__AG_STUDIO_I18N__.applyPayload(payload);
+          }
+        } catch (_e) {}
       });
     }
   } else {

@@ -578,8 +578,16 @@
       if (isVisible(en)) { hasError = true; break; }
     }
 
-    var modelTrig = document.querySelector('[data-testid="model-selector-trigger"]');
-    var modelLabel = modelTrig ? String(modelTrig.getAttribute('aria-label') || modelTrig.textContent || '').trim() : '';
+    var modelTrigs = document.querySelectorAll('[data-testid="model-selector-trigger"]');
+    var modelTrig = null;
+    for (var mt = 0; mt < modelTrigs.length; mt++) {
+      if (isVisible(modelTrigs[mt]) && !isOwnNode(modelTrigs[mt])) {
+        modelTrig = modelTrigs[mt];
+        break;
+      }
+    }
+    if (!modelTrig && modelTrigs.length) modelTrig = modelTrigs[0];
+    var modelLabel = modelTrig ? String(modelTrig.textContent || modelTrig.getAttribute('aria-label') || '').trim() : '';
     var modelPanel = document.querySelector('[data-testid="model-selector-panel"]');
     var isModelMenuOpen = Boolean(modelPanel && isVisible(modelPanel));
 

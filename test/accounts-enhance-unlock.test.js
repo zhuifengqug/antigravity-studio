@@ -101,9 +101,21 @@ test('meter-context-unlock, meter-rehydrate, and meter-accounts export working m
   assert.equal(typeof meterRehydrate.getRehydrateStatus, 'function');
   assert.equal(typeof meterRehydrate.applyRehydrate, 'function');
   assert.equal(typeof meterRehydrate.disableRehydrate, 'function');
+  assert.equal(typeof meterRehydrate.materializeRehydrateScriptIfAsar, 'function');
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-studio-acc-'));
   try {
+    const plainScript = path.join(tmpDir, 'plain.py');
+    fs.writeFileSync(plainScript, '# plain');
+    assert.equal(meterRehydrate.materializeRehydrateScriptIfAsar(plainScript, { stateDir: tmpDir }), plainScript);
+
+    const fakeAsarScript = path.join(tmpDir, 'app.asar', 'dist', 'ag-studio', 'scripts', 'rehydrate_after_compact.py');
+    const outStateDir = path.join(tmpDir, 'out-state');
+    fs.mkdirSync(path.dirname(fakeAsarScript), { recursive: true });
+    fs.writeFileSync(fakeAsarScript, 'print("rehydrate")');
+    const materialized = meterRehydrate.materializeRehydrateScriptIfAsar(fakeAsarScript, { stateDir: outStateDir });
+    assert.doesNotMatch(materialized, /\.asar(?:[\\/]|$)/i);
+    assert.equal(fs.readFileSync(materialized, 'utf8'), 'print("rehydrate")');
     const mgr = meterAccounts.createAccountsManager({
       stateDir: tmpDir,
       homeDir: tmpDir,

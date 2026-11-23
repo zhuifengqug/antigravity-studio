@@ -3,7 +3,7 @@
 const os = require('os');
 const path = require('path');
 
-const STUDIO_VERSION = '2.1.0';
+const STUDIO_VERSION = '2.1.3';
 const STUDIO_DIR_NAME = 'ag-studio';
 const STATE_DIR_NAME = 'AntigravityStudio';
 const LEGACY_METER_DIR_NAME = 'AntigravityContextMeter';
@@ -84,7 +84,7 @@ function getDefaultConfig() {
       fonts: {
         ui: 'system',
         body: 'serif-editorial',
-        code: 'JetBrains Mono, Consolas, monospace',
+        code: 'jetbrains',
         customUiFont: '',
         customBodyFont: '',
         customCodeFont: '',

@@ -15,6 +15,7 @@ const effortSlider = require('../src/renderer/effort-slider');
 const domI18n = require('../src/i18n/dom-runtime');
 const nativeI18n = require('../src/i18n/native-i18n');
 const { scanLocalFonts } = require('../src/backend/font-scanner');
+const { getDefaultConfig } = require('../src/shared/constants');
 
 const zhCN = require('../src/i18n/dict.zh-CN.json');
 const zhTW = require('../src/i18n/dict.zh-TW.json');
@@ -55,12 +56,38 @@ test('Claude & Antigravity presets, custom themes, and local font scanning work 
 });
 
 test('All 3 mascots (Clawd, Deepy, Astra) render sprites/frames across all 9 states', () => {
+  assert.equal(getDefaultConfig().theme.fonts.code, 'jetbrains');
   assert.ok(mascotSprites.crab && Object.keys(mascotSprites.crab).length >= 10);
   assert.ok(mascotSprites.deepy && Object.keys(mascotSprites.deepy).length >= 8);
   assert.equal(Object.keys(mascotStage.MASCOT_STATES).length, 9);
   for (const state of Object.keys(mascotStage.MASCOT_STATES)) {
     const svg = mascotStage.renderAstraSvg(state, 0);
     assert.match(svg, /<svg /);
+  }
+  for (const st of ['thinking', 'waiting', 'happy', 'error', 'sleeping']) {
+    const grid = mascotStage.buildAstraFrames(st)[0];
+    if (st === 'thinking') {
+      assert.equal(grid[10][9], 'C');
+      assert.equal(grid[10][14], 'C');
+      assert.equal(grid[8][9], 'N');
+    } else if (st === 'waiting') {
+      assert.equal(grid[9][9], 'G');
+      assert.equal(grid[9][14], 'G');
+      assert.notEqual(grid[9][10], 'G');
+    } else if (st === 'happy') {
+      assert.equal(grid[9][9], 'M');
+      assert.equal(grid[9][14], 'M');
+      assert.notEqual(grid[10][9], 'N');
+    } else if (st === 'error') {
+      assert.equal(grid[9][8], 'R');
+      assert.equal(grid[9][13], 'R');
+      assert.notEqual(grid[9][9], 'R');
+    } else if (st === 'sleeping') {
+      assert.equal(grid[11][9], 'C');
+      assert.equal(grid[11][14], 'C');
+      assert.equal(grid[12][9], 'P');
+      assert.equal(grid[12][14], 'P');
+    }
   }
 });
 

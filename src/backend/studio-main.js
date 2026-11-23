@@ -1563,6 +1563,8 @@ function normalizeEnhanceStatusForUi(raw, cfg) {
   return {
     ...(raw || {}),
     ok: raw?.ok !== false,
+    error: raw?.error || null,
+    message: raw?.message || null,
     promptTier,
     chineseTitle,
     chineseSessionTitle: chineseTitle,
@@ -1850,6 +1852,17 @@ function registerIpcOnce() {
         normalizedPayload.config = { enabled: Boolean(normalizedPayload.enabled) };
       }
     }
+    if (
+      normalizedPayload.action === 'update_auto_switch' &&
+      normalizedPayload.config &&
+      normalizedPayload.config.threshold !== undefined &&
+      normalizedPayload.config.thresholdPct === undefined
+    ) {
+      normalizedPayload.config = {
+        ...normalizedPayload.config,
+        thresholdPct: Math.round(Number(normalizedPayload.config.threshold) * 100),
+      };
+    }
 
     if (normalizedPayload.action === 'add_direct') {
       const added = mgr.addAccountWithCredential(normalizedPayload);
@@ -1899,20 +1912,24 @@ function registerIpcOnce() {
       ...(cn !== undefined ? { chineseTitle: cn } : {}),
     });
 
-    const saved = store.save({
-      enhance: {
-        ...(tier !== undefined ? { promptTier: tier } : {}),
-        ...(cn !== undefined ? { chineseTitle: cn, chineseSessionTitle: cn } : {}),
-      },
-    });
+    const saved = res?.ok !== false
+      ? store.save({
+          enhance: {
+            ...(tier !== undefined ? { promptTier: tier } : {}),
+            ...(cn !== undefined ? { chineseTitle: cn, chineseSessionTitle: cn } : {}),
+          },
+        })
+      : store.load();
     return normalizeEnhanceStatusForUi(res, saved);
   });
 
   handleSafe('ag-studio:enhance-restore', async () => {
     const res = await meterEnhance.restoreAllEnhanceAsync();
-    const saved = store.save({
-      enhance: { promptTier: 0, chineseTitle: false, chineseSessionTitle: false },
-    });
+    const saved = res?.ok !== false
+      ? store.save({
+          enhance: { promptTier: 0, chineseTitle: false, chineseSessionTitle: false },
+        })
+      : store.load();
     return normalizeEnhanceStatusForUi(res, saved);
   });
 
@@ -1936,9 +1953,12 @@ function registerIpcOnce() {
     });
 
     let cliResult = null;
-    if (alignCli) {
+    if (alignCli && desktopRes?.ok !== false) {
       try {
-        const cliBin = meterCliLauncher.resolveCliExecutable();
+        const cliInfo = meterCliLauncher.resolveCliExecutable();
+        const cliBin = typeof cliInfo === 'string'
+          ? cliInfo
+          : (cliInfo?.ok ? (cliInfo.exePath || cliInfo.cliPath) : null);
         if (cliBin && desktopRes?.targetPath && path.resolve(cliBin).toLowerCase() !== path.resolve(desktopRes.targetPath).toLowerCase()) {
           cliResult = await meterContextUnlock.applyUnlockAsync({
             targetPath: cliBin,
@@ -1954,18 +1974,21 @@ function registerIpcOnce() {
       ? 'DYN'
       : (String(mode).toUpperCase().startsWith('CONST') || String(mode).toUpperCase() === 'FIXED' ? 'CONST' : 'ORIG');
 
-    const saved = store.save({
-      context: {
-        unlockMode: normMode,
-        unlockLimitTokens: limitTokens,
-        customLimitTokens: limitTokens,
-        alignCli,
-        syncCli: alignCli,
-      },
-    });
+    const saved = desktopRes?.ok !== false
+      ? store.save({
+          context: {
+            unlockMode: normMode,
+            unlockLimitTokens: limitTokens,
+            customLimitTokens: limitTokens,
+            alignCli,
+            syncCli: alignCli,
+          },
+        })
+      : store.load();
     return {
       ...normalizeUnlockStatusForUi(desktopRes?.analysis || desktopRes, saved),
       ok: desktopRes?.ok !== false,
+      error: desktopRes?.error || null,
       needsRestart: Boolean(desktopRes?.needsRestart || cliResult?.needsRestart),
       cliResult,
       message: desktopRes?.message || '上下文解锁策略已应用',
@@ -1975,18 +1998,22 @@ function registerIpcOnce() {
   handleSafe('ag-studio:context-unlock-restore', async () => {
     const cfg = store.load();
     const res = await meterContextUnlock.restoreUnlockAsync({ syncConfigFiles: true });
-    if (cfg.context?.alignCli ?? cfg.context?.syncCli ?? true) {
+    if (res?.ok !== false && (cfg.context?.alignCli ?? cfg.context?.syncCli ?? true)) {
       try {
-        const cliBin = meterCliLauncher.resolveCliExecutable();
+        const cliInfo = meterCliLauncher.resolveCliExecutable();
+        const cliBin = typeof cliInfo === 'string'
+          ? cliInfo
+          : (cliInfo?.ok ? (cliInfo.exePath || cliInfo.cliPath) : null);
         if (cliBin && res?.targetPath && path.resolve(cliBin).toLowerCase() !== path.resolve(res.targetPath).toLowerCase()) {
           await meterContextUnlock.restoreUnlockAsync({ targetPath: cliBin, syncConfigFiles: true });
         }
       } catch {}
     }
-    const saved = store.save({ context: { unlockMode: 'ORIG' } });
+    const saved = res?.ok !== false ? store.save({ context: { unlockMode: 'ORIG' } }) : cfg;
     return {
       ...normalizeUnlockStatusForUi(res?.analysis || res, saved),
       ok: res?.ok !== false,
+      error: res?.error || null,
       needsRestart: Boolean(res?.needsRestart),
       message: res?.message || '已还原原版上下文限制',
     };

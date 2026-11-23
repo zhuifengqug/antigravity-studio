@@ -92,6 +92,15 @@
     if (y >= 0 && y < 22 && x >= 0 && x < 24) grid[y][x] = ch;
   }
 
+  function clearAstraEyes(grid, xOff, yOff) {
+    var dx = xOff || 0;
+    var dy = yOff || 0;
+    paintPixel(grid, 9 + dx, 9 + dy, 'C');
+    paintPixel(grid, 9 + dx, 10 + dy, 'C');
+    paintPixel(grid, 14 + dx, 9 + dy, 'C');
+    paintPixel(grid, 14 + dx, 10 + dy, 'C');
+  }
+
   function shiftGridY(grid, dy) {
     if (!dy) return grid;
     var out = [];
@@ -152,8 +161,9 @@
         paintPixel(g2, ox + 1, oy, 'E');
         paintPixel(g2, 23 - ox, oy === 1 ? 2 : 1, 'B');
         // Eyes look upward (row 8-9 instead of 9-10)
-        paintPixel(g2, 10, 8, 'E'); paintPixel(g2, 13, 8, 'E');
-        paintPixel(g2, 10, 10, 'N'); paintPixel(g2, 13, 10, 'N');
+        clearAstraEyes(g2, 0, 0);
+        paintPixel(g2, 9, 8, 'N'); paintPixel(g2, 9, 9, 'N');
+        paintPixel(g2, 14, 8, 'N'); paintPixel(g2, 14, 9, 'N');
         frames.push(g2);
       }
     } else if (st === 'typing') {
@@ -206,19 +216,20 @@
         paintPixel(g6, 11, 1 + bob, 'G'); paintPixel(g6, 12, 1 + bob, 'G');
         paintPixel(g6, 11, 2 + bob, 'G'); paintPixel(g6, 12, 2 + bob, 'G');
         paintPixel(g6, 11, 4 + bob, 'W'); paintPixel(g6, 12, 4 + bob, 'G');
-        // Amber eyes
-        paintPixel(g6, 10, 9, 'G'); paintPixel(g6, 10, 10, 'G');
-        paintPixel(g6, 13, 9, 'G'); paintPixel(g6, 13, 10, 'G');
+        // Amber eyes directly on base eye coordinates (cols 9 & 14)
+        paintPixel(g6, 9, 9, 'G'); paintPixel(g6, 9, 10, 'G');
+        paintPixel(g6, 14, 9, 'G'); paintPixel(g6, 14, 10, 'G');
         frames.push(g6);
       }
     } else if (st === 'happy') {
       for (f = 0; f < 6; f++) {
         var g7 = cloneGrid(ASTRA_BASE_ROWS);
-        if (f % 2 === 1) g7 = shiftGridY(g7, -1);
-        // Happy curved '^ ^' eyes
-        paintPixel(g7, 9, 10, 'N'); paintPixel(g7, 10, 9, 'M'); paintPixel(g7, 11, 10, 'N');
-        paintPixel(g7, 12, 10, 'N'); paintPixel(g7, 13, 9, 'M'); paintPixel(g7, 14, 10, 'N');
-        paintPixel(g7, 10, 10, 'N'); paintPixel(g7, 13, 10, 'N');
+        var yBounce = f % 2 === 1 ? -1 : 0;
+        if (yBounce !== 0) g7 = shiftGridY(g7, yBounce);
+        // Happy curved '^ ^' eyes replacing cols 9 & 14
+        clearAstraEyes(g7, 0, yBounce);
+        paintPixel(g7, 8, 10 + yBounce, 'N'); paintPixel(g7, 9, 9 + yBounce, 'M'); paintPixel(g7, 10, 10 + yBounce, 'N');
+        paintPixel(g7, 13, 10 + yBounce, 'N'); paintPixel(g7, 14, 9 + yBounce, 'M'); paintPixel(g7, 15, 10 + yBounce, 'N');
         // Star rain burst
         paintPixel(g7, 3, (f * 2) % 6, 'G');
         paintPixel(g7, 20, (f * 2 + 3) % 6, 'W');
@@ -230,9 +241,9 @@
       var offsets = [-1, 1, -1, 1, 0, 0];
       for (f = 0; f < 6; f++) {
         var g8 = shiftGridX(cloneGrid(ASTRA_BASE_ROWS), offsets[f]);
-        // Crimson visor eyes
-        paintPixel(g8, 10 + offsets[f], 9, 'R'); paintPixel(g8, 10 + offsets[f], 10, 'R');
-        paintPixel(g8, 13 + offsets[f], 9, 'R'); paintPixel(g8, 13 + offsets[f], 10, 'R');
+        // Crimson visor eyes directly on shifted cols 9 & 14
+        paintPixel(g8, 9 + offsets[f], 9, 'R'); paintPixel(g8, 9 + offsets[f], 10, 'R');
+        paintPixel(g8, 14 + offsets[f], 9, 'R'); paintPixel(g8, 14 + offsets[f], 10, 'R');
         // Alert X spark
         paintPixel(g8, 11, 1, 'R'); paintPixel(g8, 13, 1, 'R');
         paintPixel(g8, 12, 2, 'R');
@@ -242,10 +253,10 @@
     } else if (st === 'sleeping') {
       for (f = 0; f < 4; f++) {
         var g9 = shiftGridY(cloneGrid(ASTRA_BASE_ROWS), 2);
-        // Closed sleeping horizontal eyes
-        paintPixel(g9, 9, 12, 'P'); paintPixel(g9, 10, 12, 'P');
-        paintPixel(g9, 13, 12, 'P'); paintPixel(g9, 14, 12, 'P');
-        paintPixel(g9, 10, 11, 'N'); paintPixel(g9, 13, 11, 'N');
+        // Closed sleeping horizontal eyes replacing cols 9 & 14 at rows 11-12
+        clearAstraEyes(g9, 0, 2);
+        paintPixel(g9, 8, 12, 'P'); paintPixel(g9, 9, 12, 'P'); paintPixel(g9, 10, 12, 'P');
+        paintPixel(g9, 13, 12, 'P'); paintPixel(g9, 14, 12, 'P'); paintPixel(g9, 15, 12, 'P');
         // Floating Zzz
         var zy = 4 - (f % 3);
         paintPixel(g9, 17, zy, 'P'); paintPixel(g9, 18, zy, 'P');
