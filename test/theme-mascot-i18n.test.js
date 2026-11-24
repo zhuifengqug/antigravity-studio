@@ -117,73 +117,77 @@ test('Home overview card 7xN heatmap normalization, book comparison, and effort 
   assert.ok(cells.length >= 28);
   const bookLine = homeCard.formatFunBookText(2811000000, 'zh-CN', 0.99);
   assert.match(bookLine, /平凡的世界/);
-  assert.equal(effortSlider.detectEffortFromText('Gemini 4 Neon (High)'), 'high');
-  assert.equal(effortSlider.detectEffortFromText('Gemini 4 Neon (XHigh)'), 'xhigh');
-  assert.equal(effortSlider.detectEffortFromText('extra_high'), 'xhigh');
-  const parsedXHigh = effortSlider.parseModelLabel('Gemini 4 Neon Extra High');
+
+  assert.ok(effortSlider.upstream && effortSlider.coexist);
+  const parsedXHigh = effortSlider.parseModelLabel('Gemini 4 Neon (XHigh)');
   assert.equal(parsedXHigh.base, 'Gemini 4 Neon');
   assert.equal(parsedXHigh.effort, 'xhigh');
-  assert.equal(parsedXHigh.effortLabel, 'Extra High');
-  const parsedParenXHigh = effortSlider.parseModelLabel('Gemini 4 Neon (Extra High)');
-  assert.equal(parsedParenXHigh.effort, 'xhigh');
-  assert.equal(parsedParenXHigh.effortLabel, 'Extra High');
-  const parsedParenExtra = effortSlider.parseModelLabel('Gemini 4 Neon (Extra)');
-  assert.equal(parsedParenExtra.base, 'Gemini 4 Neon');
-  assert.equal(parsedParenExtra.effort, 'xhigh');
-  assert.equal(parsedParenExtra.effortLabel, 'Extra High');
-  assert.equal(effortSlider.extractModelFamily('Gemini 4 Neon (XHigh)'), 'gemini 4 neon');
-  assert.equal(effortSlider.itemMatchesEffort('Gemini 4 Neon (XHigh)', 'high'), false);
-  assert.equal(effortSlider.itemMatchesEffort('Gemini 4 Neon (High)', 'high'), true);
-  assert.equal(effortSlider.itemMatchesEffort('Gemini 4 Neon (XHigh)', 'xhigh'), true);
+  assert.equal(parsedXHigh.effortLabel, 'Extra');
+  const parsedExtra = effortSlider.parseModelLabel('Gemini 4 Neon (Extra)');
+  assert.equal(parsedExtra.effort, 'xhigh');
+  assert.equal(parsedExtra.effortLabel, 'Extra');
+  assert.match(effortSlider.fillBackgroundFor(0.75, 0, 0.5, false), /linear-gradient|#/);
 
-  // Verify React Fiber model profile resolution & commitEffortOption argument order
-  const calls = [];
-  const mockCtx = {
-    conversationId: 'conv-abc',
-    selectedModel: { label: 'Gemini 4 Neon (High)', value: 'm1' },
-    modelOptions: [
-      { label: 'Gemini 4 Neon (Low)', value: 'm0' },
-      { label: 'Gemini 4 Neon (High)', value: 'm1' },
-      { label: 'Gemini 4 Neon (XHigh)', value: 'm2' },
-      { label: 'Gemini 4 Argon (Low)', value: 'a0' },
-      { label: 'Gemini 4 Argon (Medium)', value: 'a1' },
-      { label: 'Gemini 4 Argon (High)', value: 'a2' },
-    ],
-    setModelConfigByLabelForConversation: (label, cid, keepOpen) => {
-      calls.push({ type: 'model', label, cid, keepOpen });
-    },
-  };
-  const prof = effortSlider.resolveActiveModelProfile(mockCtx, 'Gemini 4 Neon (High)');
-  assert.equal(prof.currentEffort, 'high');
-  assert.deepEqual(prof.levels.map((l) => l.id), ['low', 'high', 'xhigh']);
-  const argonProf = effortSlider.resolveActiveModelProfile(mockCtx, '', 'Gemini 4 Argon');
-  assert.deepEqual(argonProf.levels.map((l) => l.id), ['low', 'medium', 'high']);
-  const xhighOpt = prof.levels.find((l) => l.id === 'xhigh').option;
-  assert.equal(effortSlider.commitEffortOption(mockCtx, xhighOpt, false, true), true);
-  assert.deepEqual(calls[0], { type: 'model', label: 'Gemini 4 Neon (XHigh)', cid: 'conv-abc', keepOpen: true });
+  const neonLow = { label: 'Gemini 4 Neon (Low)', modelId: 'gemini-4-neon-low', value: 1534 };
+  const neonMed = { label: 'Gemini 4 Neon (Medium)', modelId: 'gemini-4-neon-medium', value: 1533 };
+  const neonHigh = { label: 'Gemini 4 Neon (High)', modelId: 'gemini-4-neon-high', value: 1532 };
+  const neonXHigh = { label: 'Gemini 4 Neon (XHigh)', modelId: 'gemini-4-neon-xhigh', value: 1535 };
+  const opusLow = { label: 'Claude Opus 5.5 (Low)', modelId: 'claude-opus-5-5-low', value: 1400 };
+  const opusMed = { label: 'Claude Opus 5.5 (Medium)', modelId: 'claude-opus-5-5-medium', value: 1401 };
+  const opusHigh = { label: 'Claude Opus 5.5 (High)', modelId: 'claude-opus-5-5-high', value: 1402 };
+  const orchNeon = { label: 'Orchestrator (Neon)', modelId: 'gemini-pro-orchestrator-neon', value: 1537 };
+  const gptOss = { label: 'GPT-OSS 120B (Medium)', modelId: 'gpt-oss-120b-medium', value: 342 };
 
-  const orchCalls = [];
+  const slugIdx = new Map([
+    ['gemini-4-neon', new Map([['low', neonLow], ['medium', neonMed], ['high', neonHigh], ['xhigh', neonXHigh]])],
+    ['claude-opus-5-5', new Map([['low', opusLow], ['medium', opusMed], ['high', opusHigh]])],
+  ]);
+  const modelOptions = [neonLow, neonMed, neonHigh, neonXHigh, opusLow, opusMed, opusHigh, orchNeon, gptOss];
+  const normIdx = effortSlider.normalizeEffortIndex(slugIdx, modelOptions);
+  assert.equal(normIdx.has('Gemini 4 Neon'), true);
+  assert.equal(normIdx.has('Claude Opus 5.5'), true);
+
+  const neonProf = effortSlider.resolveModelEffortProfile({ effortIndex: slugIdx, modelOptions, selectedModel: neonXHigh }, neonXHigh);
+  assert.equal(neonProf.locked, false);
+  assert.equal(neonProf.baseName, 'Gemini 4 Neon');
+  assert.deepEqual(neonProf.levels.map((l) => l.effort), ['low', 'medium', 'high', 'xhigh']);
+  assert.equal(neonProf.currentEffort, 'xhigh');
+  assert.equal(neonProf.currentLabel, 'Extra');
+  assert.equal(neonProf.theme, 'codex');
+
+  const claudeProf = effortSlider.resolveModelEffortProfile({ effortIndex: normIdx, modelOptions, selectedModel: opusHigh }, 'Claude Opus 5.5');
+  assert.equal(claudeProf.locked, false);
+  assert.equal(claudeProf.isClaude, true);
+  assert.equal(claudeProf.theme, 'claude');
+
+  const singleProf = effortSlider.resolveModelEffortProfile({ effortIndex: normIdx, modelOptions, selectedModel: gptOss }, gptOss);
+  assert.equal(singleProf.locked, true);
+
+  const planners = [neonLow, neonMed, neonHigh, neonXHigh, opusLow, opusHigh];
   const orchCtx = {
-    selectedModel: { label: 'Orchestrator', value: 'orch' },
-    orchPlanners: [
-      { label: 'Gemini 4 Neon (Low)', value: 10 },
-      { label: 'Gemini 4 Neon (Medium)', value: 11 },
-      { label: 'Gemini 4 Neon (High)', value: 12 },
-      { label: 'Gemini 4 Neon (Extra)', value: 13 },
-    ],
-    orchDef: 13,
-    orchPick: { model: 11, select: (val) => orchCalls.push(val) },
+    effortIndex: normIdx,
+    modelOptions: [...planners, orchNeon],
+    selectedModel: orchNeon,
+    orchPlanners: planners,
+    orchIdx: effortSlider.normalizeEffortIndex(new Map(), planners),
+    orchDef: neonXHigh,
+    orchPick: { model: null, select: () => {} },
   };
-  const orchProf = effortSlider.resolveActiveModelProfile(orchCtx, 'Orchestrator Gemini 4 Neon Extra High');
-  assert.equal(orchProf.isOrchPlan, true);
-  assert.equal(orchProf.currentEffort, 'medium');
-  assert.deepEqual(orchProf.levels.map((l) => l.id), ['low', 'medium', 'high', 'xhigh']);
-  const extraOpt = orchProf.levels.find((l) => l.id === 'xhigh').option;
-  const lowOpt = orchProf.levels.find((l) => l.id === 'low').option;
-  assert.equal(effortSlider.commitEffortOption(orchCtx, extraOpt, true, true), true);
-  assert.equal(effortSlider.commitEffortOption(orchCtx, lowOpt, true, true), true);
-  assert.equal(effortSlider.commitEffortFallback(orchCtx, extraOpt, true, true), true);
-  assert.deepEqual(orchCalls, [0, 10, 13]);
+  const orchDefProf = effortSlider.resolveModelEffortProfile(orchCtx, orchNeon);
+  assert.equal(orchDefProf.isOrchestrator, true);
+  assert.equal(orchDefProf.orchestratorTunable, true);
+  assert.equal(orchDefProf.baseName, 'Gemini 4 Neon');
+  assert.equal(orchDefProf.currentEffort, 'xhigh');
+
+  const orchCustomProf = effortSlider.resolveModelEffortProfile({ ...orchCtx, orchPick: { model: 1402, select: () => {} } }, orchNeon);
+  assert.equal(orchCustomProf.baseName, 'Claude Opus 5.5');
+  assert.equal(orchCustomProf.isClaude, true);
+  assert.equal(orchCustomProf.currentEffort, 'high');
+
+  const ctrl = effortSlider.createEffortSliderController();
+  ctrl.sync({ fx: { effortSlider: true }, i18n: { language: 'zh-CN' } });
+  ctrl.sync({ fx: { effortSlider: false }, i18n: { language: 'zh-CN' } });
+  ctrl.destroy();
 });
 
 test('Merged v2.34.0 dictionaries (4000+ entries) translate accurately and protect code/paths', () => {

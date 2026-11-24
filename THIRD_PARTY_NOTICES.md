@@ -19,4 +19,10 @@ Antigravity Studio integrates, adapts, or takes inspiration from the following o
 ## 4. RMvdesi/obsidian-prism
 - Repository: https://github.com/RMvdesi/obsidian-prism
 - License: GNU General Public License v3.0 (`GPL-3.0-only`)
-- Role in Antigravity Studio: Antigravity 2.34.0 DOM anchor patterns, 512K shallow-water breathing context vial visualization, ink-fade streaming highlights, smooth caret, tri-state 0fps edge aura, and model-menu effort slider coexistence patterns.
+- Role in Antigravity Studio: Antigravity 2.34.0 DOM anchor patterns, 512K shallow-water breathing context vial visualization, ink-fade streaming highlights, smooth caret, tri-state 0fps edge aura, and vendored effort-slider coexistence & runtime integration (`src/renderer/vendor/effort-slider/upstream-client.js`, `src/renderer/vendor/effort-slider/slider-coexist.js`).
+
+## 5. LLYSH-HANNARI/antigravity-Codex-Claude-effort-slider
+- Repository: https://github.com/LLYSH-HANNARI/antigravity-Codex-Claude-effort-slider
+- Copyright: `Copyright (c) 2026 月上寒 (LLYSH-HANNARI)`
+- License: MIT License (compatible with `GPL-3.0-only`)
+- Role in Antigravity Studio: Interactive Codex starfield & Claude Ultracode point-matrix reasoning effort slider engine (`src/renderer/vendor/effort-slider/upstream-client.js`), taking inspiration from `Microqian2th/dsh-codex-effort-slider` for hysteresis detent snapping and starfield motion curves.

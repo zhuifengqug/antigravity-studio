@@ -75,6 +75,8 @@
     '[class*="Breadcrumb"]',
     '[data-testid="model-selector-panel"]',
     '[data-testid="model-selector-trigger"]',
+    '.ces-ag-section',
+    '.ces-set',
     '[data-testid="project-header"]',
     '[data-testid="breadcrumb-segment"]'
   ];

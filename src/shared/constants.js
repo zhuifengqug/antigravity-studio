@@ -3,7 +3,7 @@
 const os = require('os');
 const path = require('path');
 
-const STUDIO_VERSION = '2.1.5';
+const STUDIO_VERSION = '2.1.6';
 const STUDIO_DIR_NAME = 'ag-studio';
 const STATE_DIR_NAME = 'AntigravityStudio';
 const LEGACY_METER_DIR_NAME = 'AntigravityContextMeter';

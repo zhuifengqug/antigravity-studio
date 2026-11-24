@@ -27,14 +27,23 @@ function buildAll() {
     path.join(ROOT, 'src', 'renderer', 'composer-hud.js'),
     path.join(ROOT, 'src', 'renderer', 'home-overview-card.js'),
     path.join(ROOT, 'src', 'renderer', 'prism-fx.js'),
+    path.join(ROOT, 'src', 'renderer', 'vendor', 'effort-slider', 'upstream-client.js'),
+    path.join(ROOT, 'src', 'renderer', 'vendor', 'effort-slider', 'slider-coexist.js'),
     path.join(ROOT, 'src', 'renderer', 'effort-slider.js'),
     path.join(ROOT, 'src', 'renderer', 'drawer-ui.js'),
     path.join(ROOT, 'src', 'renderer', 'bootstrap.js'),
   ];
 
+  const upstreamClientPath = path.join(ROOT, 'src', 'renderer', 'vendor', 'effort-slider', 'upstream-client.js');
   const rendererBundle = [
     '// Built by scripts/build-renderer.js — Antigravity Studio Renderer Bundle',
-    ...rendererParts.map((p) => fs.readFileSync(p, 'utf8')),
+    ...rendererParts.map((p) => {
+      const src = fs.readFileSync(p, 'utf8');
+      if (p === upstreamClientPath) {
+        return ';(function(){try{globalThis.__agCodexEffortSliderDisableAutoBoot=true;if(typeof window!==\'undefined\')window.__agCodexEffortSliderDisableAutoBoot=true;}catch(_e){}})();\n' + src;
+      }
+      return src;
+    }),
   ].join('\n\n');
 
   const outRenderer = path.join(DIST, 'studio-renderer.js');
