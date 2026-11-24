@@ -192,6 +192,7 @@
       var topAnchor = anchors.ensureComposerTopAnchor(composer);
       mascotStage.mountTo(topAnchor);
       mascotStage.update({ state: fused.mascotState });
+      if (typeof mascotStage.syncLayout === 'function') mascotStage.syncLayout();
     } else {
       mascotStage.mountTo(null);
     }

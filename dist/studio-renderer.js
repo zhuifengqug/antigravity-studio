@@ -825,8 +825,14 @@
   }
 
   function ensureComposerTopAnchor(composer) {
-    if (!composer || !composer.card || composer.card.isConnected === false) return null;
-    var anchor = composer.card;
+    if (!composer) return null;
+    var anchor = null;
+    if (composer.inputBox && composer.inputBox.isConnected !== false) {
+      anchor = composer.inputBox;
+    } else if (composer.card && composer.card.isConnected !== false) {
+      anchor = (composer.card.closest && composer.card.closest('.surface-composer')) || composer.card;
+    }
+    if (!anchor || anchor.isConnected === false) return null;
     try {
       var pos = typeof getComputedStyle === 'function' ? getComputedStyle(anchor).position : '';
       if (!pos || pos === 'static') {
@@ -835,6 +841,85 @@
       anchor.setAttribute('data-ags-mascot-anchor', '1');
     } catch (_e) {}
     return anchor;
+  }
+
+  function rectsOverlap(a, b) {
+    return Boolean(
+      a && b &&
+      a.left + 2 < b.right &&
+      a.right - 2 > b.left &&
+      a.top + 2 < b.bottom &&
+      a.bottom - 2 > b.top
+    );
+  }
+
+  function computeComposerTopInset(anchorEl) {
+    if (!anchorEl || typeof anchorEl.getBoundingClientRect !== 'function') return 0;
+    var anchorRect;
+    try {
+      anchorRect = anchorEl.getBoundingClientRect();
+    } catch (_e) {
+      return 0;
+    }
+    if (!anchorRect || anchorRect.height <= 0) return 0;
+
+    var minTop = Infinity;
+    var children = anchorEl.children || [];
+    for (var i = 0; i < children.length; i++) {
+      var child = children[i];
+      if (!child || isOwnNode(child) || !isVisible(child)) continue;
+      if (typeof getComputedStyle === 'function') {
+        try {
+          var cs = getComputedStyle(child);
+          if (cs && (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity || '1') <= 0.05)) {
+            continue;
+          }
+        } catch (_e2) {}
+      }
+      var cr;
+      try {
+        cr = typeof child.getBoundingClientRect === 'function' ? child.getBoundingClientRect() : null;
+      } catch (_e3) {
+        cr = null;
+      }
+      if (!cr || cr.height < 8 || cr.width < 40) continue;
+      if (cr.top < minTop) minTop = cr.top;
+    }
+    return minTop < Infinity ? Math.max(0, Math.round(minTop - anchorRect.top)) : 0;
+  }
+
+  function detectMascotObstruction(stageEl, anchorEl) {
+    if (!stageEl || typeof document === 'undefined') return false;
+    var hitEl = (stageEl.querySelector && stageEl.querySelector('.ags-mascot-hit')) || stageEl;
+    if (!hitEl || typeof hitEl.getBoundingClientRect !== 'function') return false;
+    var hitRect;
+    try {
+      hitRect = hitEl.getBoundingClientRect();
+    } catch (_e) {
+      return false;
+    }
+    if (!hitRect || hitRect.width <= 1 || hitRect.height <= 1) return false;
+
+    var overlaySel = '[data-testid="queued-messages-card"], [data-testid="interaction-takeover-card"], [data-testid="side-question-panel"], [data-testid="model-selector-panel"]';
+    var overlays = document.querySelectorAll(overlaySel);
+    for (var i = 0; i < overlays.length; i++) {
+      var el = overlays[i];
+      if (!el || isOwnNode(el) || !isVisible(el)) continue;
+      var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+      if (r && rectsOverlap(hitRect, r)) return true;
+    }
+
+    var prevSib = anchorEl && anchorEl.previousElementSibling;
+    if (prevSib && !isOwnNode(prevSib) && prevSib.querySelectorAll) {
+      var btns = prevSib.querySelectorAll('button, [role="button"], a');
+      for (var j = 0; j < btns.length; j++) {
+        var b = btns[j];
+        if (!b || isOwnNode(b) || !isVisible(b)) continue;
+        var r2 = b.getBoundingClientRect ? b.getBoundingClientRect() : null;
+        if (r2 && rectsOverlap(hitRect, r2)) return true;
+      }
+    }
+    return false;
   }
 
   function ensureComposerBottomSlot(composer) {
@@ -1217,6 +1302,8 @@
     findComposerTarget: findComposerTarget,
     findModelTriggerInComposer: findModelTriggerInComposer,
     ensureComposerTopAnchor: ensureComposerTopAnchor,
+    computeComposerTopInset: computeComposerTopInset,
+    detectMascotObstruction: detectMascotObstruction,
     ensureComposerToolbarSlot: ensureComposerToolbarSlot,
     parkComposerToolbarSlot: parkComposerToolbarSlot,
     ensureComposerBottomSlot: ensureComposerBottomSlot,
@@ -1576,13 +1663,15 @@
     var s = document.createElement('style');
     s.id = 'ag-studio-mascot-stage-style';
     s.textContent = [
-      '.ags-mascot-stage { position:absolute; bottom:100%; z-index:45; display:inline-flex; flex-direction:column; align-items:center; pointer-events:none; user-select:none; transition:transform 160ms cubic-bezier(.22,1,.36,1); }',
+      '.ags-mascot-stage { position:absolute; bottom:100%; z-index:8; display:inline-flex; flex-direction:column; align-items:center; pointer-events:none; user-select:none; transition:bottom 180ms cubic-bezier(.22,1,.36,1), transform 160ms cubic-bezier(.22,1,.36,1), opacity 160ms ease; }',
       '.ags-mascot-stage[data-align="right"] { right:16px; transform-origin:bottom right; }',
       '.ags-mascot-stage[data-align="center"] { left:50%; transform-origin:bottom center; }',
       '.ags-mascot-stage[data-align="left"] { left:16px; transform-origin:bottom left; }',
-      '.ags-mascot-hit { position:relative; display:inline-flex; align-items:flex-end; justify-content:center; pointer-events:auto; cursor:pointer; }',
-      '.ags-mascot-canvas { display:block; image-rendering:pixelated; image-rendering:crisp-edges; }',
-      '.ags-mascot-stage[data-state="sleeping"] .ags-mascot-canvas { opacity:0.82; }'
+      '.ags-mascot-hit { position:absolute; bottom:0; left:50%; transform:translateX(-50%); pointer-events:auto; cursor:pointer; z-index:1; }',
+      '.ags-mascot-canvas { display:block; pointer-events:none; image-rendering:pixelated; image-rendering:crisp-edges; }',
+      '.ags-mascot-stage[data-state="sleeping"] .ags-mascot-canvas { opacity:0.82; }',
+      '.ags-mascot-stage[data-obscured="true"] { opacity:0.28; }',
+      '.ags-mascot-stage[data-obscured="true"] .ags-mascot-hit { pointer-events:none; }'
     ].join('\n');
     (document.head || document.documentElement).appendChild(s);
   }
@@ -1605,7 +1694,7 @@
     canvas.className = 'ags-mascot-canvas';
     var ctx = canvas.getContext('2d');
 
-    hitEl.appendChild(canvas);
+    stageEl.appendChild(canvas);
     stageEl.appendChild(hitEl);
 
     var scratchCanvas = document.createElement('canvas');
@@ -1626,6 +1715,7 @@
     var reaction = null; // { sheet: 'poke-left' | 'poke-right' | 'tickle', until: number }
     var clickStamps = [];
     var currentAnchor = null;
+    var resizeObserver = null;
     var cachedInkColor = '#91888A';
     var cachedInkKey = '';
     var lastGeomKey = '';
@@ -1693,6 +1783,18 @@
       }
       canvas.style.width = w + 'px';
       canvas.style.height = h + 'px';
+
+      var hitW = 64;
+      var hitH = 48;
+      if (cur.style === 'deepy') {
+        hitW = 76;
+        hitH = 56;
+      } else if (cur.style === 'astra') {
+        hitW = 52;
+        hitH = 52;
+      }
+      hitEl.style.width = hitW + 'px';
+      hitEl.style.height = hitH + 'px';
 
       stageEl.setAttribute('data-align', cur.align);
       stageEl.setAttribute('data-state', cur.state);
@@ -1923,21 +2025,56 @@
       if (typeof opts.onOpenDrawer === 'function') opts.onOpenDrawer();
     });
 
+    function disconnectResizeObserver() {
+      if (resizeObserver) {
+        try { resizeObserver.disconnect(); } catch (_e) {}
+        resizeObserver = null;
+      }
+    }
+
+    function syncLayout() {
+      if (!cur.enabled || !currentAnchor || currentAnchor.isConnected === false) return;
+      var anchorsApi = globalScope.__AG_STUDIO_ANCHORS__;
+      var inset = (anchorsApi && typeof anchorsApi.computeComposerTopInset === 'function')
+        ? anchorsApi.computeComposerTopInset(currentAnchor)
+        : 0;
+      stageEl.style.bottom = inset > 0 ? ('calc(100% - ' + inset + 'px)') : '100%';
+      var obscured = Boolean(
+        anchorsApi &&
+        typeof anchorsApi.detectMascotObstruction === 'function' &&
+        anchorsApi.detectMascotObstruction(stageEl, currentAnchor)
+      );
+      if (obscured) stageEl.setAttribute('data-obscured', 'true');
+      else stageEl.removeAttribute('data-obscured');
+    }
+
     function mountTo(anchorEl) {
       if (!cur.enabled || !anchorEl || anchorEl.isConnected === false) {
         if (stageEl.parentElement) stageEl.parentElement.removeChild(stageEl);
         currentAnchor = null;
+        disconnectResizeObserver();
         stopAnimLoop();
         return;
       }
       if (currentAnchor === anchorEl && stageEl.parentElement === anchorEl) {
+        syncLayout();
         return;
       }
+      disconnectResizeObserver();
       currentAnchor = anchorEl;
       if (stageEl.parentElement !== anchorEl) {
         anchorEl.appendChild(stageEl);
       }
+      if (typeof ResizeObserver === 'function') {
+        try {
+          resizeObserver = new ResizeObserver(function () {
+            syncLayout();
+          });
+          resizeObserver.observe(anchorEl);
+        } catch (_e) {}
+      }
       applyGeometry();
+      syncLayout();
       drawFrame();
       scheduleNextTick();
     }
@@ -1981,21 +2118,27 @@
         changed = true;
       }
 
-      if (!changed) return;
+      if (!changed) {
+        syncLayout();
+        return;
+      }
 
       if (!cur.enabled) {
         if (stageEl.parentElement) stageEl.parentElement.removeChild(stageEl);
+        disconnectResizeObserver();
         stopAnimLoop();
         return;
       }
       if (stateOrStyleChanged) frameIdx = 0;
       applyGeometry();
+      syncLayout();
       drawFrame();
       scheduleNextTick();
     }
 
     function destroy() {
       stopAnimLoop();
+      disconnectResizeObserver();
       if (stageEl.parentElement) stageEl.parentElement.removeChild(stageEl);
       currentAnchor = null;
     }
@@ -2006,6 +2149,7 @@
       element: stageEl,
       mountTo: mountTo,
       update: update,
+      syncLayout: syncLayout,
       destroy: destroy,
       getState: function () { return Object.assign({}, cur); }
     };
@@ -5927,6 +6071,7 @@
       var topAnchor = anchors.ensureComposerTopAnchor(composer);
       mascotStage.mountTo(topAnchor);
       mascotStage.update({ state: fused.mascotState });
+      if (typeof mascotStage.syncLayout === 'function') mascotStage.syncLayout();
     } else {
       mascotStage.mountTo(null);
     }

@@ -358,8 +358,14 @@
   }
 
   function ensureComposerTopAnchor(composer) {
-    if (!composer || !composer.card || composer.card.isConnected === false) return null;
-    var anchor = composer.card;
+    if (!composer) return null;
+    var anchor = null;
+    if (composer.inputBox && composer.inputBox.isConnected !== false) {
+      anchor = composer.inputBox;
+    } else if (composer.card && composer.card.isConnected !== false) {
+      anchor = (composer.card.closest && composer.card.closest('.surface-composer')) || composer.card;
+    }
+    if (!anchor || anchor.isConnected === false) return null;
     try {
       var pos = typeof getComputedStyle === 'function' ? getComputedStyle(anchor).position : '';
       if (!pos || pos === 'static') {
@@ -368,6 +374,85 @@
       anchor.setAttribute('data-ags-mascot-anchor', '1');
     } catch (_e) {}
     return anchor;
+  }
+
+  function rectsOverlap(a, b) {
+    return Boolean(
+      a && b &&
+      a.left + 2 < b.right &&
+      a.right - 2 > b.left &&
+      a.top + 2 < b.bottom &&
+      a.bottom - 2 > b.top
+    );
+  }
+
+  function computeComposerTopInset(anchorEl) {
+    if (!anchorEl || typeof anchorEl.getBoundingClientRect !== 'function') return 0;
+    var anchorRect;
+    try {
+      anchorRect = anchorEl.getBoundingClientRect();
+    } catch (_e) {
+      return 0;
+    }
+    if (!anchorRect || anchorRect.height <= 0) return 0;
+
+    var minTop = Infinity;
+    var children = anchorEl.children || [];
+    for (var i = 0; i < children.length; i++) {
+      var child = children[i];
+      if (!child || isOwnNode(child) || !isVisible(child)) continue;
+      if (typeof getComputedStyle === 'function') {
+        try {
+          var cs = getComputedStyle(child);
+          if (cs && (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity || '1') <= 0.05)) {
+            continue;
+          }
+        } catch (_e2) {}
+      }
+      var cr;
+      try {
+        cr = typeof child.getBoundingClientRect === 'function' ? child.getBoundingClientRect() : null;
+      } catch (_e3) {
+        cr = null;
+      }
+      if (!cr || cr.height < 8 || cr.width < 40) continue;
+      if (cr.top < minTop) minTop = cr.top;
+    }
+    return minTop < Infinity ? Math.max(0, Math.round(minTop - anchorRect.top)) : 0;
+  }
+
+  function detectMascotObstruction(stageEl, anchorEl) {
+    if (!stageEl || typeof document === 'undefined') return false;
+    var hitEl = (stageEl.querySelector && stageEl.querySelector('.ags-mascot-hit')) || stageEl;
+    if (!hitEl || typeof hitEl.getBoundingClientRect !== 'function') return false;
+    var hitRect;
+    try {
+      hitRect = hitEl.getBoundingClientRect();
+    } catch (_e) {
+      return false;
+    }
+    if (!hitRect || hitRect.width <= 1 || hitRect.height <= 1) return false;
+
+    var overlaySel = '[data-testid="queued-messages-card"], [data-testid="interaction-takeover-card"], [data-testid="side-question-panel"], [data-testid="model-selector-panel"]';
+    var overlays = document.querySelectorAll(overlaySel);
+    for (var i = 0; i < overlays.length; i++) {
+      var el = overlays[i];
+      if (!el || isOwnNode(el) || !isVisible(el)) continue;
+      var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+      if (r && rectsOverlap(hitRect, r)) return true;
+    }
+
+    var prevSib = anchorEl && anchorEl.previousElementSibling;
+    if (prevSib && !isOwnNode(prevSib) && prevSib.querySelectorAll) {
+      var btns = prevSib.querySelectorAll('button, [role="button"], a');
+      for (var j = 0; j < btns.length; j++) {
+        var b = btns[j];
+        if (!b || isOwnNode(b) || !isVisible(b)) continue;
+        var r2 = b.getBoundingClientRect ? b.getBoundingClientRect() : null;
+        if (r2 && rectsOverlap(hitRect, r2)) return true;
+      }
+    }
+    return false;
   }
 
   function ensureComposerBottomSlot(composer) {
@@ -750,6 +835,8 @@
     findComposerTarget: findComposerTarget,
     findModelTriggerInComposer: findModelTriggerInComposer,
     ensureComposerTopAnchor: ensureComposerTopAnchor,
+    computeComposerTopInset: computeComposerTopInset,
+    detectMascotObstruction: detectMascotObstruction,
     ensureComposerToolbarSlot: ensureComposerToolbarSlot,
     parkComposerToolbarSlot: parkComposerToolbarSlot,
     ensureComposerBottomSlot: ensureComposerBottomSlot,

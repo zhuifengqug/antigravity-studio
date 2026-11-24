@@ -12,6 +12,7 @@ const mascotStage = require('../src/renderer/mascot-stage');
 const mascotSprites = require('../src/renderer/assets/mascot-sprites');
 const homeCard = require('../src/renderer/home-overview-card');
 const effortSlider = require('../src/renderer/effort-slider');
+const domAnchors = require('../src/renderer/dom-anchors');
 const domI18n = require('../src/i18n/dom-runtime');
 const nativeI18n = require('../src/i18n/native-i18n');
 const { scanLocalFonts } = require('../src/backend/font-scanner');
@@ -217,4 +218,94 @@ test('Merged v2.34.0 dictionaries (4000+ entries) translate accurately and prote
     closest: (sel) => sel.indexOf('model-selector-panel') !== -1 ? mockPanelEl : null,
   };
   assert.equal(domI18n.shouldIgnoreElement(mockPanelEl), true);
+});
+
+test('Mascot composer top anchor prefers inputBox, tracks top inset, and detects host overlap', () => {
+  function makeMockNode(overrides) {
+    const attrs = Object.assign({}, overrides && overrides.attrs);
+    return Object.assign({
+      isConnected: true,
+      hidden: false,
+      style: {},
+      className: '',
+      children: [],
+      id: '',
+      hasAttribute: (k) => Object.prototype.hasOwnProperty.call(attrs, k),
+      getAttribute: (k) => (Object.prototype.hasOwnProperty.call(attrs, k) ? attrs[k] : null),
+      setAttribute: (k, v) => { attrs[k] = String(v); },
+      closest: () => null,
+      getClientRects: () => [{ width: 300, height: 40 }],
+      getBoundingClientRect: () => ({ left: 0, right: 300, top: 500, bottom: 600, width: 300, height: 100 }),
+    }, overrides || {});
+  }
+
+  const cardNode = makeMockNode({});
+  const inputBoxNode = makeMockNode({});
+  assert.equal(domAnchors.ensureComposerTopAnchor({ inputBox: inputBoxNode, card: cardNode }), inputBoxNode);
+  assert.equal(inputBoxNode.style.position, 'relative');
+  assert.equal(inputBoxNode.getAttribute('data-ags-mascot-anchor'), '1');
+  assert.equal(domAnchors.ensureComposerTopAnchor({ card: cardNode }), cardNode);
+  assert.equal(cardNode.getAttribute('data-ags-mascot-anchor'), '1');
+
+  // When a visible queued-messages wrapper is at the top of inputBox, inset is 0
+  const queuedWrap = makeMockNode({
+    getBoundingClientRect: () => ({ left: 0, right: 300, top: 500, bottom: 548, width: 300, height: 48 }),
+  });
+  const surfaceComposer = makeMockNode({
+    getBoundingClientRect: () => ({ left: 0, right: 300, top: 556, bottom: 620, width: 300, height: 64 }),
+  });
+  const anchorWithQueued = makeMockNode({
+    children: [queuedWrap, surfaceComposer],
+    getBoundingClientRect: () => ({ left: 0, right: 300, top: 500, bottom: 620, width: 300, height: 120 }),
+  });
+  assert.equal(domAnchors.computeComposerTopInset(anchorWithQueued), 0);
+
+  // When earlier wrapper is hidden / 0-height, inset equals offset down to surfaceComposer
+  const hiddenWrap = makeMockNode({
+    style: { display: 'none' },
+    getClientRects: () => [],
+    getBoundingClientRect: () => ({ left: 0, right: 0, top: 500, bottom: 500, width: 0, height: 0 }),
+  });
+  const anchorNoQueued = makeMockNode({
+    children: [hiddenWrap, surfaceComposer],
+    getBoundingClientRect: () => ({ left: 0, right: 300, top: 540, bottom: 620, width: 300, height: 80 }),
+  });
+  assert.equal(domAnchors.computeComposerTopInset(anchorNoQueued), 16);
+
+  // Obstruction detection against queued-messages-card and previousSibling buttons
+  const prevDoc = global.document;
+  try {
+    const hitEl = makeMockNode({
+      getBoundingClientRect: () => ({ left: 220, right: 280, top: 448, bottom: 500, width: 60, height: 52 }),
+    });
+    const stageEl = makeMockNode({
+      querySelector: (sel) => sel === '.ags-mascot-hit' ? hitEl : null,
+    });
+    let queuedCard = makeMockNode({
+      getBoundingClientRect: () => ({ left: 20, right: 290, top: 460, bottom: 500, width: 270, height: 40 }),
+    });
+    let siblingBtn = null;
+    const prevSib = makeMockNode({
+      querySelectorAll: () => siblingBtn ? [siblingBtn] : [],
+    });
+    const hostAnchor = makeMockNode({ previousElementSibling: prevSib });
+    global.document = {
+      querySelectorAll: () => queuedCard ? [queuedCard] : [],
+    };
+    assert.equal(domAnchors.detectMascotObstruction(stageEl, hostAnchor), true);
+
+    // Move queued card below mascot hit rect (no overlap)
+    queuedCard = makeMockNode({
+      getBoundingClientRect: () => ({ left: 20, right: 290, top: 502, bottom: 550, width: 270, height: 48 }),
+    });
+    assert.equal(domAnchors.detectMascotObstruction(stageEl, hostAnchor), false);
+
+    // Overlapping button inside anchor's previousSibling triggers obstruction
+    siblingBtn = makeMockNode({
+      getBoundingClientRect: () => ({ left: 210, right: 265, top: 470, bottom: 494, width: 55, height: 24 }),
+    });
+    assert.equal(domAnchors.detectMascotObstruction(stageEl, hostAnchor), true);
+  } finally {
+    global.document = prevDoc;
+  }
 });
