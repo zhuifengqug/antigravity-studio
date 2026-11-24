@@ -16,6 +16,7 @@ const {
   shapeCollectResultForUi,
 } = require('../src/backend/studio-main');
 const meterCore = require('../src/backend/meter-core');
+const meterCollector = require('../src/backend/meter-collector');
 const { ConfigStore } = require('../src/shared/config-store');
 
 test('computeHistoryOverview parses real pricing_ledger_v1 and token_usage_archive_v2 schema accurately', async () => {
@@ -306,4 +307,61 @@ test('meter-core pricing catalog normalization & quota formatting', () => {
   const te = estSnapRes.snapshot.pools[0].buckets[0].tokenEstimate;
   assert.equal(te.isReliable, true);
   assert.ok(te.estRemainingShort);
+
+  // Mid-stream generatorMetadata merge & native tokenBreakdown scaling
+  const gmList = [
+    {
+      stepIndices: [2515],
+      chatModel: {
+        model: 'MODEL_PLACEHOLDER_M528',
+        timeToFirstToken: '1.8s',
+        streamingDuration: '1.25s',
+        usage: {
+          inputTokens: '2850',
+          cacheReadTokens: '542652',
+          outputTokens: '358',
+          thinkingOutputTokens: '218',
+          responseOutputTokens: '140',
+        },
+        chatStartMetadata: {
+          contextWindowMetadata: {
+            estimatedTokensUsed: 564655,
+            maxContextTokens: 786432,
+            tokenBreakdown: {
+              groups: [
+                { type: 'TOKEN_TYPE_SYSTEM_PROMPT', name: 'System Prompt', numTokens: 15675 },
+                { type: 'TOKEN_TYPE_TOOLS', name: 'Tools', numTokens: 11890 },
+                { type: 'TOKEN_TYPE_CHAT_MESSAGES', name: 'Chat Messages', numTokens: 537090 },
+              ],
+            },
+          },
+        },
+      },
+    },
+    {
+      stepIndices: [2519],
+      chatModel: { model: 'MODEL_PLACEHOLDER_M528' },
+    },
+  ];
+  const mergedMid = meterCollector.selectLatestFromGeneratorMetadata(gmList, '327da7d0-2c7a-4158-9cee-85f4315d816d', []);
+  assert.equal(mergedMid.latest.status, 'streaming');
+  assert.equal(mergedMid.latest.used, 545860);
+  assert.equal(mergedMid.latest.budget, 786432);
+  assert.ok(mergedMid.latest.speed && mergedMid.latest.speed.streamingTps > 200);
+  assert.ok(mergedMid.latestTokenBreakdown && mergedMid.latestTokenBreakdown.groups.length === 3);
+
+  const lightweightShaped = shapeCollectResultForUi({
+    conversation: '327da7d0-2c7a-4158-9cee-85f4315d816d',
+    lightweight: true,
+    latest: mergedMid.latest,
+    latestCallRecord: mergedMid.latestCallRecord,
+    recentGeneratorCalls: [],
+    latestTokenBreakdown: mergedMid.latestTokenBreakdown,
+    session: { total: {}, groups: {}, attachments: [] },
+  }, qUi, { i18n: { language: 'zh-CN' }, enhance: {}, context: {} }, '327da7d0-2c7a-4158-9cee-85f4315d816d');
+  assert.equal(lightweightShaped.context.usedTokens, 545860);
+  assert.equal(lightweightShaped.context.contextLimit, 786432);
+  assert.ok(lightweightShaped.context.breakdown.system > 10000);
+  assert.ok(lightweightShaped.context.breakdown.tools > 8000);
+  assert.ok(lightweightShaped.context.breakdown.user > 500000);
 });

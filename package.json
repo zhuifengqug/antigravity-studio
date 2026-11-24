@@ -1,6 +1,6 @@
 {
   "name": "antigravity-studio",
-  "version": "2.1.6",
+  "version": "2.1.7",
   "description": "All-in-one desktop enhancement engine for Google Antigravity 2.x: Claude & Antigravity themes, 3 pixel mascots (Clawd/Deepy/Astra), breathing 512K vial + HUD, home overview card, v2.34 full localization, real context/quota/speed telemetry, multi-account switcher, prompt tiers & Chinese title patch, context unlocker, compact rehydrate, and TUN-free local proxy.",
   "main": "cli.js",
   "bin": {

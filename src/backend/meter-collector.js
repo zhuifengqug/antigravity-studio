@@ -550,6 +550,74 @@ async function scanFiles(media, scanOptions = {}) {
 let collectSeqCounter = 0;
 const latestCollectSeqByOrigin = new Map();
 
+function selectLatestFromGeneratorMetadata(list, id, mergedCascadeConfigs = []) {
+  const items = Array.isArray(list) ? list : [];
+  let newestPending = null;
+  let bestValued = null;
+  let bestEstimatedFallback = null;
+
+  for (let i = items.length - 1; i >= 0; i--) {
+    const m = items[i];
+    if (!m || typeof m !== 'object') continue;
+    const s = summarize(m, { cascadeModelConfigs: mergedCascadeConfigs });
+    if (!s) continue;
+
+    const isIncomplete = Boolean(!s.error && s.actual == null && s.speed == null);
+    if (isIncomplete && !newestPending && !bestValued) {
+      newestPending = { index: i, m, s };
+    }
+
+    const isComplete = Boolean(s.actual != null || s.speed != null || s.error);
+    if (isComplete && !bestValued) {
+      bestValued = { index: i, m, s };
+      break;
+    }
+
+    if (!bestEstimatedFallback && (s.used != null || s.budget != null)) {
+      bestEstimatedFallback = { index: i, m, s };
+    }
+  }
+
+  const chosen = bestValued || bestEstimatedFallback || newestPending;
+  if (!chosen) {
+    return {
+      latest: null,
+      latestModel: null,
+      latestCallId: null,
+      latestCallRecord: null,
+      latestTokenBreakdown: null
+    };
+  }
+
+  let latest = { ...chosen.s };
+  if (newestPending && newestPending.index >= chosen.index) {
+    latest.status = 'streaming';
+    if (!latest.model && newestPending.s.model) latest.model = newestPending.s.model;
+    if (!latest.modelId && newestPending.s.modelId) latest.modelId = newestPending.s.modelId;
+    if (!latest.modelRaw && newestPending.s.modelRaw) latest.modelRaw = newestPending.s.modelRaw;
+    if (!latest.budget && newestPending.s.budget) latest.budget = newestPending.s.budget;
+  }
+
+  const latestModel = chosen.m.chatModel || newestPending?.m?.chatModel || null;
+  const callMeta = parseGeneratorCall(chosen.m, id, 'desktop', { cascadeModelConfigs: mergedCascadeConfigs });
+  const latestCallId = callMeta?.callId || null;
+  const latestCallRecord = callMeta
+    ? normalizeSessionCallRecord(callMeta, { cascadeId: id, cascadeModelConfigs: mergedCascadeConfigs })
+    : null;
+  const latestTokenBreakdown =
+    newestPending?.m?.chatModel?.chatStartMetadata?.contextWindowMetadata?.tokenBreakdown ||
+    chosen.m?.chatModel?.chatStartMetadata?.contextWindowMetadata?.tokenBreakdown ||
+    null;
+
+  return {
+    latest,
+    latestModel,
+    latestCallId,
+    latestCallRecord,
+    latestTokenBreakdown
+  };
+}
+
 async function collect(origin, id, options = {}) {
   const safeOrigin = normalizeLoopbackOrigin(origin);
   if (!safeOrigin || !/^[a-f\d-]{36}$/i.test(id)) throw new Error('无效本机会话');
@@ -572,8 +640,7 @@ async function collect(origin, id, options = {}) {
   };
   const previous = conversations.get(key);
   if (previous?.pending) return previous.pending;
-  if (options.force) filesCache.clear();
-  if (!options.force && previous?.result && Date.now() - previous.at < 12000) return previous.result;
+  if (!options.force && previous?.result && Date.now() - previous.at < 3500) return previous.result;
   const task = (async () => {
     const signal = abortController?.signal || null;
     try {
@@ -632,9 +699,19 @@ async function collect(origin, id, options = {}) {
       const expected = Number(full.numTotalSteps ?? steps.length);
       while (steps.length < expected) {
         if (isSuperseded()) return { version: PROJECT_VERSION, conversation: id, abortedStale: true, scannedAt: Date.now(), errors: [] };
-        const page = await call('GetCascadeTrajectorySteps', { cascadeId: id, stepOffset: steps.length, trajectoryVerbosity: 3 });
-        if (!page.steps?.length) throw new Error(`历史仅取得 ${steps.length}/${expected} 步，扫描未完成`);
-        steps.push(...page.steps);
+        try {
+          const page = await call('GetCascadeTrajectorySteps', { cascadeId: id, stepOffset: steps.length, trajectoryVerbosity: 3 });
+          if (!page.steps?.length) {
+            if (steps.length > 0) break;
+            throw new Error(`历史仅取得 ${steps.length}/${expected} 步，扫描未完成`);
+          }
+          steps.push(...page.steps);
+        } catch (stepErr) {
+          if (steps.length > 0 && !(stepErr && stepErr.name === 'AbortError')) {
+            break;
+          }
+          throw stepErr;
+        }
       }
       if (isSuperseded()) return { version: PROJECT_VERSION, conversation: id, abortedStale: true, scannedAt: Date.now(), errors: [] };
       const session = analyzeSteps(steps);
@@ -646,7 +723,7 @@ async function collect(origin, id, options = {}) {
       const total = add({ ...session.total }, attachmentTotal);
       let latest = null;
       const count = Number(full.numTotalGeneratorMetadata ?? trajectory.generatorMetadata?.length ?? 0);
-      const tail = await call('GetCascadeTrajectoryGeneratorMetadata', { cascadeId: id, generatorMetadataOffset: Math.max(0, count - 3), includeMessages: false });
+      const tail = await call('GetCascadeTrajectoryGeneratorMetadata', { cascadeId: id, generatorMetadataOffset: Math.max(0, count - 5), includeMessages: false });
       let cachedHostUserStatus = cachedUserStatusByOrigin.get(normalizeQuotaOriginScope({ origin }))?.status || null;
       let knownCascadeConfigs = Array.isArray(cachedHostUserStatus?.cascadeModelConfigs) ? cachedHostUserStatus.cascadeModelConfigs : [];
       const hasAnyCap = knownCascadeConfigs.some(c => Number.isFinite(c?.maxTokens) && c.maxTokens > 0);
@@ -664,27 +741,18 @@ async function collect(origin, id, options = {}) {
         cachedHostUserStatus?.availableModelDetails || null,
         stepCapabilities
       );
-      let latestModel = null;
-      let latestCallId = null;
-      let latestCallRecord = null;
+      const selectedMeta = selectLatestFromGeneratorMetadata(tail.generatorMetadata || [], id, mergedCascadeConfigs);
+      latest = selectedMeta.latest;
+      const latestModel = selectedMeta.latestModel;
+      const latestCallId = selectedMeta.latestCallId;
+      const latestCallRecord = selectedMeta.latestCallRecord;
+      const latestTokenBreakdown = selectedMeta.latestTokenBreakdown;
       const recentGeneratorCalls = [];
       for (const m of (tail.generatorMetadata || [])) {
         const callMeta = parseGeneratorCall(m, id, 'desktop', { cascadeModelConfigs: mergedCascadeConfigs });
         if (callMeta) {
           const normCall = normalizeSessionCallRecord(callMeta, { cascadeId: id, cascadeModelConfigs: mergedCascadeConfigs });
           if (normCall) recentGeneratorCalls.push(normCall);
-        }
-      }
-      for (const m of (tail.generatorMetadata || []).slice().reverse()) {
-        latest = summarize(m, { cascadeModelConfigs: mergedCascadeConfigs });
-        if (latest) {
-          latestModel = m.chatModel;
-          const callMeta = parseGeneratorCall(m, id, 'desktop', { cascadeModelConfigs: mergedCascadeConfigs });
-          latestCallId = callMeta?.callId || null;
-          if (callMeta) {
-            latestCallRecord = normalizeSessionCallRecord(callMeta, { cascadeId: id, cascadeModelConfigs: mergedCascadeConfigs });
-          }
-          break;
         }
       }
       const system = latestModel ? measure((latestModel.promptSections || []).map(p => p.content || '').join('\n') || latestModel.systemPrompt || '') : empty();
@@ -718,7 +786,7 @@ async function collect(origin, id, options = {}) {
       ...(cachedHostUserStatus?.availableModelDetails || {}),
       ...stepCapabilities
     };
-    const result = { version: PROJECT_VERSION, conversation: id, workspacePath: wsPath || null, latest, latestCallId, latestCallRecord, recentGeneratorCalls, generatorCount: count, cascadeModelConfigs: compactCascadeConfigs, modelCapabilitiesById, session: { ...session, media: undefined, attachmentTotal, total, attachments, unknownFiles, complete: unknownFiles === 0, scope: '全量可读取历史 + 上传附件 + 当前系统提示与工具定义；不将每轮重复输入累加；非服务端分词结果' }, scannedAt: Date.now(), errors: [] };
+    const result = { version: PROJECT_VERSION, conversation: id, workspacePath: wsPath || null, latest, latestCallId, latestCallRecord, recentGeneratorCalls, latestTokenBreakdown, generatorCount: count, cascadeModelConfigs: compactCascadeConfigs, modelCapabilitiesById, session: { ...session, media: undefined, attachmentTotal, total, attachments, unknownFiles, complete: unknownFiles === 0, scope: '全量可读取历史 + 上传附件 + 当前系统提示与工具定义；不将每轮重复输入累加；非服务端分词结果' }, scannedAt: Date.now(), errors: [] };
     if (isSuperseded()) {
       conversations.delete(key);
       return { version: PROJECT_VERSION, conversation: id, abortedStale: true, scannedAt: Date.now(), errors: [] };
@@ -7903,6 +7971,7 @@ module.exports = {
   fetchQuotaSnapshotFromHost,
   buildAccountScopeKey,
   resetQuotaHostCacheForTest,
+  selectLatestFromGeneratorMetadata,
   collect,
   collectTokenHistory,
   collectTokenHistoryAsync,

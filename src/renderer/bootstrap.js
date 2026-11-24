@@ -41,6 +41,7 @@
   var latestHomeOverview = null;
   var lastHomeFetchAt = 0;
   var refreshBusy = false;
+  var refreshSeq = 0;
 
   var root = document.getElementById('ag-studio-root');
   if (!root) {
@@ -158,10 +159,15 @@
 
     if (domState.conversationId !== lastConversationId) {
       lastConversationId = domState.conversationId;
+      refreshSeq++;
+      refreshBusy = false;
       latestSnapshot = null;
       latestTurnState = null;
       wasGenerating = false;
       happyUntil = 0;
+      if (drawer && typeof drawer.resetSessionState === 'function') {
+        drawer.resetSessionState(domState.conversationId);
+      }
       refreshData(true);
     }
 
@@ -248,7 +254,9 @@
     }
 
     refreshBusy = true;
+    var mySeq = ++refreshSeq;
     var cid = anchors ? anchors.extractConversationId() : null;
+    var reqCid = cid || null;
     var scanFn = api.scan
       ? function () { return api.scan(cid, Boolean(force)); }
       : (api.getLiveSnapshot ? function () { return api.getLiveSnapshot(cid); } : function () { return Promise.resolve(null); });
@@ -287,14 +295,38 @@
       rehFn().catch(function () { return undefined; }),
       i18nFn().catch(function () { return undefined; })
     ]).then(function (res) {
-      refreshBusy = false;
+      if (mySeq === refreshSeq) refreshBusy = false;
+      var curCid = (anchors ? anchors.extractConversationId() : lastConversationId) || null;
+      if (mySeq !== refreshSeq || reqCid !== (lastConversationId || null) || (curCid && reqCid && curCid !== reqCid)) {
+        return;
+      }
       var snap = res[0];
       var turn = res[1];
       if (snap) {
-        if (cid && !snap.conversationId) snap.conversationId = cid;
-        latestSnapshot = snap;
-        if (snap.context && snap.context.speed) {
-          drawer.pushSpeedSample(snap.context.speed.tokPerSec || snap.context.speed.tps || 0);
+        if (reqCid && !snap.conversationId) snap.conversationId = reqCid;
+        if (snap.abortedStale) {
+          if (latestSnapshot && snap.quota) latestSnapshot.quota = snap.quota;
+        } else {
+          var isEmptyFallback = Boolean(
+            snap.context &&
+            snap.context.model === '未连接会话' &&
+            !snap.context.usedTokens
+          );
+          var hasValidExisting = Boolean(
+            reqCid &&
+            latestSnapshot &&
+            latestSnapshot.conversationId === reqCid &&
+            latestSnapshot.context &&
+            latestSnapshot.context.usedTokens > 0
+          );
+          if (isEmptyFallback && hasValidExisting) {
+            if (snap.quota) latestSnapshot.quota = snap.quota;
+          } else {
+            latestSnapshot = snap;
+            if (snap.context && snap.context.speed) {
+              drawer.pushSpeedSample(snap.context.speed.tokPerSec || snap.context.speed.tps || 0);
+            }
+          }
         }
       }
       if (turn) latestTurnState = turn;

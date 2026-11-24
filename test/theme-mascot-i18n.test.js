@@ -313,3 +313,66 @@ test('Mascot composer top anchor prefers inputBox, tracks top inset, and detects
     global.document = prevDoc;
   }
 });
+
+test('extractConversationId prefers visible conversation-view and traverses deep Fiber/Context Redux store', () => {
+  const prevWin = global.window;
+  const prevDoc = global.document;
+  try {
+    const hiddenId = '11111111-1111-4111-8111-111111111111';
+    const visibleId = '22222222-2222-4222-8222-222222222222';
+    const reduxId = '33333333-3333-4333-8333-333333333333';
+
+    function makeViewNode(cid, visible) {
+      return {
+        id: '',
+        isConnected: true,
+        hidden: false,
+        style: {},
+        className: '',
+        closest: () => null,
+        querySelector: () => null,
+        hasAttribute: () => false,
+        getAttribute: (k) => k === 'data-cascade-id' ? cid : null,
+        getClientRects: () => visible ? [{ width: 600, height: 400 }] : [],
+      };
+    }
+
+    const hiddenView = makeViewNode(hiddenId, false);
+    const visibleView = makeViewNode(visibleId, true);
+
+    global.window = { location: { pathname: '/', hash: '', search: '', href: 'https://127.0.0.1:24807/' } };
+    global.document = {
+      querySelector: () => null,
+      querySelectorAll: (sel) => sel.indexOf('conversation-view') !== -1 ? [hiddenView, visibleView] : [],
+    };
+    assert.equal(domAnchors.extractConversationId(), visibleId);
+
+    // Fallback to deep Fiber dependencies.firstContext when view has no data-cascade-id
+    let fiberRoot = {
+      memoizedProps: {},
+      dependencies: {
+        firstContext: {
+          memoizedValue: {
+            store: { getState: () => ({ conversation: { convoState: { type: 'active', cascadeId: reduxId } } }) },
+          },
+          next: null,
+        },
+      },
+      return: null,
+    };
+    let leaf = fiberRoot;
+    for (let i = 0; i < 120; i++) {
+      leaf = { memoizedProps: {}, return: leaf };
+    }
+    const bareView = makeViewNode('conversation', true);
+    bareView.__reactFiber$test = leaf;
+    global.document = {
+      querySelector: () => null,
+      querySelectorAll: (sel) => sel.indexOf('conversation-view') !== -1 ? [bareView] : [],
+    };
+    assert.equal(domAnchors.extractConversationId(), reduxId);
+  } finally {
+    global.window = prevWin;
+    global.document = prevDoc;
+  }
+});

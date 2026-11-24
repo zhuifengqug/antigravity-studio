@@ -22,7 +22,7 @@
     if (!el || !el.closest) return false;
     return Boolean(
       el.id === 'ag-studio-root' ||
-      el.hasAttribute('data-ag-studio-ignore') ||
+      (el.hasAttribute && el.hasAttribute('data-ag-studio-ignore')) ||
       el.closest('#ag-studio-root, [data-ag-studio-ignore]')
     );
   }
@@ -43,33 +43,69 @@
     return el.offsetParent !== null;
   }
 
-  function readFiberCascadeId(el, maxDepth) {
-    if (!el) return '';
+  function getCurrentFiber(el) {
+    if (!el || typeof el !== 'object') return null;
     try {
       var keys = Object.keys(el);
-      var fiberKey = null;
+      var raw = null;
       for (var i = 0; i < keys.length; i++) {
-        if (keys[i].indexOf('__reactFiber$') === 0) {
-          fiberKey = keys[i];
+        if (keys[i].indexOf('__reactFiber$') === 0 || keys[i].indexOf('__reactInternalInstance$') === 0) {
+          raw = el[keys[i]];
           break;
         }
       }
-      var f = fiberKey ? el[fiberKey] : null;
+      if (!raw) return null;
+      if (raw.alternate) {
+        var root = raw;
+        for (var g = 0; root.return && g < 600; g++) root = root.return;
+        if (root && root.stateNode && root.stateNode.current && root.stateNode.current !== root) {
+          return raw.alternate;
+        }
+      }
+      return raw;
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  function extractConvoIdFromStore(store) {
+    if (!store || typeof store.getState !== 'function') return '';
+    try {
+      var st = store.getState();
+      var cs = st && st.conversation && st.conversation.convoState;
+      if (!cs) return '';
+      if (cs.type === 'active' && typeof cs.cascadeId === 'string' && UUID_RE.test(cs.cascadeId)) {
+        return cs.cascadeId.match(UUID_RE)[1];
+      }
+      if (cs.type === 'subagent') {
+        var subId = cs.childConversationId || cs.parentConversationId;
+        if (typeof subId === 'string' && UUID_RE.test(subId)) {
+          return subId.match(UUID_RE)[1];
+        }
+      }
+    } catch (_e) {}
+    return '';
+  }
+
+  function readFiberCascadeId(el, maxDepth) {
+    if (!el) return '';
+    try {
+      var f = getCurrentFiber(el);
       var depth = 0;
-      while (f && depth < (maxDepth || 50)) {
+      var limit = maxDepth || 260;
+      while (f && depth < limit) {
         var props = f.memoizedProps || f.pendingProps;
         if (props && typeof props.cascadeId === 'string' && UUID_RE.test(props.cascadeId)) {
           return props.cascadeId.match(UUID_RE)[1];
         }
-        if (props && props.store && typeof props.store.getState === 'function') {
-          var st = props.store.getState();
-          var cs = st && st.conversation && st.conversation.convoState;
-          if (cs && cs.type === 'active' && typeof cs.cascadeId === 'string' && UUID_RE.test(cs.cascadeId)) {
-            return cs.cascadeId.match(UUID_RE)[1];
-          }
-          if (cs && cs.type === 'subagent' && typeof cs.childConversationId === 'string' && UUID_RE.test(cs.childConversationId)) {
-            return cs.childConversationId.match(UUID_RE)[1];
-          }
+        var cidProps = extractConvoIdFromStore(props && props.store);
+        if (cidProps) return cidProps;
+        var dep = f.dependencies && f.dependencies.firstContext;
+        while (dep) {
+          var mv = dep.memoizedValue;
+          var cidCtx = extractConvoIdFromStore(mv && mv.store);
+          if (cidCtx) return cidCtx;
+          dep = dep.next;
         }
         f = f.return;
         depth++;
@@ -81,41 +117,20 @@
   function readReduxConvoId() {
     if (typeof document === 'undefined') return '';
     var anchors = document.querySelectorAll(
-      CONV_VIEW_SEL + ', ' + INPUT_BOX_SEL + ', [data-testid="conversation-row-sidebar"], [data-testid="home-greeting"]'
+      CONV_VIEW_SEL + ', ' + INPUT_BOX_SEL + ', #root, [data-testid="conversation-row-sidebar"], [data-testid="home-greeting"]'
     );
+    var visible = [];
+    var hidden = [];
     for (var i = 0; i < anchors.length; i++) {
-      var el = anchors[i];
-      try {
-        var keys = Object.keys(el);
-        var fk = null;
-        for (var j = 0; j < keys.length; j++) {
-          if (keys[j].indexOf('__reactFiber$') === 0) { fk = keys[j]; break; }
-        }
-        var f = fk ? el[fk] : null;
-        var depth = 0;
-        while (f && depth < 60) {
-          var p = f.memoizedProps;
-          if (p && p.store && typeof p.store.getState === 'function') {
-            var st = p.store.getState();
-            var cs = st && st.conversation && st.conversation.convoState;
-            if (cs && cs.type === 'active' && cs.cascadeId) return String(cs.cascadeId);
-            if (cs && cs.type === 'subagent' && cs.childConversationId) return String(cs.childConversationId);
-          }
-          var dep = f.dependencies && f.dependencies.firstContext;
-          while (dep) {
-            var mv = dep.memoizedValue;
-            if (mv && mv.store && typeof mv.store.getState === 'function') {
-              var st2 = mv.store.getState();
-              var cs2 = st2 && st2.conversation && st2.conversation.convoState;
-              if (cs2 && cs2.type === 'active' && cs2.cascadeId) return String(cs2.cascadeId);
-              if (cs2 && cs2.type === 'subagent' && cs2.childConversationId) return String(cs2.childConversationId);
-            }
-            dep = dep.next;
-          }
-          f = f.return;
-          depth++;
-        }
-      } catch (_e) {}
+      var node = anchors[i];
+      if (!node || isOwnNode(node)) continue;
+      if (isVisible(node)) visible.push(node);
+      else hidden.push(node);
+    }
+    var ordered = visible.concat(hidden);
+    for (var j = 0; j < ordered.length; j++) {
+      var hit = readFiberCascadeId(ordered[j], 300);
+      if (hit) return hit;
     }
     return '';
   }
@@ -123,15 +138,27 @@
   function findFormalConvView() {
     if (typeof document === 'undefined') return null;
     var views = document.querySelectorAll(CONV_VIEW_SEL);
+    var visibleCandidates = [];
+    var hiddenCandidates = [];
     for (var i = 0; i < views.length; i++) {
       var cv = views[i];
       if (isOwnNode(cv)) continue;
       if (cv.closest && cv.closest(SUBAGENT_SEL)) continue;
       if (cv.closest && cv.closest('.agy-home')) continue;
       if (cv.querySelector && cv.querySelector('.agy-home')) continue;
-      return cv;
+      if (isVisible(cv)) visibleCandidates.push(cv);
+      else hiddenCandidates.push(cv);
     }
-    return null;
+    for (var v = 0; v < visibleCandidates.length; v++) {
+      var vAttr = visibleCandidates[v].getAttribute && visibleCandidates[v].getAttribute('data-cascade-id');
+      if (vAttr && UUID_RE.test(vAttr)) return visibleCandidates[v];
+    }
+    if (visibleCandidates.length) return visibleCandidates[0];
+    for (var h = 0; h < hiddenCandidates.length; h++) {
+      var hAttr = hiddenCandidates[h].getAttribute && hiddenCandidates[h].getAttribute('data-cascade-id');
+      if (hAttr && UUID_RE.test(hAttr)) return hiddenCandidates[h];
+    }
+    return hiddenCandidates.length ? hiddenCandidates[0] : null;
   }
 
   function extractConversationId() {
@@ -154,12 +181,12 @@
         if (attrId && attrId !== 'conversation' && UUID_RE.test(attrId)) {
           return attrId.match(UUID_RE)[1];
         }
-        var fibId = readFiberCascadeId(cv, 40);
+        var fibId = readFiberCascadeId(cv, 260);
         if (fibId) return fibId;
       }
       var comp = findComposerTarget();
       if (comp && comp.inputBox && !comp.isHome) {
-        var inpFib = readFiberCascadeId(comp.inputBox, 60);
+        var inpFib = readFiberCascadeId(comp.inputBox, 260);
         if (inpFib) return inpFib;
       }
       for (var j = 0; j < urlCandidates.length; j++) {
@@ -170,6 +197,18 @@
       if (!detectHomeState().isHome) {
         var reduxId = readReduxConvoId();
         if (reduxId && UUID_RE.test(reduxId)) return reduxId.match(UUID_RE)[1];
+
+        var activeRows = document.querySelectorAll(
+          '[data-testid="conversation-row-sidebar"][aria-current="page"], [data-testid="conversation-row-sidebar"][data-active="true"], [data-testid="conversation-row-sidebar"][data-selected="true"]'
+        );
+        for (var r = 0; r < activeRows.length; r++) {
+          var row = activeRows[r];
+          if (!row || isOwnNode(row)) continue;
+          var rAttr = row.getAttribute && row.getAttribute('data-cascade-id');
+          if (rAttr && UUID_RE.test(rAttr)) return rAttr.match(UUID_RE)[1];
+          var rFib = readFiberCascadeId(row, 40);
+          if (rFib) return rFib;
+        }
       }
     } catch (_e) {}
     return null;

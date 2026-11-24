@@ -705,6 +705,40 @@ function computeConversationCumulativeCost(cid, collected, modelName, turnCostUs
   };
 }
 
+function extractBreakdownFromCwm(latestModel) {
+  const groups = latestModel?.chatStartMetadata?.contextWindowMetadata?.tokenBreakdown?.groups;
+  if (!Array.isArray(groups) || !groups.length) return null;
+  let system = 0;
+  let tools = 0;
+  let user = 0;
+  for (const g of groups) {
+    if (!g || typeof g !== 'object') continue;
+    const tok = Number(g.numTokens || 0);
+    if (!Number.isFinite(tok) || tok <= 0) continue;
+    const tp = String(g.type || '').toUpperCase();
+    const nm = String(g.name || '').toLowerCase();
+    if (tp === 'TOKEN_TYPE_TOOLS' || (tp !== 'TOKEN_TYPE_MCP_TOOLS' && /\btools\b/.test(nm) && !nm.includes('mcp'))) {
+      tools += tok;
+    } else if (tp === 'TOKEN_TYPE_CHAT_MESSAGES' || nm.includes('chat')) {
+      user += tok;
+    } else if (
+      tp === 'TOKEN_TYPE_SYSTEM_PROMPT' ||
+      tp === 'TOKEN_TYPE_RULES' ||
+      tp === 'TOKEN_TYPE_SKILLS' ||
+      tp === 'TOKEN_TYPE_PLUGINS' ||
+      tp === 'TOKEN_TYPE_SUBAGENTS' ||
+      tp === 'TOKEN_TYPE_MCP_TOOLS' ||
+      /system|rules|skills|plugins|subagent|mcp/.test(nm)
+    ) {
+      system += tok;
+    } else {
+      user += tok;
+    }
+  }
+  const total = system + tools + user;
+  return total > 0 ? { system, tools, user, total } : null;
+}
+
 function shapeCollectResultForUi(collected, quotaUi, cfg, cid) {
   const latest = collected?.latest || null;
   const latestCall = collected?.latestCallRecord || null;
@@ -735,13 +769,36 @@ function shapeCollectResultForUi(collected, quotaUi, cfg, cid) {
   let bdAssistant = rawAsst;
   let bdThinking = rawThink;
 
-  if (usedTokens > 0 && rawTotal > 0 && serverUsed > 0) {
+  const cwmBd = collected?.latestTokenBreakdown
+    ? extractBreakdownFromCwm({ chatStartMetadata: { contextWindowMetadata: { tokenBreakdown: collected.latestTokenBreakdown } } })
+    : null;
+
+  if (usedTokens > 0 && rawTotal > 0 && !collected?.lightweight && serverUsed > 0) {
     const scale = usedTokens / rawTotal;
     bdSystem = Math.round(rawSys * scale);
     bdTools = Math.round(rawTools * scale);
     bdUser = Math.round(rawUser * scale);
     bdAssistant = Math.round(rawAsst * scale);
     bdThinking = Math.max(0, usedTokens - bdSystem - bdTools - bdUser - bdAssistant);
+  } else if ((rawTotal === 0 || collected?.lightweight === true) && cwmBd) {
+    const serverOut = Number(latest?.output || 0);
+    const serverThink = Number(latest?.speed?.thinkingTokens || 0);
+    const outAssist = Math.max(0, serverOut - serverThink);
+    const cwmSum = cwmBd.total + outAssist + serverThink;
+    if (usedTokens > 0 && cwmSum > 0) {
+      const scale = usedTokens / cwmSum;
+      bdSystem = Math.round(cwmBd.system * scale);
+      bdTools = Math.round(cwmBd.tools * scale);
+      bdAssistant = Math.round(outAssist * scale);
+      bdThinking = Math.round(serverThink * scale);
+      bdUser = Math.max(0, usedTokens - bdSystem - bdTools - bdAssistant - bdThinking);
+    } else {
+      bdSystem = cwmBd.system;
+      bdTools = cwmBd.tools;
+      bdUser = cwmBd.user;
+      bdAssistant = outAssist;
+      bdThinking = serverThink;
+    }
   } else if (usedTokens > 0 && rawTotal === 0) {
     const serverIn = Number(latest?.input || 0);
     const serverOut = Number(latest?.output || 0);
@@ -1671,6 +1728,80 @@ function registerIpcOnce() {
     return next;
   });
 
+  async function collectLightweightFallback(candOrigin, cid, authCtx) {
+    try {
+      const api = await localApi.connect({
+        origin: candOrigin,
+        csrfToken: authCtx.csrfToken,
+        fallbackCsrfToken: authCtx.fallbackCsrfToken,
+      });
+      const full = await api.call('GetCascadeTrajectory', { cascadeId: cid, trajectoryVerbosity: 1 });
+      const traj = full?.trajectory;
+      if (!traj) return null;
+      const count = Number(full.numTotalGeneratorMetadata ?? traj.generatorMetadata?.length ?? 0);
+      let gmList = Array.isArray(traj.generatorMetadata) ? traj.generatorMetadata : [];
+      if (count > 0) {
+        try {
+          const tail = await api.call('GetCascadeTrajectoryGeneratorMetadata', {
+            cascadeId: cid,
+            generatorMetadataOffset: Math.max(0, count - 5),
+            includeMessages: false,
+          });
+          if (Array.isArray(tail?.generatorMetadata) && tail.generatorMetadata.length) {
+            gmList = tail.generatorMetadata;
+          }
+        } catch {}
+      }
+      if (!gmList.length || typeof meterCollector.selectLatestFromGeneratorMetadata !== 'function') return null;
+
+      let cascadeConfigs = [];
+      try {
+        const st = await meterCollector.fetchUserStatusFromHost({
+          origin: candOrigin,
+          csrfToken: authCtx.csrfToken,
+          fallbackCsrfToken: authCtx.fallbackCsrfToken,
+        });
+        if (Array.isArray(st?.cascadeModelConfigs)) cascadeConfigs = st.cascadeModelConfigs;
+      } catch {}
+
+      const selected = meterCollector.selectLatestFromGeneratorMetadata(gmList, cid, cascadeConfigs);
+      if (!selected?.latest) return null;
+
+      const recentGeneratorCalls = [];
+      if (typeof meterCore.parseGeneratorCall === 'function') {
+        for (const m of gmList) {
+          const callMeta = meterCore.parseGeneratorCall(m, cid, 'desktop', { cascadeModelConfigs: cascadeConfigs });
+          if (callMeta) {
+            const normCall = typeof meterCore.normalizeSessionCallRecord === 'function'
+              ? meterCore.normalizeSessionCallRecord(callMeta, { cascadeId: cid, cascadeModelConfigs: cascadeConfigs })
+              : callMeta;
+            if (normCall) recentGeneratorCalls.push(normCall);
+          }
+        }
+      }
+
+      const rawWsUri = traj.metadata?.workspaces?.[0]?.workspaceFolderAbsoluteUri || null;
+      const wsPath = rawWsUri && rawWsUri.startsWith('file://')
+        ? decodeURIComponent(rawWsUri.replace(/^file:\/\/\/?/i, '')).replace(/^\/([A-Za-z]:)/, '$1')
+        : null;
+
+      return {
+        conversation: cid,
+        workspacePath: wsPath,
+        lightweight: true,
+        latest: selected.latest,
+        latestCallRecord: selected.latestCallRecord,
+        recentGeneratorCalls,
+        latestTokenBreakdown: selected.latestTokenBreakdown || null,
+        cascadeModelConfigs: cascadeConfigs,
+        session: { total: {}, groups: {}, attachments: [] },
+        scannedAt: Date.now(),
+      };
+    } catch {
+      return null;
+    }
+  }
+
   const handleScan = async (event, conversationId, force = false) => {
     const cfg = store.load();
     const authCtx = resolveHostAuthContext(event);
@@ -1686,20 +1817,33 @@ function registerIpcOnce() {
         try {
           collected = await meterCollector.collect(candOrigin, cid, {
             force: Boolean(force),
-            supersedePrevious: true,
             csrfToken: authCtx.csrfToken,
             fallbackCsrfToken: authCtx.fallbackCsrfToken,
             getHostAuth: authCtx.getHostAuth,
           });
-          if (collected && !collected.abortedStale) break;
+          if (collected) break;
         } catch (err) {
           lsError = err.message;
+        }
+      }
+      if (!collected) {
+        for (const candOrigin of origins) {
+          collected = await collectLightweightFallback(candOrigin, cid, authCtx);
+          if (collected) break;
         }
       }
     }
 
     const quotaPair = await quotaPromise;
-    if (collected && !collected.abortedStale) {
+    if (collected && collected.abortedStale) {
+      return {
+        abortedStale: true,
+        lsConnected: true,
+        conversationId: cid,
+        quota: quotaPair.ui,
+      };
+    }
+    if (collected) {
       const callsToRecord = Array.isArray(collected.recentGeneratorCalls) && collected.recentGeneratorCalls.length
         ? collected.recentGeneratorCalls
         : (collected.latestCallRecord ? [collected.latestCallRecord] : []);

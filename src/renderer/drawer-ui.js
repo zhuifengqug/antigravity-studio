@@ -1444,9 +1444,23 @@
       });
     }
 
+    function resetSessionState(nextCid) {
+      state.timelineData = null;
+      state.timelineConvId = nextCid || '';
+      state.timelineLoading = false;
+      state.speedHistory = [];
+    }
+
     function render(dataPatch, forceUserAction) {
       if (dataPatch) {
-        if (dataPatch.snapshot !== undefined) state.snapshot = dataPatch.snapshot;
+        if (dataPatch.snapshot !== undefined) {
+          state.snapshot = dataPatch.snapshot;
+          if (dataPatch.snapshot && state.timelineConvId && dataPatch.snapshot.conversationId && dataPatch.snapshot.conversationId !== state.timelineConvId) {
+            state.timelineData = null;
+            state.timelineConvId = '';
+            state.timelineLoading = false;
+          }
+        }
         if (dataPatch.history !== undefined) state.history = dataPatch.history;
         if (dataPatch.accounts !== undefined) state.accounts = dataPatch.accounts;
         if (dataPatch.fonts !== undefined) state.fonts = dataPatch.fonts;
@@ -1510,6 +1524,7 @@
         state.speedHistory.push(Number(v || 0));
         if (state.speedHistory.length > 32) state.speedHistory.shift();
       },
+      resetSessionState: resetSessionState,
       toggle: toggle,
       render: render
     };
