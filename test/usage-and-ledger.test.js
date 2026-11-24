@@ -186,9 +186,15 @@ test('meter-core pricing catalog normalization & quota formatting', () => {
             },
           ],
         },
+        {
+          poolKey: 'shared_gemini-25-progemini25promodel_google_gemini_2_5_pro',
+          remainingFraction: 1,
+          models: [{ productLabel: 'Gemini 2.5 Pro' }],
+        },
       ],
     },
   });
+  assert.equal(qUi.pools.length, 1);
   assert.equal(qUi.pools[0].displayName, 'Gemini 4 全系共享池');
   assert.deepEqual(qUi.pools[0].modelNames, ['Gemini 4 Hydrogen', 'Gemini 4 Neon']);
   assert.equal(qUi.pools[0].buckets.length, 2);
@@ -226,6 +232,7 @@ test('meter-core pricing catalog normalization & quota formatting', () => {
           pools: [
             ...qUi.pools,
             { poolKey: 'shared_chat_23310chat_23310model_chat_23310', remainingFraction: 1, models: [{ productLabel: 'chat_23310' }] },
+            { poolKey: 'shared_gemini-25-progemini25promodel_google_gemini_2_5_pro', remainingFraction: 1, models: [{ productLabel: 'Gemini 2.5 Pro' }] },
           ],
         },
       },

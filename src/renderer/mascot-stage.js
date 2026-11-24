@@ -423,9 +423,13 @@
         h = 104;
       } else if (cur.style === 'astra') {
         var astraSprite = globalScope.__AG_STUDIO_ASTRA_SPRITE__ || null;
+        var builtSprites = getSprites();
         if (astraSprite && astraSprite.width) {
           w = astraSprite.displayWidth || 76;
           h = astraSprite.displayHeight || 68;
+        } else if (builtSprites && builtSprites.astra && builtSprites.astra.dataUri) {
+          w = 64;
+          h = 66;
         } else {
           w = 48;
           h = 44;
@@ -481,6 +485,61 @@
             }
             return;
           }
+        }
+        var builtSpritesA = getSprites();
+        if (builtSpritesA && builtSpritesA.astra && builtSpritesA.astra.dataUri) {
+          var aPngEntry = loadSpriteImage(builtSpritesA.astra.dataUri, drawFrame);
+          if (!aPngEntry || !aPngEntry.loaded) return;
+          var dxA = 0;
+          var dyA = 4;
+          if (!isMotionReduced()) {
+            if (logicalKey === 'idle') dyA = (frameIdx % 6) < 3 ? 4 : 3;
+            else if (logicalKey === 'thinking') dyA = (frameIdx % 4) < 2 ? 3 : 4;
+            else if (logicalKey === 'typing' || logicalKey === 'working') dyA = (frameIdx % 2) === 0 ? 2 : 5;
+            else if (logicalKey === 'happy' || logicalKey === 'tickle') dyA = (frameIdx % 2) === 0 ? 1 : 6;
+            else if (logicalKey === 'error') { dxA = (frameIdx % 2) === 0 ? -2 : 2; dyA = 4; }
+            else if (logicalKey === 'sleeping') dyA = 6;
+            else if (logicalKey === 'poke-left') dxA = 3;
+            else if (logicalKey === 'poke-right') dxA = -3;
+          }
+          ctx.drawImage(aPngEntry.img, 8 + dxA, dyA, 48, 50);
+
+          // Crisp pixel FX overlays per state so state stays clear without any text badge
+          var fi = frameIdx % 6;
+          if (logicalKey === 'thinking') {
+            var oxs = [16, 24, 34, 44, 34, 24];
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(oxs[fi], 2, 3, 3);
+            ctx.fillStyle = '#38BDF8';
+            ctx.fillRect(oxs[fi] - 2, 4, 2, 2);
+          } else if (logicalKey === 'working' || logicalKey === 'typing') {
+            ctx.fillStyle = (fi % 2) === 0 ? '#FBBF24' : '#38BDF8';
+            ctx.fillRect((fi % 2) === 0 ? 4 : 56, 36, 4, 4);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect((fi % 2) === 0 ? 6 : 54, 32, 2, 2);
+          } else if (logicalKey === 'waiting') {
+            var wBob = (frameIdx % 2) === 0 ? 0 : 2;
+            ctx.fillStyle = '#FBBF24';
+            ctx.fillRect(48, 4 + wBob, 4, 10);
+            ctx.fillRect(48, 17 + wBob, 4, 4);
+          } else if (logicalKey === 'happy') {
+            ctx.fillStyle = '#34D399';
+            ctx.fillRect(6, (fi * 4) % 18 + 4, 3, 3);
+            ctx.fillStyle = '#FBBF24';
+            ctx.fillRect(54, ((fi + 2) * 4) % 18 + 4, 3, 3);
+          } else if (logicalKey === 'error') {
+            ctx.fillStyle = '#F87171';
+            ctx.fillRect(48, 6, 3, 3); ctx.fillRect(54, 6, 3, 3);
+            ctx.fillRect(51, 9, 3, 3);
+            ctx.fillRect(48, 12, 3, 3); ctx.fillRect(54, 12, 3, 3);
+          } else if (logicalKey === 'sleeping') {
+            var zy = 14 - ((frameIdx % 4) * 2);
+            ctx.fillStyle = '#94A3B8';
+            ctx.fillRect(48, zy, 5, 2);
+            ctx.fillRect(50, zy + 2, 2, 2);
+            ctx.fillRect(48, zy + 4, 5, 2);
+          }
+          return;
         }
         var aFrames = buildAstraFrames(logicalKey);
         var af = isMotionReduced() ? 0 : (frameIdx % aFrames.length);

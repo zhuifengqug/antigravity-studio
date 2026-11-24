@@ -109,6 +109,59 @@
     };
   }
 
+  function mixHex(hexA, hexB, weightB) {
+    var a = hexToRgb(hexA) || { r: 20, g: 20, b: 19 };
+    var b = hexToRgb(hexB) || { r: 255, g: 255, b: 255 };
+    var w = Math.max(0, Math.min(1, Number(weightB) || 0));
+    return rgbToHex(
+      a.r + (b.r - a.r) * w,
+      a.g + (b.g - a.g) * w,
+      a.b + (b.b - a.b) * w
+    );
+  }
+
+  function hexLuminance(hex) {
+    var rgb = hexToRgb(hex);
+    if (!rgb) return 128;
+    return 0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b;
+  }
+
+  function buildCustomThemeFromColors(name, colors, preferredMode) {
+    var c = colors || {};
+    var accent = c.accent || '#3B6CF6';
+    var bgCanvas = c.bgCanvas || '#0F1117';
+    var bgSidebar = c.bgSidebar || bgCanvas;
+    var textPrimary = c.textPrimary || (hexLuminance(bgCanvas) >= 140 ? '#0F172A' : '#F1F5F9');
+    var isDarkCanvas = hexLuminance(bgCanvas) < 140;
+    var activeKey = isDarkCanvas ? 'dark' : 'light';
+    var basePreset = PRESET_THEMES.antigravity;
+
+    var customPal = Object.assign({}, basePreset[activeKey], deriveAccentTokens(accent, isDarkCanvas), {
+      bgCanvas: bgCanvas,
+      bgSidebar: bgSidebar,
+      bgSurface: mixHex(bgCanvas, isDarkCanvas ? '#FFFFFF' : '#FFFFFF', isDarkCanvas ? 0.06 : 0.65),
+      bgSubtle: mixHex(bgCanvas, textPrimary, 0.08),
+      textPrimary: textPrimary,
+      textSecondary: mixHex(textPrimary, bgCanvas, 0.36),
+      border: mixHex(bgCanvas, textPrimary, 0.16),
+      codeBg: mixHex(bgCanvas, bgSidebar, 0.55)
+    });
+
+    var altKey = isDarkCanvas ? 'light' : 'dark';
+    var altPal = Object.assign({}, basePreset[altKey], deriveAccentTokens(accent, !isDarkCanvas));
+    var id = 'custom_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+    var themeObj = {
+      id: id,
+      name: String(name || 'Custom Theme').trim() || 'Custom Theme',
+      subtitle: '四色自定义方案',
+      isPreset: false,
+      preferredMode: preferredMode || activeKey
+    };
+    themeObj[activeKey] = customPal;
+    themeObj[altKey] = altPal;
+    return themeObj;
+  }
+
   function parseRgbLuminance(colorStr) {
     if (!colorStr || typeof colorStr !== 'string') return null;
     var m = colorStr.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i);
@@ -144,13 +197,17 @@
           }
         }
 
+        if (typeof window !== 'undefined' && window.matchMedia) {
+          try {
+            return window.matchMedia('(prefers-color-scheme: dark)').matches;
+          } catch (_eMql) {}
+        }
+
         if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
           var probeSelectors = [
-            '[data-testid="agent-input-box"] .surface-composer-card',
-            '.surface-composer-card',
-            'main',
-            '[role="main"]',
-            'aside'
+            'header',
+            '[data-testid="conversation-view"]',
+            '[role="main"]'
           ];
           for (var s = 0; s < probeSelectors.length; s++) {
             var node = document.querySelector(probeSelectors[s]);
@@ -162,11 +219,6 @@
               if (lum < 128) return true;
               if (lum > 160) return false;
             }
-          }
-          if (docEl) {
-            var rootScheme = String(window.getComputedStyle(docEl).colorScheme || '').trim().toLowerCase();
-            if (rootScheme === 'dark') return true;
-            if (rootScheme === 'light') return false;
           }
         }
       } catch (_e) {}
@@ -221,7 +273,6 @@
     var resolved = resolveActivePalette(themeConfig);
     var p = resolved.palette;
     var isDark = resolved.mode === 'dark';
-    var isNativeAntigravity = resolved.theme.id === 'antigravity';
     var editorialSerif = !(themeConfig && themeConfig.editorialSerif === false);
 
     var rules = [
@@ -242,35 +293,30 @@
       '  --ags-warning: ' + p.warning + ';',
       '  --ags-danger: ' + p.danger + ';',
       '  --ags-shadow: ' + (isDark ? '0 16px 40px rgba(0,0,0,0.45)' : '0 16px 40px rgba(15,23,42,0.10)') + ';',
+      '}',
+      'html, body, #root {',
+      '  background-color: var(--ags-bg-canvas) !important;',
+      '  color: var(--ags-text-primary) !important;',
+      '  font-family: var(--ags-font-ui, system-ui, -apple-system, sans-serif);',
+      '}',
+      'aside:not(.ags-drawer) {',
+      '  background-color: var(--ags-bg-sidebar);',
+      '  border-color: var(--ags-border);',
+      '}',
+      '.agy-home {',
+      '  background-color: var(--ags-bg-canvas);',
+      '}',
+      '[data-testid="agent-input-box"] .surface-composer-card, .surface-composer-card {',
+      '  background-color: var(--ags-bg-surface);',
+      '  border-color: var(--ags-border);',
+      '  transition: border-color 150ms ease;',
+      '}',
+      '[data-testid="model-selector-panel"], [role="dialog"] {',
+      '  background-color: var(--ags-bg-surface);',
+      '  border-color: var(--ags-border);',
+      '  color: var(--ags-text-primary);',
       '}'
     ];
-
-    if (!isNativeAntigravity) {
-      rules.push(
-        'html, body, #root {',
-        '  background-color: var(--ags-bg-canvas) !important;',
-        '  color: var(--ags-text-primary) !important;',
-        '  font-family: var(--ags-font-ui, system-ui, -apple-system, sans-serif);',
-        '}',
-        'aside:not(.ags-drawer) {',
-        '  background-color: var(--ags-bg-sidebar);',
-        '  border-color: var(--ags-border);',
-        '}',
-        '.agy-home {',
-        '  background-color: var(--ags-bg-canvas);',
-        '}',
-        '[data-testid="agent-input-box"] .surface-composer-card, .surface-composer-card {',
-        '  background-color: var(--ags-bg-surface);',
-        '  border-color: var(--ags-border);',
-        '  transition: border-color 150ms ease;',
-        '}',
-        '[data-testid="model-selector-panel"], [role="dialog"] {',
-        '  background-color: var(--ags-bg-surface);',
-        '  border-color: var(--ags-border);',
-        '  color: var(--ags-text-primary);',
-        '}'
-      );
-    }
 
     rules.push(
       '[data-testid="agent-input-box"] .surface-composer-card:focus-within, .surface-composer-card:focus-within {',
@@ -326,6 +372,7 @@
     getAllThemes: getAllThemes,
     resolveActivePalette: resolveActivePalette,
     cloneThemeAsCustom: cloneThemeAsCustom,
+    buildCustomThemeFromColors: buildCustomThemeFromColors,
     buildThemeCss: buildThemeCss,
     applyThemeToDocument: applyThemeToDocument
   };

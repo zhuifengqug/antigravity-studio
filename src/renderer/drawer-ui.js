@@ -25,7 +25,7 @@
       syncPricing: '同步模型定价',
       importCur: '导入当前', addOauth: 'OAuth 添加', importTools: '导入 Tools', refreshQuota: '刷新额度',
       activeTag: '当前', switchBtn: '一键切号',
-      keepaliveTitle: '保活 Keepalive & 低额度自动切号',
+      keepaliveTitle: '低额度自动切号策略',
       secTheme: '外观与桌宠',
       secFx: 'Prism 质感增强（独立开关）',
       secLang: '语言与词典',
@@ -33,7 +33,7 @@
       testProxy: '测速',
       customDictTitle: '自定义词典（覆盖内置词条）',
       customThemeTitle: '自定义配色编辑器（新建 / 克隆 / 调色）',
-      enhanceTitle: '系统提示词精简 & 中文标题 & 上下文解锁 & 压缩回填'
+      enhanceTitle: '系统提示词精简 & 中文标题 & 上下文解锁'
     },
     'zh-TW': {
       tabs: { overview: '概覽', usage: '統計', accounts: '帳號', settings: '設定' },
@@ -58,7 +58,7 @@
       syncPricing: '同步模型定價',
       importCur: '匯入目前', addOauth: 'OAuth 新增', importTools: '匯入 Tools', refreshQuota: '重新整理額度',
       activeTag: '使用中', switchBtn: '一鍵切號',
-      keepaliveTitle: '保活 Keepalive & 低額度自動切號',
+      keepaliveTitle: '低額度自動切號策略',
       secTheme: '外觀與桌寵',
       secFx: 'Prism 質感增強（獨立開關）',
       secLang: '語言與詞典',
@@ -66,7 +66,7 @@
       testProxy: '測速',
       customDictTitle: '自訂詞典（覆蓋內建詞條）',
       customThemeTitle: '自訂配色編輯器（新增 / 複製 / 調色）',
-      enhanceTitle: '系統提示詞精簡 & 中文標題 & 上下文解鎖 & 壓縮回填'
+      enhanceTitle: '系統提示詞精簡 & 中文標題 & 上下文解鎖'
     },
     'en': {
       tabs: { overview: 'Overview', usage: 'Usage', accounts: 'Accounts', settings: 'Settings' },
@@ -91,7 +91,7 @@
       syncPricing: 'Sync Pricing',
       importCur: 'Import Current', addOauth: 'Add OAuth', importTools: 'Import Tools', refreshQuota: 'Refresh',
       activeTag: 'Active', switchBtn: 'Switch',
-      keepaliveTitle: 'Keepalive & Auto-Switch Strategy',
+      keepaliveTitle: 'Low-Quota Auto-Switch Strategy',
       secTheme: 'Appearance & Mascot',
       secFx: 'Prism FX (Independent Toggles)',
       secLang: 'Language & Dictionary',
@@ -99,7 +99,7 @@
       testProxy: 'Test',
       customDictTitle: 'Custom Dictionary Overrides',
       customThemeTitle: 'Custom Color Editor (Create / Clone / Edit)',
-      enhanceTitle: 'Prompt Tiers & Chinese Title & Context Unlock & Rehydrate'
+      enhanceTitle: 'Prompt Tiers & Chinese Title & Context Unlock'
     }
   };
 
@@ -668,9 +668,21 @@
           }).join('')
         : '<div class="ags-card"><div class="ags-sub">尚未保存账号槽位，点击上方「导入当前」快速保存当前登录态。</div></div>';
 
-      var ka = ov.keepalive || {};
       var asw = ov.autoSwitch || {};
       var thPct = asw.thresholdPct != null ? Math.round(Number(asw.thresholdPct)) : Math.round(((asw.threshold) || 0.1) * 100);
+      var poolSel = asw.poolKey === 'shared_3p_pool' ? 'shared_3p_pool' : 'shared_gemini_main';
+      var stratSel = asw.strategy === 'candidate_order' ? 'candidate_order' : 'highest_quota';
+      var savedCands = Array.isArray(asw.candidates) ? asw.candidates.map(function (c) { return String(c || '').toLowerCase(); }) : [];
+      var eligibleAccs = list.filter(function (a) { return a.hasRefreshToken && a.email; });
+      var candHtml = eligibleAccs.length
+        ? '<div style="display:flex;flex-direction:column;gap:4px;margin-top:6px"><span class="ags-sub">参与自动切号的候选账号</span>' +
+          eligibleAccs.map(function (a) {
+            var em = String(a.email).toLowerCase();
+            var chk = savedCands.length === 0 || savedCands.indexOf(em) !== -1;
+            return '<label class="ags-row" style="font-size:11.5px;cursor:pointer"><span>' + esc(a.email) + '</span>' +
+              '<input type="checkbox" data-auto-cand="' + esc(a.email) + '" ' + (chk ? 'checked' : '') + '></label>';
+          }).join('') + '</div>'
+        : '<div class="ags-sub" style="margin-top:6px">暂无包含可用凭据的候选账号</div>';
 
       return [
         bannerHtml,
@@ -683,9 +695,17 @@
         cards,
         '<details class="ags-details">',
         '  <summary>' + esc(t('keepaliveTitle')) + '</summary>',
-        '  <div class="ags-row" style="margin-bottom:8px"><span>启用后台保活 (Keepalive)</span><input type="checkbox" id="ags-keepalive-en" ' + (ka.enabled ? 'checked' : '') + '></div>',
         '  <div class="ags-row" style="margin-bottom:8px"><span>启用低额度自动切号</span><input type="checkbox" id="ags-auto-switch-en" ' + (asw.enabled ? 'checked' : '') + '></div>',
-        '  <div class="ags-row"><span>触发阈值 (%)</span><input class="ags-input" style="width:90px" type="number" min="1" max="95" id="ags-auto-switch-th" value="' + thPct + '"></div>',
+        '  <div class="ags-row" style="margin-bottom:8px"><span>触发阈值 (%)</span><input class="ags-input" style="width:90px" type="number" min="1" max="95" id="ags-auto-switch-th" value="' + thPct + '"></div>',
+        '  <div class="ags-row" style="margin-bottom:8px"><span>监控额度池</span><select class="ags-select" style="width:165px" id="ags-auto-switch-pool">' +
+        '    <option value="shared_gemini_main" ' + (poolSel === 'shared_gemini_main' ? 'selected' : '') + '>Gemini 4 全系共享池</option>' +
+        '    <option value="shared_3p_pool" ' + (poolSel === 'shared_3p_pool' ? 'selected' : '') + '>Claude / GPT 共享池</option>' +
+        '  </select></div>',
+        '  <div class="ags-row" style="margin-bottom:4px"><span>切号策略</span><select class="ags-select" style="width:165px" id="ags-auto-switch-strategy">' +
+        '    <option value="highest_quota" ' + (stratSel === 'highest_quota' ? 'selected' : '') + '>最高剩余额度优先</option>' +
+        '    <option value="candidate_order" ' + (stratSel === 'candidate_order' ? 'selected' : '') + '>按候选账号顺序</option>' +
+        '  </select></div>',
+        candHtml,
         '</details>'
       ].join('\n');
     }
@@ -702,14 +722,19 @@
       var scannedFonts = state.fonts || [];
       var enh = state.enhanceStatus || {};
       var unl = state.unlockStatus || {};
-      var reh = state.rehydrateStatus || {};
 
       var curPromptTier = enh.promptTier != null ? Number(enh.promptTier) : Number((cfg.enhance && cfg.enhance.promptTier) || 0);
       var curCnTitle = enh.chineseTitle != null ? Boolean(enh.chineseTitle) : Boolean(cfg.enhance && cfg.enhance.chineseSessionTitle);
       var curUnlockMode = unl.mode || (cfg.context && cfg.context.unlockMode) || 'ORIG';
       var curUnlockConst = unl.limitTokens || (cfg.context && cfg.context.unlockLimitTokens) || 512000;
       var curCliAlign = unl.alignCli != null ? Boolean(unl.alignCli) : Boolean(cfg.context && cfg.context.alignCli);
-      var curRehydrate = Boolean(reh.enabled != null ? reh.enabled : (cfg.enhance && cfg.enhance.rehydrateEnabled));
+      var themesApiForPal = globalScope.__AG_STUDIO_THEMES__;
+      var activePalInfo = themesApiForPal && themesApiForPal.resolveActivePalette ? themesApiForPal.resolveActivePalette(themeCfg) : null;
+      var curPal = (activePalInfo && activePalInfo.palette) || {};
+      var pickAccent = curPal.accent || '#3B6CF6';
+      var pickCanvas = curPal.bgCanvas || '#0F1117';
+      var pickSidebar = curPal.bgSidebar || '#141720';
+      var pickText = curPal.textPrimary || '#F1F5F9';
 
       var customThemeOptions = customThemes.map(function (ct) {
         return '<div class="ags-row" style="margin-top:6px">' +
@@ -718,11 +743,6 @@
           '</div>';
       }).join('');
 
-      var curModel = (state.snapshot && state.snapshot.context && state.snapshot.context.model) || 'gemini-4-neon';
-      var curPerLimits = (cfg.context && cfg.context.perModelLimits) || {};
-      var curModelLimitVal = curPerLimits[curModel] ||
-        (state.snapshot && state.snapshot.context && (state.snapshot.context.configuredLimit || state.snapshot.context.contextLimit)) ||
-        512000;
       var codeFontVal = (fonts.code === 'cascadia' || fonts.code === 'system') ? fonts.code : 'jetbrains';
       var dictEntries = Object.entries(state.customDict || {});
       var dictListHtml = dictEntries.length
@@ -775,24 +795,31 @@
         '    </div></div>',
         '  <div class="ags-row"><span>工具栏上下文展示</span>' +
         '    <div style="display:flex;gap:5px;align-items:center">' +
-        '      <select class="ags-select" style="width:82px" id="ags-hud-style">' +
+        '      <select class="ags-select" style="width:96px" id="ags-hud-style">' +
         '        <option value="ring" ' + ((hudCfg.displayStyle || 'ring') === 'ring' ? 'selected' : '') + '>极简圆环</option>' +
         '        <option value="capsule" ' + (hudCfg.displayStyle === 'capsule' ? 'selected' : '') + '>完整胶囊</option>' +
         '      </select>' +
-        '      <select class="ags-select" style="width:94px" id="ags-hud-pos">' +
+        '      <select class="ags-select" style="width:90px" id="ags-hud-pos">' +
         '        <option value="composer" ' + (hudCfg.position !== 'floating' ? 'selected' : '') + '>工具栏内</option>' +
         '        <option value="floating" ' + (hudCfg.position === 'floating' ? 'selected' : '') + '>右下悬浮</option>' +
         '      </select>' +
         '      <input type="checkbox" id="ags-hud-enabled" ' + (hudCfg.enabled !== false ? 'checked' : '') + '>' +
         '    </div></div>',
-        '  <div class="ags-row"><span>512K 呼吸试管 (胶囊模式)</span><input type="checkbox" id="ags-vial-enabled" ' + (hudCfg.showVial !== false ? 'checked' : '') + '></div>',
+        (hudCfg.displayStyle === 'capsule'
+          ? '  <div class="ags-row"><span>512K 呼吸试管 (胶囊模式)</span><input type="checkbox" id="ags-vial-enabled" ' + (hudCfg.showVial !== false ? 'checked' : '') + '></div>'
+          : ''),
         '  <div class="ags-row"><span>新对话首页用量概览卡片</span><input type="checkbox" id="ags-home-card-enabled" ' + (cfg.homeOverview !== false && hudCfg.homeOverview !== false ? 'checked' : '') + '></div>',
         '  <details class="ags-details">',
         '    <summary>' + esc(t('customThemeTitle')) + ' & 三轨字体 (' + scannedFonts.length + ')</summary>',
         '    <div class="ags-row" style="gap:6px">' +
         '      <input class="ags-input" id="ags-new-theme-name" placeholder="新方案名称">' +
-        '      <input type="color" id="ags-new-theme-accent" value="#D97757" style="width:36px;height:30px;border:none;background:transparent">' +
-        '      <button class="ags-btn" id="ags-create-theme-btn">新建</button>' +
+        '      <button class="ags-btn ags-btn-primary" id="ags-create-theme-btn">新建并应用</button>' +
+        '    </div>',
+        '    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px">' +
+        '      <label class="ags-row" style="font-size:11.5px"><span class="ags-sub">强调色</span><input type="color" id="ags-new-theme-accent" value="' + esc(pickAccent) + '" style="width:32px;height:24px;border:none;background:transparent"></label>' +
+        '      <label class="ags-row" style="font-size:11.5px"><span class="ags-sub">画布背景</span><input type="color" id="ags-new-theme-canvas" value="' + esc(pickCanvas) + '" style="width:32px;height:24px;border:none;background:transparent"></label>' +
+        '      <label class="ags-row" style="font-size:11.5px"><span class="ags-sub">侧栏背景</span><input type="color" id="ags-new-theme-sidebar" value="' + esc(pickSidebar) + '" style="width:32px;height:24px;border:none;background:transparent"></label>' +
+        '      <label class="ags-row" style="font-size:11.5px"><span class="ags-sub">文字颜色</span><input type="color" id="ags-new-theme-text" value="' + esc(pickText) + '" style="width:32px;height:24px;border:none;background:transparent"></label>' +
         '    </div>',
         customThemeOptions,
         '    <div class="ags-row" style="margin-top:8px"><span>编辑部衬线阅读</span><input type="checkbox" id="ags-serif-toggle" ' + (themeCfg.editorialSerif !== false ? 'checked' : '') + '></div>',
@@ -882,7 +909,7 @@
         '          <option value="CONST" ' + (curUnlockMode === 'CONST' ? 'selected' : '') + '>CONST · 固定上限</option>' +
         '          <option value="DYN" ' + (curUnlockMode === 'DYN' ? 'selected' : '') + '>DYN · 动态解锁 (1M)</option>' +
         '        </select></div>',
-        '      <div class="ags-row"><span>CONST 上限 (tokens)</span><input class="ags-input" style="width:120px" type="number" id="ags-unlock-limit" value="' + esc(curUnlockConst) + '"></div>',
+        '      <div class="ags-row ags-unlock-const-row" style="' + (curUnlockMode === 'CONST' ? '' : 'display:none') + '"><span>CONST 上限 (tokens)</span><input class="ags-input" style="width:120px" type="number" id="ags-unlock-limit" value="' + esc(curUnlockConst) + '"></div>',
         '      <div class="ags-row"><span>同步对齐 agy CLI</span><input type="checkbox" id="ags-unlock-cli" ' + (curCliAlign ? 'checked' : '') + '></div>',
         '      <div class="ags-row" style="justify-content:flex-end;gap:6px">' +
         '        <button class="ags-btn ags-btn-primary" id="ags-unlock-apply-btn">应用上下文解锁</button>' +
@@ -891,17 +918,6 @@
 
         '      <hr style="border:none;border-top:1px solid var(--ags-border);margin:2px 0">',
 
-        '      <div class="ags-row"><span>当前模型显示上限 (' + esc(curModel) + ')</span><input class="ags-input" style="width:100px" type="number" id="ags-per-model-limit" value="' + esc(curModelLimitVal) + '"></div>',
-        '      <div class="ags-row" style="justify-content:flex-end;gap:5px">' +
-        '        <button class="ags-btn" data-model-preset="200000">200K</button>' +
-        '        <button class="ags-btn" data-model-preset="524288">512K</button>' +
-        '        <button class="ags-btn" data-model-preset="1048576">1M</button>' +
-        '        <button class="ags-btn" id="ags-model-limit-reset-btn">恢复默认</button>' +
-        '      </div>',
-
-        '      <hr style="border:none;border-top:1px solid var(--ags-border);margin:2px 0">',
-
-        '      <div class="ags-row"><span>压缩后记忆自动回填</span><input type="checkbox" id="ags-rehydrate-en" ' + (curRehydrate ? 'checked' : '') + '></div>',
         '      <div class="ags-row" style="gap:6px;flex-wrap:wrap;margin-top:4px">' +
         '        <button class="ags-btn" id="ags-restart-ls-btn">重启 LS</button>' +
         '        <button class="ags-btn" id="ags-restart-host-btn">重启宿主客户端</button>' +
@@ -1068,42 +1084,39 @@
         });
       });
 
-      var kaEn = el.querySelector('#ags-keepalive-en');
-      if (kaEn) {
-        kaEn.addEventListener('change', function () {
-          if (opts.api && opts.api.accountsAction) {
-            var nextOn = kaEn.checked;
-            opts.api.accountsAction({ action: nextOn ? 'update_keepalive' : 'stop_keepalive', enabled: nextOn }).then(function (res) {
-              if (res && res.ok === false) {
-                kaEn.checked = !nextOn;
-                showToast(res.error || '保活配置失败');
-                return;
-              }
-              showToast(nextOn ? '已开启账号保活' : '已关闭保活');
-            }).catch(function (err) {
-              kaEn.checked = !nextOn;
-              showToast((err && err.message) || '保活配置失败');
-            });
-          }
-        });
-      }
-
       var autoSw = el.querySelector('#ags-auto-switch-en');
       var autoTh = el.querySelector('#ags-auto-switch-th');
+      var autoPool = el.querySelector('#ags-auto-switch-pool');
+      var autoStrat = el.querySelector('#ags-auto-switch-strategy');
+      var autoCands = el.querySelectorAll('[data-auto-cand]');
       if (autoSw && autoTh) {
         var saveAuto = function () {
           var pct = Math.max(1, Math.min(95, Math.round(Number(autoTh.value || 10))));
-          var payload = { enabled: autoSw.checked, thresholdPct: pct, threshold: pct / 100 };
+          var picked = [];
+          autoCands.forEach(function (chk) {
+            if (chk.checked) picked.push(chk.getAttribute('data-auto-cand'));
+          });
+          var payload = {
+            enabled: autoSw.checked,
+            thresholdPct: pct,
+            threshold: pct / 100,
+            poolKey: (autoPool && autoPool.value) || 'shared_gemini_main',
+            strategy: (autoStrat && autoStrat.value) || 'highest_quota',
+            candidates: picked
+          };
           opts.saveConfig({ quota: { autoSwitch: payload } });
           if (opts.api && opts.api.accountsAction) {
             opts.api.accountsAction({ action: 'update_auto_switch', autoSwitch: payload }).then(function (r) {
               if (r && r.ok === false) showToast(r.error || '保存自动切号配置失败');
-              else showToast(autoSw.checked ? ('已开启低额度自动切号 (≤' + pct + '%)') : '已关闭自动切号');
+              else showToast(autoSw.checked ? ('已保存低额度自动切号策略 (≤' + pct + '%)') : '已关闭自动切号');
             }).catch(function (e) { showToast((e && e.message) || '保存失败'); });
           }
         };
         autoSw.addEventListener('change', saveAuto);
         autoTh.addEventListener('change', saveAuto);
+        if (autoPool) autoPool.addEventListener('change', saveAuto);
+        if (autoStrat) autoStrat.addEventListener('change', saveAuto);
+        autoCands.forEach(function (chk) { chk.addEventListener('change', saveAuto); });
       }
 
       el.querySelectorAll('[data-select-theme]').forEach(function (btn) {
@@ -1156,21 +1169,21 @@
       var hPos = el.querySelector('#ags-hud-pos');
       var hEn = el.querySelector('#ags-hud-enabled');
       var vialEn = el.querySelector('#ags-vial-enabled');
-      if (hPos && hEn && vialEn) {
+      if (hPos && hEn) {
         var saveHud = function () {
           opts.saveConfig({
             hud: {
               displayStyle: hStyle ? hStyle.value : 'ring',
               position: hPos.value,
               enabled: hEn.checked,
-              showVial: vialEn.checked
+              showVial: vialEn ? vialEn.checked : ((cfg.hud && cfg.hud.showVial) !== false)
             }
           });
         };
-        if (hStyle) hStyle.addEventListener('change', saveHud);
+        if (hStyle) hStyle.addEventListener('change', function () { saveHud(); render(null, true); });
         hPos.addEventListener('change', saveHud);
         hEn.addEventListener('change', saveHud);
-        vialEn.addEventListener('change', saveHud);
+        if (vialEn) vialEn.addEventListener('change', saveHud);
       }
 
       var homeCardEl = el.querySelector('#ags-home-card-enabled');
@@ -1198,16 +1211,25 @@
       var createThemeBtn = el.querySelector('#ags-create-theme-btn');
       if (createThemeBtn) createThemeBtn.addEventListener('click', function () {
         var nameInput = el.querySelector('#ags-new-theme-name');
-        var colorInput = el.querySelector('#ags-new-theme-accent');
+        var accInput = el.querySelector('#ags-new-theme-accent');
+        var cvsInput = el.querySelector('#ags-new-theme-canvas');
+        var sbInput = el.querySelector('#ags-new-theme-sidebar');
+        var txtInput = el.querySelector('#ags-new-theme-text');
         var themesApi = globalScope.__AG_STUDIO_THEMES__;
         if (!themesApi) return;
-        var base = themesApi.cloneThemeAsCustom(cfg.theme && cfg.theme.activePreset === 'antigravity' ? 'antigravity' : 'claude', (nameInput && nameInput.value) || 'My Theme');
-        var hex = (colorInput && colorInput.value) || '#D97757';
-        Object.assign(base.light, themesApi.deriveAccentTokens(hex, false));
-        Object.assign(base.dark, themesApi.deriveAccentTokens(hex, true));
+        var base = themesApi.buildCustomThemeFromColors(
+          (nameInput && nameInput.value) || 'My Theme',
+          {
+            accent: (accInput && accInput.value) || '#3B6CF6',
+            bgCanvas: (cvsInput && cvsInput.value) || '#0F1117',
+            bgSidebar: (sbInput && sbInput.value) || '#141720',
+            textPrimary: (txtInput && txtInput.value) || '#F1F5F9'
+          },
+          (cfg.theme && cfg.theme.colorMode) || 'system'
+        );
         var nextCustoms = ((cfg.theme && cfg.theme.customThemes) || []).concat([base]);
         opts.saveConfig({ theme: { customThemes: nextCustoms, activePreset: base.id } });
-        showToast('已创建并应用自定义配色');
+        showToast('已创建并应用 4 色自定义主题');
       });
 
       var fontBindings = [
@@ -1354,7 +1376,13 @@
       var unlRestBtn = el.querySelector('#ags-unlock-restore-btn');
       var unlModeSel = el.querySelector('#ags-unlock-mode');
       var unlLimitInp = el.querySelector('#ags-unlock-limit');
+      var unlConstRow = el.querySelector('.ags-unlock-const-row');
       var unlCliChk = el.querySelector('#ags-unlock-cli');
+      if (unlModeSel && unlConstRow) {
+        unlModeSel.addEventListener('change', function () {
+          unlConstRow.style.display = unlModeSel.value === 'CONST' ? '' : 'none';
+        });
+      }
       if (unlApplyBtn && unlModeSel) {
         unlApplyBtn.addEventListener('click', function () {
           var mode = unlModeSel.value || 'ORIG';
@@ -1387,68 +1415,6 @@
               showToast((r && r.message) || '已还原原版上下文限制');
               render(null, true);
             }).catch(function (e) { showToast((e && e.message) || '还原失败'); });
-          }
-        });
-      }
-
-      // Rehydrate after compact
-      var curModelForLimit = (state.snapshot && state.snapshot.context && state.snapshot.context.model) || 'gemini-4-neon';
-      var perLimInp = el.querySelector('#ags-per-model-limit');
-      if (perLimInp) {
-        perLimInp.addEventListener('change', function () {
-          if (opts.api && opts.api.setContextLimit) {
-            opts.api.setContextLimit(curModelForLimit, Number(perLimInp.value || 512000)).then(function () {
-              showToast('已保存 ' + curModelForLimit + ' 上限');
-              if (opts.onRefresh) opts.onRefresh(true);
-            }).catch(function (e) { showToast(e.message || '保存失败'); });
-          }
-        });
-      }
-      el.querySelectorAll('[data-model-preset]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          var v = Number(btn.getAttribute('data-model-preset'));
-          if (perLimInp) perLimInp.value = String(v);
-          if (opts.api && opts.api.setContextLimit) {
-            opts.api.setContextLimit(curModelForLimit, v).then(function () {
-              showToast('已设为 ' + fmtTok(v));
-              if (opts.onRefresh) opts.onRefresh(true);
-            }).catch(function () {});
-          }
-        });
-      });
-      var resetLimBtn = el.querySelector('#ags-model-limit-reset-btn');
-      if (resetLimBtn) {
-        resetLimBtn.addEventListener('click', function () {
-          if (opts.api && opts.api.resetContextLimit) {
-            opts.api.resetContextLimit(curModelForLimit).then(function () {
-              showToast('已恢复默认上限');
-              if (opts.onRefresh) opts.onRefresh(true);
-            }).catch(function () {});
-          }
-        });
-      }
-
-      var rehEl = el.querySelector('#ags-rehydrate-en');
-      if (rehEl) {
-        rehEl.addEventListener('change', function () {
-          var on = rehEl.checked;
-          if (opts.api) {
-            var fn = on ? opts.api.applyRehydrate : (opts.api.disableRehydrate || opts.api.restoreRehydrate);
-            if (fn) {
-              fn().then(function (r) {
-                if (r && r.ok === false) {
-                  rehEl.checked = !on;
-                  showToast(r.error || '操作失败');
-                  return;
-                }
-                state.rehydrateStatus = r || { enabled: on };
-                opts.saveConfig({ enhance: { rehydrateEnabled: on } });
-                showToast((r && r.message) || (on ? '已开启压缩后记忆回填' : '已关闭压缩后记忆回填'));
-              }).catch(function (e) {
-                rehEl.checked = !on;
-                showToast((e && e.message) || '操作失败');
-              });
-            }
           }
         });
       }

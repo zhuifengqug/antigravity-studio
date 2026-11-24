@@ -176,6 +176,23 @@ test('meter-accounts importFromCurrentClient separates OS credential id_token_em
     assert.equal(store.activeAccountEmail, 'desktop.user@example.com');
     assert.equal(store.accounts['desktop.user@example.com'].credential.refreshToken, 'desk-refresh');
     assert.equal(store.accounts['cli.user@example.com'].credential.refreshToken, 'cli-refresh');
+
+    // Verify auto-switch matches shared_gemini_argon against poolKey shared_gemini_main
+    const stForAuto = mgr.loadStore();
+    stForAuto.accounts['desktop.user@example.com'].quotaSnapshot = {
+      pools: [{ poolKey: 'shared_gemini_argon', remainingFraction: 0.05 }],
+    };
+    stForAuto.accounts['desktop.user@example.com'].lastQuotaUpdatedAtMs = Date.now();
+    mgr.saveStore(stForAuto);
+    mgr.updateAutoSwitchConfig({ enabled: true, poolKey: 'shared_gemini_main', thresholdPct: 10, candidates: ['cli.user@example.com'] });
+    const evalRes = await mgr.evaluateAutoSwitch({
+      activeEmail: 'desktop.user@example.com',
+      activeSnapshot: stForAuto.accounts['desktop.user@example.com'].quotaSnapshot,
+      syncState: 'fresh',
+      nowMs: Date.now(),
+    });
+    assert.equal(evalRes.action, 'pending_debounce');
+    assert.equal(evalRes.remainingPct, 5);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

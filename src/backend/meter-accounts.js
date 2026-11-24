@@ -2988,7 +2988,11 @@ function createAccountsManager(options = {}) {
 
   function extractPoolMetricPct(quotaSnapshot, poolKey, windowKey = 'primary') {
     if (!quotaSnapshot || !Array.isArray(quotaSnapshot.pools)) return null;
-    const pool = quotaSnapshot.pools.find(p => p.poolKey === poolKey);
+    const geminiMainSet = new Set(['shared_gemini_main', 'shared_gemini_argon']);
+    const pool = quotaSnapshot.pools.find(p =>
+      p.poolKey === poolKey ||
+      (geminiMainSet.has(poolKey) && geminiMainSet.has(p.poolKey))
+    );
     if (!pool || pool.noPermission) return null;
     let targetBucket = null;
     if (windowKey === 'primary') {

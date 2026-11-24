@@ -43,7 +43,7 @@
 
   function detectEffortFromText(text) {
     var low = String(text || '').toLowerCase();
-    if (/(?:\bxhigh\b|\bx-high\b|extra[\s-]*high|\bextra\b|极高|超高)/i.test(low)) return 'xhigh';
+    if (/(?:\bxhigh\b|\bx[-_]?high\b|extra[\s_-]*high|very[\s_-]*high|\bextra\b|极高|超高)/i.test(low)) return 'xhigh';
     if (/(?:\bmax\b|最大)/i.test(low)) return 'max';
     if (/(?:\bhigh\b|\bthinking\b|深度思考|\(\s*高\s*\)|（\s*高\s*）|\s高$)/i.test(low)) return 'high';
     if (/(?:\bmedium\b|\bmed\b|\(\s*中\s*\)|（\s*中\s*）|\s中$)/i.test(low)) return 'medium';
@@ -58,7 +58,7 @@
       .replace(/\b(?:new|notice|beta|preview|recommended|default)\b|默认|自动/gi, ' ')
       .replace(/[（(][^（）()]*[）)]/g, ' ')
       .replace(/\b(?:orchestrator|编排)\b/gi, ' ')
-      .replace(/\b(?:off|none|minimal|min|low|medium|med|high|xhigh|x-high|extra\s+high|extra|thinking|max)\b/gi, ' ')
+      .replace(/\b(?:off|none|minimal|min|low|medium|med|high|xhigh|x[-_]high|extra[\s_-]+high|very[\s_-]+high|extra|thinking|max)\b/gi, ' ')
       .replace(/[^a-z0-9.\u4e00-\u9fa5]+/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim()
@@ -68,7 +68,7 @@
   function parseModelLabel(label) {
     var s = String(label || '').trim();
     if (!s) return null;
-    var mParen = s.match(/^(.*?)\s*[（(](off|minimal|min|low|lite|medium|med|high|xhigh|x-high|extra(?:\s+high)?|max)(?:\s+thinking)?[）)]\s*$/i);
+    var mParen = s.match(/^(.*?)\s*[（(](off|minimal|min|low|lite|medium|med|high|xhigh|x[-_]high|extra(?:[\s_-]+high)?|very[\s_-]+high|max)(?:\s+thinking)?[）)]\s*$/i);
     if (mParen) {
       var eff1 = detectEffortFromText(mParen[2]);
       return {
@@ -77,7 +77,7 @@
         effortLabel: EFFORT_DISPLAY_LABEL[eff1] || mParen[2].trim()
       };
     }
-    var mTail = s.match(/^(.*?)\s+(extra\s+high|x-high|xhigh|extra|minimal|medium|high|low|min|med|off|max)$/i);
+    var mTail = s.match(/^(.*?)\s+(extra[\s_-]+high|very[\s_-]+high|x[-_]high|xhigh|extra|minimal|medium|high|low|min|med|off|max)$/i);
     if (mTail) {
       var eff2 = detectEffortFromText(mTail[2]);
       return {
@@ -93,10 +93,10 @@
     var low = String(txt || '').toLowerCase().trim();
     if (!low) return false;
     if (levelId === 'xhigh') {
-      return /\bxhigh\b|\bx-high\b|extra[\s-]*high|\bextra\b|极高|超高/.test(low);
+      return /\bx[-_]?high\b|extra[\s_-]*high|very[\s_-]*high|\bextra\b|极高|超高/.test(low);
     }
     if (levelId === 'high') {
-      if (/\bxhigh\b|\bx-high\b|extra[\s-]*high|\bextra\b|极高|超高/.test(low)) return false;
+      if (/\bx[-_]?high\b|extra[\s_-]*high|very[\s_-]*high|\bextra\b|极高|超高/.test(low)) return false;
       return /\bhigh\b|\(\s*高\s*\)|（\s*高\s*）|^高$|\s高$/.test(low);
     }
     if (levelId === 'medium') {
@@ -400,6 +400,44 @@
     return false;
   }
 
+  function commitEffortFallback(ctx, targetOption, isOrchPlan, keepOpen) {
+    if (!ctx || !targetOption || !targetOption.label) return false;
+    var shouldKeep = keepOpen !== false;
+    try {
+      var pk = ctx.orchPick || ctx.orchestratorPick;
+      if (isOrchPlan) {
+        if (pk && typeof pk.select === 'function') {
+          var def = findPlannerOption(ctx.orchPlanners, ctx.orchDef || ctx.orchestratorDefaultPlanner);
+          // If primary sent 0 for default planner, retry explicit value; otherwise retry explicit value
+          if (def && def.value === targetOption.value && targetOption.value !== 0) {
+            pk.select(targetOption.value);
+            if (shouldKeep && typeof ctx.setIsOpen === 'function') {
+              try { ctx.setIsOpen(true); } catch (_e) {}
+            }
+            return true;
+          }
+        }
+        if (typeof ctx.setModelConfigByLabelForConversation === 'function') {
+          ctx.setModelConfigByLabelForConversation(targetOption.label, ctx.conversationId, shouldKeep);
+          return true;
+        }
+        return false;
+      }
+      if (typeof ctx.unwrappedSetSelectedModel === 'function') {
+        ctx.unwrappedSetSelectedModel(targetOption);
+        if (shouldKeep && typeof ctx.setIsOpen === 'function') {
+          try { ctx.setIsOpen(true); } catch (_e2) {}
+        }
+        return true;
+      }
+      if (typeof ctx.setCurrentModelConfigByLabel === 'function') {
+        ctx.setCurrentModelConfigByLabel(targetOption.label);
+        return true;
+      }
+    } catch (_e3) {}
+    return false;
+  }
+
   function triggerHostClick(el) {
     if (!el) return;
     try {
@@ -471,7 +509,7 @@
 
     function tryApplyEffortDomFallback(panel, levelId, familySlug) {
       if (!panel) return false;
-      var effortBtns = panel.querySelectorAll('[data-testid="model-selector-effort-group"] button, [role="radio"]');
+      var effortBtns = panel.querySelectorAll('[data-testid="model-selector-effort-group"] button, [data-testid="model-selector-effort-option"], [data-testid="orchestrator-picker-effort"], [role="radio"], [role="menuitemradio"]');
       for (var i = 0; i < effortBtns.length; i++) {
         var btn = effortBtns[i];
         if (btn.closest && btn.closest('.ags-effort-bar')) continue;
@@ -481,12 +519,12 @@
           return true;
         }
       }
-      var menuItems = panel.querySelectorAll('[role="menuitem"], [role="option"], [role="menuitemradio"], button');
+      var menuItems = panel.querySelectorAll('[data-testid="model-selector-item"], [data-testid="orchestrator-picker-row"], [role="menuitem"], [role="option"], button');
       var fallbackMatch = null;
       for (var j = 0; j < menuItems.length; j++) {
         var item = menuItems[j];
         if (item.closest && item.closest('.ags-effort-bar')) continue;
-        var itemTxt = String(item.textContent || item.getAttribute('aria-label') || '').trim();
+        var itemTxt = String(item.getAttribute('data-model-label') || item.textContent || item.getAttribute('aria-label') || '').trim();
         if (!itemMatchesEffort(itemTxt, levelId)) continue;
         if (familySlug && extractModelFamily(itemTxt).indexOf(familySlug) !== -1) {
           triggerHostClick(item);
@@ -505,7 +543,9 @@
       var panel = mountedPanel || document.querySelector('[data-testid="model-selector-panel"]');
       var trigInfo = readHostTriggerRaw();
       var ctx = readAgFiberContext(panel || trigInfo.trig) || liveCtx;
-      var prof = ctx ? resolveActiveModelProfile(ctx, trigInfo.raw, hoveredModelText) : activeProfile;
+      var prof = (activeProfile && Array.isArray(activeProfile.levels) && activeProfile.levels.some(function (l) { return l.id === levelId; }))
+        ? activeProfile
+        : (ctx ? resolveActiveModelProfile(ctx, trigInfo.raw, hoveredModelText) : activeProfile);
       if (!prof || !Array.isArray(prof.levels)) return;
 
       var match = prof.levels.find(function (l) { return l.id === levelId; });
@@ -517,17 +557,31 @@
       }
 
       currentEffort = levelId;
-      optimisticLock = { base: prof.baseName, effort: levelId, until: Date.now() + 450 };
+      optimisticLock = { base: prof.baseName, effort: levelId, until: Date.now() + 500 };
       updateBarDom();
 
       if (syncTimer) clearTimeout(syncTimer);
       syncTimer = setTimeout(function () {
         syncTimer = 0;
-        optimisticLock = null;
         var curPanel = document.querySelector('[data-testid="model-selector-panel"]');
         var curTrig = readHostTriggerRaw();
-        var nextCtx = readAgFiberContext(curPanel || curTrig.trig);
-        var nextProf = nextCtx ? resolveActiveModelProfile(nextCtx, curTrig.raw, hoveredModelText) : null;
+        var nextCtx = readAgFiberContext(curPanel || curTrig.trig) || ctx;
+        var actualProf = nextCtx ? resolveActiveModelProfile(nextCtx, curTrig.raw, '') : null;
+
+        if (!prof.isHovered && actualProf && actualProf.currentEffort !== levelId) {
+          var retried = commitEffortFallback(nextCtx, match.option, prof.isOrchPlan, true);
+          if (!retried && curPanel) {
+            tryApplyEffortDomFallback(curPanel, levelId, extractModelFamily(prof.baseName) || curTrig.family);
+          }
+          setTimeout(function () {
+            optimisticLock = null;
+            forceResyncFromHost();
+          }, 180);
+          return;
+        }
+
+        optimisticLock = null;
+        var nextProf = nextCtx ? resolveActiveModelProfile(nextCtx, curTrig.raw, hoveredModelText) : actualProf;
         if (nextProf && nextProf.currentEffort) {
           activeProfile = nextProf;
           currentEffort = nextProf.currentEffort;
@@ -737,6 +791,7 @@
     itemMatchesEffort: itemMatchesEffort,
     resolveActiveModelProfile: resolveActiveModelProfile,
     commitEffortOption: commitEffortOption,
+    commitEffortFallback: commitEffortFallback,
     createEffortSliderController: createEffortSliderController
   };
 

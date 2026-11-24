@@ -33,8 +33,22 @@ test('Claude & Antigravity presets, custom themes, and local font scanning work 
 
   const agDarkCss = themes.buildThemeCss({ activePreset: 'antigravity', colorMode: 'dark' });
   assert.match(agDarkCss, /color-scheme:\s*dark;/);
-  assert.doesNotMatch(agDarkCss, /html,\s*body,\s*#root/);
+  assert.match(agDarkCss, /html,\s*body,\s*#root/);
+  assert.match(agDarkCss, /aside:not\(\.ags-drawer\)/);
   assert.doesNotMatch(agDarkCss, /aside,\s*nav/);
+
+  const fourColor = themes.buildCustomThemeFromColors('Ocean', {
+    accent: '#0EA5E9',
+    bgCanvas: '#0F172A',
+    bgSidebar: '#1E293B',
+    textPrimary: '#F8FAFC',
+  });
+  assert.equal(fourColor.dark.accent, '#0EA5E9');
+  assert.equal(fourColor.dark.bgCanvas, '#0F172A');
+  assert.equal(fourColor.dark.bgSidebar, '#1E293B');
+  assert.equal(fourColor.dark.textPrimary, '#F8FAFC');
+  assert.ok(fourColor.dark.bgSurface);
+  assert.ok(fourColor.dark.border);
 
   const claudeDarkCss = themes.buildThemeCss({ activePreset: 'claude', colorMode: 'dark' });
   assert.match(claudeDarkCss, /color-scheme:\s*dark;/);
@@ -59,6 +73,7 @@ test('All 3 mascots (Clawd, Deepy, Astra) render sprites/frames across all 9 sta
   assert.equal(getDefaultConfig().theme.fonts.code, 'jetbrains');
   assert.ok(mascotSprites.crab && Object.keys(mascotSprites.crab).length >= 10);
   assert.ok(mascotSprites.deepy && Object.keys(mascotSprites.deepy).length >= 8);
+  assert.ok(mascotSprites.astra && mascotSprites.astra.dataUri && mascotSprites.astra.dataUri.startsWith('data:image/png;base64,'));
   assert.equal(Object.keys(mascotStage.MASCOT_STATES).length, 9);
   for (const state of Object.keys(mascotStage.MASCOT_STATES)) {
     const svg = mascotStage.renderAstraSvg(state, 0);
@@ -103,10 +118,14 @@ test('Home overview card 7xN heatmap normalization, book comparison, and effort 
   assert.match(bookLine, /平凡的世界/);
   assert.equal(effortSlider.detectEffortFromText('Gemini 4 Neon (High)'), 'high');
   assert.equal(effortSlider.detectEffortFromText('Gemini 4 Neon (XHigh)'), 'xhigh');
+  assert.equal(effortSlider.detectEffortFromText('extra_high'), 'xhigh');
   const parsedXHigh = effortSlider.parseModelLabel('Gemini 4 Neon Extra High');
   assert.equal(parsedXHigh.base, 'Gemini 4 Neon');
   assert.equal(parsedXHigh.effort, 'xhigh');
   assert.equal(parsedXHigh.effortLabel, 'Extra High');
+  const parsedParenXHigh = effortSlider.parseModelLabel('Gemini 4 Neon (Extra High)');
+  assert.equal(parsedParenXHigh.effort, 'xhigh');
+  assert.equal(parsedParenXHigh.effortLabel, 'Extra High');
   const parsedParenExtra = effortSlider.parseModelLabel('Gemini 4 Neon (Extra)');
   assert.equal(parsedParenExtra.base, 'Gemini 4 Neon');
   assert.equal(parsedParenExtra.effort, 'xhigh');
@@ -162,7 +181,8 @@ test('Home overview card 7xN heatmap normalization, book comparison, and effort 
   const lowOpt = orchProf.levels.find((l) => l.id === 'low').option;
   assert.equal(effortSlider.commitEffortOption(orchCtx, extraOpt, true, true), true);
   assert.equal(effortSlider.commitEffortOption(orchCtx, lowOpt, true, true), true);
-  assert.deepEqual(orchCalls, [0, 10]);
+  assert.equal(effortSlider.commitEffortFallback(orchCtx, extraOpt, true, true), true);
+  assert.deepEqual(orchCalls, [0, 10, 13]);
 });
 
 test('Merged v2.34.0 dictionaries (4000+ entries) translate accurately and protect code/paths', () => {

@@ -496,10 +496,22 @@ function normalizeQuotaBucketForUi(b, fallbackPct, fallbackResetIso, lowThreshol
   };
 }
 
+function isLegacyOrInternalStubPool(pool) {
+  if (!pool || typeof pool !== 'object') return false;
+  const pk = String(pool.poolKey || '').trim();
+  if (/^shared_chat_\d+/i.test(pk)) return true;
+  if (/^shared_gemini[-_]?2[._-]?5/i.test(pk)) return true;
+  const names = Array.isArray(pool.modelNames) ? pool.modelNames : [];
+  if (names.length > 0 && names.every((n) => /^chat_\d+$/i.test(String(n || '').trim()) || /^gemini\s*2\.5\b/i.test(String(n || '').trim()))) {
+    return true;
+  }
+  return false;
+}
+
 function normalizeQuotaForUi(quotaRes, lowThreshold = 0.2) {
   const snap = quotaRes?.snapshot || {};
   const rawPools = Array.isArray(snap.pools) ? snap.pools : [];
-  const pools = rawPools.map((p) => {
+  const mappedPools = rawPools.map((p) => {
     const frac = typeof p.remainingFraction === 'number' ? p.remainingFraction : null;
     const pct = p.remainingPercent != null
       ? Number(p.remainingPercent)
@@ -542,6 +554,9 @@ function normalizeQuotaForUi(quotaRes, lowThreshold = 0.2) {
       isLow: p.isLow !== undefined ? Boolean(p.isLow) : (frac !== null ? frac <= lowThreshold : false),
     };
   });
+
+  const nonStubPools = mappedPools.filter((p) => !isLegacyOrInternalStubPool(p));
+  const pools = nonStubPools.length > 0 ? nonStubPools : mappedPools;
 
   const models = [];
   for (const p of pools) {
@@ -1503,11 +1518,7 @@ function normalizeAccountsOverviewForUi(overview, detectedActive = null) {
     if (snap && Array.isArray(snap.pools) && snap.pools.length) {
       const uiQuota = normalizeQuotaForUi({ ok: true, snapshot: snap });
       const allPools = Array.isArray(uiQuota.pools) ? uiQuota.pools : [];
-      const nonStub = allPools.filter((p) => {
-        const isChatStub = /^shared_chat_\d+/i.test(String(p.poolKey || '')) ||
-          (Array.isArray(p.modelNames) && p.modelNames.length === 1 && /^chat_\d+$/i.test(p.modelNames[0]));
-        return !isChatStub;
-      });
+      const nonStub = allPools.filter((p) => !isLegacyOrInternalStubPool(p));
       quotaPools = nonStub.length > 0 ? nonStub : allPools;
 
       if (minRem === null && quotaPools.length) {
