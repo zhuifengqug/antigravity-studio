@@ -20,6 +20,19 @@ const meterContextUnlock = require('./meter-context-unlock');
 const meterCliLauncher = require('./meter-cli-launcher');
 const meterRehydrate = require('./meter-rehydrate');
 const { scanLocalFonts } = require('./font-scanner');
+const thoughtTranslator = require('./thought-translator');
+const inlineDiff = require('./inline-diff');
+
+function normalizeThoughtConfigForService(thoughtCfg = {}) {
+  const t = thoughtCfg && typeof thoughtCfg === 'object' ? { ...thoughtCfg } : {};
+  const ai = t.ai && typeof t.ai === 'object' ? t.ai : {};
+  if (!t.baseUrl && ai.baseUrl) t.baseUrl = ai.baseUrl;
+  if (!t.apiKey && ai.apiKey) t.apiKey = ai.apiKey;
+  if (!t.model && ai.model) t.model = ai.model;
+  if (!t.stylePreset && ai.stylePreset) t.stylePreset = ai.stylePreset;
+  if (!t.viewMode && t.view) t.viewMode = t.view;
+  return t;
+}
 
 let ipcRegistered = false;
 let rendererSourceCache = null;
@@ -2237,6 +2250,33 @@ function registerIpcOnce() {
     const payload = buildI18nPayload(store);
     broadcastToAllWindows('ag-studio:i18n-changed', payload);
     return { saved, payload };
+  });
+
+  handleSafe('ag-studio:thought-translate', async (_ev, payload = {}) => {
+    const cfg = store.load();
+    return await thoughtTranslator.translateThought({
+      ...(payload || {}),
+      stateDir: store.stateDir,
+      config: normalizeThoughtConfigForService(payload?.config || cfg.thought),
+      proxyFallback: cfg.proxy,
+    });
+  });
+
+  handleSafe('ag-studio:thought-diagnose', async (_ev, payload = {}) => {
+    const cfg = store.load();
+    return await thoughtTranslator.diagnose({
+      config: normalizeThoughtConfigForService(payload?.thought || payload?.config || cfg.thought),
+      proxyFallback: cfg.proxy,
+      stateDir: store.stateDir,
+    });
+  });
+
+  handleSafe('ag-studio:thought-clear-cache', () => {
+    return thoughtTranslator.clearCache(store.stateDir);
+  });
+
+  handleSafe('ag-studio:inline-diff', async (_ev, payload = {}) => {
+    return await inlineDiff.getInlineDiff(payload || {});
   });
 
   handleSafe('ag-studio:scan-fonts', () => scanLocalFonts({ store }));

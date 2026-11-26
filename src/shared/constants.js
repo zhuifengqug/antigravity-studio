@@ -3,7 +3,7 @@
 const os = require('os');
 const path = require('path');
 
-const STUDIO_VERSION = '2.2.0';
+const STUDIO_VERSION = '2.3.0';
 const STUDIO_DIR_NAME = 'ag-studio';
 const STATE_DIR_NAME = 'AntigravityStudio';
 const LEGACY_METER_DIR_NAME = 'AntigravityContextMeter';
@@ -92,7 +92,7 @@ function getDefaultConfig() {
     },
     mascot: {
       enabled: true,
-      style: 'clawd', // clawd | deepy | astra
+      style: 'clawd', // clawd | deepy | astra | whalegirl
       align: 'right', // left | center | right
       position: 'right', // legacy alias for align
       scale: 1, // 1 | 1.5 | 2
@@ -118,8 +118,28 @@ function getDefaultConfig() {
       smoothCaret: true,
       edgeAura: true,
       effortSlider: false,
+      inlineDiff: true,
       homeOverview: true,
       reasoningEffort: 'medium',
+    },
+    thought: {
+      mode: 'off', // off | machine | ai
+      viewMode: 'bilingual', // immersive | bilingual
+      view: 'bilingual',
+      targetLang: 'zh-CN', // zh-CN | zh-TW | en
+      stylePreset: 'technical', // technical | concise
+      translateToolSummaries: false,
+      translateTitles: false,
+      proxyUrl: '',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: '',
+      model: 'gpt-4o-mini',
+      ai: {
+        baseUrl: 'https://api.openai.com/v1',
+        apiKey: '',
+        model: 'gpt-4o-mini',
+        stylePreset: 'technical', // technical | concise
+      },
     },
     homeOverview: true,
     homeOverviewPrefs: {

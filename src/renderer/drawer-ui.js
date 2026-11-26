@@ -227,6 +227,7 @@
       currency: 'USD', // USD | CNY
       speedHistory: [],
       proxyTestResult: null,
+      thoughtDiagResult: null,
       timelineOpen: false,
       timelineLoading: false,
       timelineConvId: '',
@@ -716,6 +717,15 @@
       var hudCfg = cfg.hud || {};
       var fxCfg = cfg.fx || {};
       var i18nCfg = cfg.i18n || {};
+      var thoughtCfg = cfg.thought || {};
+      var thoughtAiCfg = thoughtCfg.ai || {};
+      var thoughtMode = thoughtCfg.mode || 'off';
+      var thoughtView = thoughtCfg.viewMode || thoughtCfg.view || 'bilingual';
+      var thoughtLang = thoughtCfg.targetLang || 'zh-CN';
+      var thoughtStyle = thoughtCfg.stylePreset || thoughtAiCfg.stylePreset || 'technical';
+      var thoughtBaseUrl = thoughtCfg.baseUrl || thoughtAiCfg.baseUrl || 'https://api.openai.com/v1';
+      var thoughtApiKey = thoughtCfg.apiKey != null ? thoughtCfg.apiKey : (thoughtAiCfg.apiKey || '');
+      var thoughtModel = thoughtCfg.model || thoughtAiCfg.model || 'gpt-4o-mini';
       var proxyCfg = cfg.proxy || {};
       var fonts = themeCfg.fonts || {};
       var customThemes = Array.isArray(themeCfg.customThemes) ? themeCfg.customThemes : [];
@@ -780,6 +790,7 @@
         '        <option value="clawd" ' + (mascotCfg.style === 'clawd' ? 'selected' : '') + '>Clawd 蟹</option>' +
         '        <option value="deepy" ' + (mascotCfg.style === 'deepy' ? 'selected' : '') + '>Deepy 鲸</option>' +
         '        <option value="astra" ' + (mascotCfg.style === 'astra' ? 'selected' : '') + '>Astra 星灵</option>' +
+        '        <option value="whalegirl" ' + (mascotCfg.style === 'whalegirl' ? 'selected' : '') + '>Whalegirl 鲸娘</option>' +
         '      </select>' +
         '      <select class="ags-select" style="width:62px" id="ags-mascot-scale">' +
         '        <option value="1" ' + (Number(mascotCfg.scale || 1) === 1 ? 'selected' : '') + '>1x</option>' +
@@ -850,6 +861,7 @@
         '  <div class="ags-row"><span>输入框平滑光标</span><input type="checkbox" id="ags-fx-caret" ' + (fxCfg.smoothCaret !== false ? 'checked' : '') + '></div>',
         '  <div class="ags-row"><span>三态边缘余晖提示</span><input type="checkbox" id="ags-fx-aura" ' + (fxCfg.edgeAura !== false ? 'checked' : '') + '></div>',
         '  <div class="ags-row"><span>模型菜单推理等级滑块</span><input type="checkbox" id="ags-fx-effort" ' + (fxCfg.effortSlider !== false ? 'checked' : '') + '></div>',
+        '  <div class="ags-row"><span>工具调用内联 Diff 预览</span><input type="checkbox" id="ags-fx-inline-diff" ' + (fxCfg.inlineDiff !== false ? 'checked' : '') + '></div>',
         '</div>',
 
         // Section 3: Language & Dictionary
@@ -862,6 +874,49 @@
         '      <button class="ags-pill-opt ' + (i18nCfg.language === 'en' ? 'active' : '') + '" data-lang="en">EN</button>',
         '    </div></div>',
         '  <div class="ags-row"><span>原生菜单与托盘汉化</span><input type="checkbox" id="ags-native-menu-i18n" ' + (i18nCfg.translateNativeMenu !== false ? 'checked' : '') + '></div>',
+        '  <details class="ags-details" ' + (thoughtMode !== 'off' ? 'open' : '') + '>',
+        '    <summary>思考过程实时翻译 (' + esc(thoughtMode === 'ai' ? 'AI 转译' : (thoughtMode === 'machine' ? '机器翻译' : '关闭')) + ')</summary>',
+        '    <div style="display:flex;flex-direction:column;gap:8px">',
+        '      <div class="ags-row"><span>翻译引擎</span>' +
+        '        <select class="ags-select" style="width:175px" id="ags-thought-mode">' +
+        '          <option value="off" ' + (thoughtMode === 'off' ? 'selected' : '') + '>关闭（零开销）</option>' +
+        '          <option value="machine" ' + (thoughtMode === 'machine' ? 'selected' : '') + '>机器翻译（免费 GTX）</option>' +
+        '          <option value="ai" ' + (thoughtMode === 'ai' ? 'selected' : '') + '>AI 模型转译（OpenAI 兼容）</option>' +
+        '        </select></div>',
+        (thoughtMode !== 'off' ? [
+          '      <div class="ags-row"><span>展示方式</span>' +
+          '        <select class="ags-select" style="width:175px" id="ags-thought-view">' +
+          '          <option value="bilingual" ' + (thoughtView === 'bilingual' ? 'selected' : '') + '>中英双语对照</option>' +
+          '          <option value="immersive" ' + (thoughtView === 'immersive' ? 'selected' : '') + '>沉浸纯译文</option>' +
+          '        </select></div>',
+          '      <div class="ags-row"><span>目标语言</span>' +
+          '        <select class="ags-select" style="width:175px" id="ags-thought-lang">' +
+          '          <option value="zh-CN" ' + (thoughtLang === 'zh-CN' ? 'selected' : '') + '>简体中文</option>' +
+          '          <option value="zh-TW" ' + (thoughtLang === 'zh-TW' ? 'selected' : '') + '>繁體中文</option>' +
+          '          <option value="en" ' + (thoughtLang === 'en' ? 'selected' : '') + '>English</option>' +
+          '        </select></div>',
+          '      <div class="ags-row"><span>同时翻译工具摘要</span><input type="checkbox" id="ags-thought-tools" ' + (thoughtCfg.translateToolSummaries ? 'checked' : '') + '></div>',
+          '      <div class="ags-row"><span>同时翻译会话标题</span><input type="checkbox" id="ags-thought-titles" ' + (thoughtCfg.translateTitles ? 'checked' : '') + '></div>',
+          '      <div class="ags-row"><span class="ags-sub">代理覆盖</span><input class="ags-input" style="width:175px" id="ags-thought-proxy" value="' + esc(thoughtCfg.proxyUrl || '') + '" placeholder="留空自动复用系统/本地代理"></div>',
+          (thoughtMode === 'ai' ? [
+            '      <div class="ags-row"><span class="ags-sub">Base URL</span><input class="ags-input" style="width:175px" id="ags-thought-ai-url" value="' + esc(thoughtBaseUrl) + '" placeholder="https://api.openai.com/v1"></div>',
+            '      <div class="ags-row"><span class="ags-sub">API Key</span><input class="ags-input" style="width:175px" type="password" id="ags-thought-ai-key" value="' + esc(thoughtApiKey) + '" placeholder="本地 Ollama 可留空"></div>',
+            '      <div class="ags-row"><span class="ags-sub">模型名</span><input class="ags-input" style="width:175px" id="ags-thought-ai-model" value="' + esc(thoughtModel) + '" placeholder="gpt-4o-mini"></div>',
+            '      <div class="ags-row"><span>转译风格</span>' +
+            '        <select class="ags-select" style="width:175px" id="ags-thought-ai-style">' +
+            '          <option value="technical" ' + (thoughtStyle === 'technical' ? 'selected' : '') + '>技术直译（保留术语与行号）</option>' +
+            '          <option value="concise" ' + (thoughtStyle === 'concise' ? 'selected' : '') + '>精简摘要（提炼结论脉络）</option>' +
+            '        </select></div>'
+          ].join('\n') : ''),
+          '      <div class="ags-row" style="justify-content:flex-end;gap:6px;flex-wrap:wrap">' +
+          '        <button type="button" class="ags-btn ags-btn-primary" id="ags-thought-save-btn">保存</button>' +
+          '        <button type="button" class="ags-btn" id="ags-thought-diagnose-btn">一键诊断</button>' +
+          '        <button type="button" class="ags-btn" id="ags-thought-clear-cache-btn">清缓存</button>' +
+          '      </div>',
+          (state.thoughtDiagResult ? ('      <div class="ags-sub" style="line-height:1.45">' + esc(state.thoughtDiagResult) + '</div>') : '')
+        ].join('\n') : ''),
+        '    </div>',
+        '  </details>',
         '  <details class="ags-details">',
         '    <summary>' + esc(t('customDictTitle')) + (dictEntries.length ? (' (' + dictEntries.length + ')') : '') + '</summary>',
         '    <div class="ags-row" style="gap:6px">' +
@@ -1195,7 +1250,8 @@
         ['#ags-fx-ink', 'inkStream'],
         ['#ags-fx-caret', 'smoothCaret'],
         ['#ags-fx-aura', 'edgeAura'],
-        ['#ags-fx-effort', 'effortSlider']
+        ['#ags-fx-effort', 'effortSlider'],
+        ['#ags-fx-inline-diff', 'inlineDiff']
       ];
       fxMap.forEach(function (pair) {
         var node = el.querySelector(pair[0]);
@@ -1263,6 +1319,102 @@
       if (nativeI18nEl) nativeI18nEl.addEventListener('change', function () {
         opts.saveConfig({ i18n: { translateNativeMenu: nativeI18nEl.checked, translateTray: nativeI18nEl.checked } });
       });
+
+      var thoughtModeEl = el.querySelector('#ags-thought-mode');
+      var thoughtViewEl = el.querySelector('#ags-thought-view');
+      var thoughtLangEl = el.querySelector('#ags-thought-lang');
+      var thoughtToolsEl = el.querySelector('#ags-thought-tools');
+      var thoughtTitlesEl = el.querySelector('#ags-thought-titles');
+      var thoughtProxyEl = el.querySelector('#ags-thought-proxy');
+      var thoughtUrlEl = el.querySelector('#ags-thought-ai-url');
+      var thoughtKeyEl = el.querySelector('#ags-thought-ai-key');
+      var thoughtModelEl = el.querySelector('#ags-thought-ai-model');
+      var thoughtStyleEl = el.querySelector('#ags-thought-ai-style');
+
+      function readThoughtFormPayload() {
+        var curT = (cfg.thought && typeof cfg.thought === 'object') ? cfg.thought : {};
+        var curAi = (curT.ai && typeof curT.ai === 'object') ? curT.ai : {};
+        var nextView = thoughtViewEl ? thoughtViewEl.value : (curT.viewMode || curT.view || 'bilingual');
+        var nextBaseUrl = thoughtUrlEl ? thoughtUrlEl.value.trim() : (curT.baseUrl || curAi.baseUrl || 'https://api.openai.com/v1');
+        var nextApiKey = thoughtKeyEl ? thoughtKeyEl.value.trim() : (curT.apiKey != null ? curT.apiKey : (curAi.apiKey || ''));
+        var nextModel = thoughtModelEl ? thoughtModelEl.value.trim() : (curT.model || curAi.model || 'gpt-4o-mini');
+        var nextStyle = thoughtStyleEl ? thoughtStyleEl.value : (curT.stylePreset || curAi.stylePreset || 'technical');
+        return {
+          mode: thoughtModeEl ? thoughtModeEl.value : (curT.mode || 'off'),
+          viewMode: nextView,
+          view: nextView,
+          targetLang: thoughtLangEl ? thoughtLangEl.value : (curT.targetLang || 'zh-CN'),
+          translateToolSummaries: thoughtToolsEl ? Boolean(thoughtToolsEl.checked) : Boolean(curT.translateToolSummaries),
+          translateTitles: thoughtTitlesEl ? Boolean(thoughtTitlesEl.checked) : Boolean(curT.translateTitles),
+          proxyUrl: thoughtProxyEl ? thoughtProxyEl.value.trim() : (curT.proxyUrl || ''),
+          baseUrl: nextBaseUrl,
+          apiKey: nextApiKey,
+          model: nextModel,
+          stylePreset: nextStyle,
+          ai: {
+            baseUrl: nextBaseUrl,
+            apiKey: nextApiKey,
+            model: nextModel,
+            stylePreset: nextStyle
+          }
+        };
+      }
+
+      if (thoughtModeEl) {
+        thoughtModeEl.addEventListener('change', function () {
+          state.thoughtDiagResult = null;
+          opts.saveConfig({ thought: readThoughtFormPayload() });
+          render(null, true);
+        });
+      }
+      [thoughtViewEl, thoughtLangEl, thoughtToolsEl, thoughtTitlesEl, thoughtStyleEl].forEach(function (ctrl) {
+        if (ctrl) {
+          ctrl.addEventListener('change', function () {
+            opts.saveConfig({ thought: readThoughtFormPayload() });
+          });
+        }
+      });
+
+      var thoughtSaveBtn = el.querySelector('#ags-thought-save-btn');
+      if (thoughtSaveBtn) {
+        thoughtSaveBtn.addEventListener('click', function () {
+          opts.saveConfig({ thought: readThoughtFormPayload() });
+          showToast('思考翻译配置已保存');
+        });
+      }
+
+      var thoughtDiagBtn = el.querySelector('#ags-thought-diagnose-btn');
+      if (thoughtDiagBtn) {
+        thoughtDiagBtn.addEventListener('click', function () {
+          var formThought = readThoughtFormPayload();
+          opts.saveConfig({ thought: formThought });
+          if (!opts.api || !opts.api.diagnoseThought) return;
+          state.thoughtDiagResult = '诊断测试中...';
+          render(null, true);
+          opts.api.diagnoseThought({ thought: formThought }).then(function (r) {
+            if (r && r.ok) {
+              state.thoughtDiagResult = '诊断通过 (' + (r.mode || formThought.mode) + ' · ' + (r.proxyUsed || 'direct') + ' · ' + (r.latencyMs != null ? (r.latencyMs + 'ms') : '-') + ')：' + (r.sample || 'OK');
+            } else {
+              state.thoughtDiagResult = '诊断失败：' + ((r && r.error) || '未知错误');
+            }
+            render(null, true);
+          }).catch(function (e) {
+            state.thoughtDiagResult = '诊断失败：' + ((e && e.message) || '未知错误');
+            render(null, true);
+          });
+        });
+      }
+
+      var thoughtClearBtn = el.querySelector('#ags-thought-clear-cache-btn');
+      if (thoughtClearBtn) {
+        thoughtClearBtn.addEventListener('click', function () {
+          if (!opts.api || !opts.api.clearThoughtCache) return;
+          opts.api.clearThoughtCache().then(function (r) {
+            var n = r && r.cleared != null ? (' (' + r.cleared + ' 条)') : '';
+            showToast('思考翻译缓存已清空' + n);
+          }).catch(function (e) { showToast((e && e.message) || '清理失败'); });
+        });
+      }
 
       var dictAddBtn = el.querySelector('#ags-dict-add-btn');
       if (dictAddBtn) dictAddBtn.addEventListener('click', function () {

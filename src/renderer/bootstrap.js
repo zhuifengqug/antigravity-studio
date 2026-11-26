@@ -14,15 +14,31 @@
   var homeCardApi = window.__AG_STUDIO_HOME_CARD__;
   var prismFxApi = window.__AG_STUDIO_PRISM_FX__;
   var effortSliderApi = window.__AG_STUDIO_EFFORT_SLIDER__;
+  var thoughtTranslatorApi = window.__AG_STUDIO_THOUGHT_TRANSLATOR__;
+  var inlineDiffApi = window.__AG_STUDIO_INLINE_DIFF__;
   var drawerApi = window.__AG_STUDIO_DRAWER__ || window.__AG_STUDIO_DASHBOARD__;
 
   var currentConfig = {
     theme: { activePreset: 'claude', colorMode: 'system', customThemes: [], editorialSerif: true, fonts: {} },
     mascot: { enabled: true, style: 'clawd', scale: 1, align: 'right', sleepTimeoutMs: 300000 },
     hud: { enabled: true, displayStyle: 'ring', position: 'composer', showVial: true, homeOverview: true },
-    fx: { inkStream: true, smoothCaret: true, edgeAura: true, effortSlider: false },
+    fx: { inkStream: true, smoothCaret: true, edgeAura: true, effortSlider: false, inlineDiff: true },
     homeOverview: true,
     i18n: { language: 'zh-CN' },
+    thought: {
+      mode: 'off',
+      viewMode: 'bilingual',
+      view: 'bilingual',
+      targetLang: 'zh-CN',
+      stylePreset: 'technical',
+      translateToolSummaries: false,
+      translateTitles: false,
+      proxyUrl: '',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: '',
+      model: 'gpt-4o-mini',
+      ai: { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o-mini', stylePreset: 'technical' }
+    },
     proxy: { enabled: false, proxyUrl: 'http://127.0.0.1:7897' },
     context: { perModelLimits: {} },
     quota: { autoSwitch: { enabled: false, threshold: 0.05 } },
@@ -122,6 +138,14 @@
     }
   });
 
+  var thoughtTranslator = thoughtTranslatorApi && thoughtTranslatorApi.createThoughtTranslatorController
+    ? thoughtTranslatorApi.createThoughtTranslatorController()
+    : null;
+
+  var inlineDiff = inlineDiffApi && inlineDiffApi.createInlineDiffController
+    ? inlineDiffApi.createInlineDiffController()
+    : null;
+
   root.appendChild(drawer.element);
 
   var lastThemeSig = '';
@@ -219,13 +243,19 @@
       anchors.parkHomeCardSlot();
     }
 
-    // 4. Prism FX & Effort Slider
+    // 4. Prism FX, Effort Slider, Thought Translator & Inline Diff
     prismFx.sync({
       cfg: currentConfig,
       isGenerating: fused.isGenerating,
       auraPhase: fused.auraPhase
     });
     effortSlider.sync(currentConfig);
+    if (thoughtTranslator && typeof thoughtTranslator.sync === 'function') {
+      thoughtTranslator.sync(currentConfig, api);
+    }
+    if (inlineDiff && typeof inlineDiff.sync === 'function') {
+      inlineDiff.sync(currentConfig, api);
+    }
   }
 
   function fetchHomeOverview(days, force) {

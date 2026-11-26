@@ -426,6 +426,9 @@
       if (cur.style === 'deepy') {
         w = 104;
         h = 104;
+      } else if (cur.style === 'whalegirl') {
+        w = 138;
+        h = 132;
       } else if (cur.style === 'astra') {
         var astraSprite = globalScope.__AG_STUDIO_ASTRA_SPRITE__ || null;
         var builtSprites = getSprites();
@@ -452,6 +455,9 @@
       if (cur.style === 'deepy') {
         hitW = 76;
         hitH = 56;
+      } else if (cur.style === 'whalegirl') {
+        hitW = 98;
+        hitH = 98;
       } else if (cur.style === 'astra') {
         hitW = 52;
         hitH = 52;
@@ -577,24 +583,33 @@
       var sprites = getSprites();
       if (!sprites) {
         // Fallback minimal pixel silhouette if sprites failed to load
-        ctx.fillStyle = cur.style === 'deepy' ? '#3B82F6' : '#D97757';
+        ctx.fillStyle = cur.style === 'deepy' ? '#3B82F6' : cur.style === 'whalegirl' ? '#60A5FA' : '#D97757';
         ctx.fillRect(28, 36, 48, 28);
         return;
       }
 
       var sheetKey = STATE_TO_SHEET[logicalKey] || 'idle';
 
+      function drawSingleSheet(sheet) {
+        if (!sheet) return;
+        var entry = loadSpriteImage(sheet.dataUri, drawFrame);
+        if (!entry || !entry.loaded) return;
+        var f = isMotionReduced() ? (sheet.still || 0) : (frameIdx % sheet.frames);
+        var cols = sheet.columns || sheet.frames;
+        var b = sheet.box;
+        var g = sheet.gutter || 0;
+        var sx = (f % cols) * (b[2] + g);
+        var sy = Math.floor(f / cols) * (b[3] + g);
+        ctx.drawImage(entry.img, sx, sy, b[2], b[3], b[0] * 2, b[1] * 2, b[2] * 2, b[3] * 2);
+      }
+
       if (cur.style === 'deepy') {
-        var dSheet = (sprites.deepy && (sprites.deepy[sheetKey] || sprites.deepy.idle)) || null;
-        if (!dSheet) return;
-        var dEntry = loadSpriteImage(dSheet.dataUri, drawFrame);
-        if (!dEntry || !dEntry.loaded) return;
-        var df = isMotionReduced() ? (dSheet.still || 0) : (frameIdx % dSheet.frames);
-        var dCols = dSheet.columns || dSheet.frames;
-        var db = dSheet.box; // [x, y, w, h] in 52x52 logical grid
-        var dsx = (df % dCols) * db[2];
-        var dsy = Math.floor(df / dCols) * db[3];
-        ctx.drawImage(dEntry.img, dsx, dsy, db[2], db[3], db[0] * 2, db[1] * 2, db[2] * 2, db[3] * 2);
+        drawSingleSheet((sprites.deepy && (sprites.deepy[sheetKey] || sprites.deepy.idle)) || null);
+        return;
+      }
+
+      if (cur.style === 'whalegirl') {
+        drawSingleSheet((sprites.whalegirl && (sprites.whalegirl[sheetKey] || sprites.whalegirl.idle)) || null);
         return;
       }
 
@@ -608,8 +623,9 @@
       var cf = isMotionReduced() ? (cSheet.still || 0) : (frameIdx % cSheet.frames);
       var cCols = cSheet.columns || 8;
       var cb = cSheet.box; // [x, y, w, h] in 52x36 grid
-      var csx = (cf % cCols) * cb[2];
-      var csy = Math.floor(cf / cCols) * cb[3];
+      var cg = cSheet.gutter || 0;
+      var csx = (cf % cCols) * (cb[2] + cg);
+      var csy = Math.floor(cf / cCols) * (cb[3] + cg);
 
       ctx.drawImage(bodyEntry.img, csx, csy, cb[2], cb[3], cb[0] * 2, cb[1] * 2, cb[2] * 2, cb[3] * 2);
 
@@ -641,12 +657,21 @@
       if (isMotionReduced() || (typeof document !== 'undefined' && document.hidden) || !cur.enabled || !currentAnchor) {
         return 0;
       }
+      var sprites = getSprites();
+      if (cur.style === 'whalegirl') {
+        var sheetKey = STATE_TO_SHEET[logicalKey] || 'idle';
+        var wSheet = (sprites && sprites.whalegirl && (sprites.whalegirl[sheetKey] || sprites.whalegirl.idle)) || null;
+        if (wSheet && Array.isArray(wSheet.durs) && wSheet.durs.length > 0) {
+          return wSheet.durs[frameIdx % wSheet.durs.length] || (sprites && sprites.whalegirlFrameMs) || 100;
+        }
+        if (logicalKey === 'sleeping') return 330;
+        return (sprites && sprites.whalegirlFrameMs) || 100;
+      }
       if (logicalKey === 'sleeping') return 950;
       if (logicalKey === 'idle') return cur.style === 'astra' ? 280 : 180;
       if (cur.style === 'astra') {
         return logicalKey === 'error' ? 85 : 130;
       }
-      var sprites = getSprites();
       if (cur.style === 'deepy') return (sprites && sprites.deepyFrameMs) || 110;
       return (sprites && sprites.crabFrameMs) || 100;
     }

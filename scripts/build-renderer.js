@@ -30,6 +30,8 @@ function buildAll() {
     path.join(ROOT, 'src', 'renderer', 'vendor', 'effort-slider', 'upstream-client.js'),
     path.join(ROOT, 'src', 'renderer', 'vendor', 'effort-slider', 'slider-coexist.js'),
     path.join(ROOT, 'src', 'renderer', 'effort-slider.js'),
+    path.join(ROOT, 'src', 'renderer', 'thought-translator.js'),
+    path.join(ROOT, 'src', 'renderer', 'inline-diff.js'),
     path.join(ROOT, 'src', 'renderer', 'drawer-ui.js'),
     path.join(ROOT, 'src', 'renderer', 'bootstrap.js'),
   ];

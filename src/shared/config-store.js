@@ -162,6 +162,23 @@ function normalizeConfigAliases(merged, raw = {}) {
       merged.enhance.rehydrateEnabled = Boolean(raw.enhance.rehydrateAfterCompact);
     }
   }
+  if (isPlainObject(merged.thought)) {
+    const rawT = isPlainObject(raw.thought) ? raw.thought : {};
+    const rawAi = isPlainObject(rawT.ai) ? rawT.ai : {};
+    if (rawT.view !== undefined && rawT.viewMode === undefined) {
+      merged.thought.viewMode = merged.thought.view;
+    } else if (rawT.viewMode !== undefined && rawT.view === undefined) {
+      merged.thought.view = merged.thought.viewMode;
+    }
+    merged.thought.ai = isPlainObject(merged.thought.ai) ? merged.thought.ai : {};
+    for (const k of ['baseUrl', 'apiKey', 'model', 'stylePreset']) {
+      if (rawAi[k] !== undefined && rawT[k] === undefined) {
+        merged.thought[k] = merged.thought.ai[k];
+      } else if (rawT[k] !== undefined && rawAi[k] === undefined) {
+        merged.thought.ai[k] = merged.thought[k];
+      }
+    }
+  }
   return merged;
 }
 
