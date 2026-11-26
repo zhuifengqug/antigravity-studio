@@ -222,6 +222,13 @@ test('Gemini Web mode mounts top-left switcher, lazy-loads webview on demand, pr
   assert.equal(webviews[0].getAttribute('allowpopups'), 'true');
   assert.equal(doc.querySelector('.ags-gw-stage').getAttribute('data-active'), '1');
 
+  // Pure full-bleed Gemini UI checks: no browser toolbar, no multi-site switcher, minimalist hero & new chat btn
+  assert.equal(doc.querySelector('.ags-gw-toolbar'), null, 'redundant browser toolbar must be removed');
+  assert.equal(doc.querySelectorAll('.ags-gw-site-btn').length, 0, 'multi-site buttons must be removed');
+  assert.ok(doc.querySelector('.ags-gw-hero'), 'Gemini hero card must be present');
+  assert.ok(doc.querySelector('.ags-gw-new-btn'), 'primary new-chat button must be present');
+  assert.equal(doc.querySelector('.ags-gw-float-back').getAttribute('data-visible'), '0', 'float-back hidden when sidebar open');
+
   // Running dot shows on Code button while in Gemini mode
   ctrl.sync({
     cfg: { geminiWeb: { enabled: true, defaultUrl: 'https://gemini.google.com/app' } },
