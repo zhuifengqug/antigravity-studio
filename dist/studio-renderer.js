@@ -9176,9 +9176,25 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
   var STYLE_ID = 'ag-studio-gemini-web-style';
   var PARTITION_NAME = 'persist:ag-studio-gemini-web';
   var GEMINI_URL = 'https://gemini.google.com/app';
+  var AISTUDIO_URL = 'https://aistudio.google.com/prompts/new_chat';
 
   var PRESET_SITES = [
-    { id: 'gemini', label: 'Gemini', name: 'Gemini 网页版', url: GEMINI_URL }
+    {
+      id: 'gemini',
+      label: 'Gemini',
+      name: 'Gemini',
+      badge: '独立额度',
+      desc: '使用网页端额度 · 不占客户端配额',
+      url: GEMINI_URL
+    },
+    {
+      id: 'aistudio',
+      label: 'AI Studio',
+      name: 'AI Studio',
+      badge: '自动汉化',
+      desc: 'Google AI Studio · 内置中文界面与独立调试',
+      url: AISTUDIO_URL
+    }
   ];
 
   var SVG_NS = 'http://www.w3.org/2000/svg';
@@ -9199,6 +9215,10 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
       }
     } catch (_e) {}
     return GEMINI_URL;
+  }
+
+  function getSiteSpec(siteId) {
+    return siteId === 'aistudio' ? PRESET_SITES[1] : PRESET_SITES[0];
   }
 
   function formatHostLabel(url) {
@@ -9245,10 +9265,6 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
     }
   }
 
-  var GEMINI_STAR_PATHS = [
-    { d: 'M12 2C12.7 7.1 16.9 11.3 22 12C16.9 12.7 12.7 16.9 12 22C11.3 16.9 7.1 12.7 2 12C7.1 11.3 11.3 7.1 12 2Z', fill: '#3186FF' }
-  ];
-
   function makeGeminiBrandSvg(doc, size) {
     if (!doc) return null;
     if (typeof doc.createElementNS !== 'function') {
@@ -9287,12 +9303,10 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
       defs.appendChild(grad);
       svg.appendChild(defs);
 
-      for (var i = 0; i < GEMINI_STAR_PATHS.length; i++) {
-        var path = doc.createElementNS(SVG_NS, 'path');
-        path.setAttribute('d', GEMINI_STAR_PATHS[i].d);
-        path.setAttribute('fill', 'url(#ags-gemini-star-grad)');
-        svg.appendChild(path);
-      }
+      var path = doc.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', 'M12 2C12.7 7.1 16.9 11.3 22 12C16.9 12.7 12.7 16.9 12 22C11.3 16.9 7.1 12.7 2 12C7.1 11.3 11.3 7.1 12 2Z');
+      path.setAttribute('fill', 'url(#ags-gemini-star-grad)');
+      svg.appendChild(path);
       return svg;
     } catch (_e) {
       return typeof doc.createElement === 'function' ? doc.createElement('span') : null;
@@ -9325,6 +9339,12 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
       'html[data-ags-mode="dark"] .ags-gw-hero-pill{background:rgba(96,165,250,0.18);color:#93C5FD}',
       '.ags-gw-hero-sub{font-size:11px;line-height:1.4;color:var(--ags-text-secondary,#64748B)}',
 
+      '.ags-gw-site-seg{position:relative;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));height:28px;padding:2px;border-radius:9px;background:var(--ags-bg-subtle,rgba(148,163,184,0.12));border:1px solid var(--ags-border,rgba(148,163,184,0.18));box-sizing:border-box}',
+      '.ags-gw-site-slider{position:absolute;top:2px;bottom:2px;left:2px;width:calc(50% - 2px);border-radius:7px;background:var(--ags-bg-surface,#FFFFFF);box-shadow:0 1px 2px rgba(0,0,0,0.08);transform:translate3d(0,0,0);transition:transform 220ms cubic-bezier(.22,1,.36,1);pointer-events:none}',
+      '.ags-gw-site-seg[data-site="aistudio"] .ags-gw-site-slider{transform:translate3d(100%,0,0)}',
+      '.ags-gw-site-tab{position:relative;z-index:1;appearance:none;border:none;background:transparent;color:var(--ags-text-secondary,#64748B);height:22px;padding:0 6px;border-radius:7px;font-size:11.5px;font-weight:500;font-family:inherit;cursor:pointer;white-space:nowrap;transition:color 140ms ease}',
+      '.ags-gw-site-tab:hover,.ags-gw-site-tab[data-active="1"]{color:var(--ags-text-primary,#0F172A);font-weight:600}',
+
       '.ags-gw-new-btn{appearance:none;width:100%;height:34px;padding:0 11px;border-radius:10px;border:1px solid var(--ags-border,#E2E8F0);background:var(--ags-bg-surface,#FFFFFF);color:var(--ags-text-primary,#1F1E1D);font-size:12.5px;font-weight:500;font-family:inherit;display:flex;align-items:center;gap:8px;cursor:pointer;box-sizing:border-box;transition:background-color 140ms ease,border-color 140ms ease,transform 120ms ease}',
       '.ags-gw-new-btn:hover{background:var(--ags-bg-subtle,rgba(148,163,184,0.12));border-color:color-mix(in srgb,var(--ags-accent,#3B6CF6) 45%,var(--ags-border,#E2E8F0))}',
       '.ags-gw-new-btn:active{transform:scale(0.985)}',
@@ -9354,7 +9374,8 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
       '.ags-gw-float-back:hover{border-color:var(--ags-accent,#3B6CF6);color:var(--ags-accent,#3B6CF6)}',
 
       '.ags-gw-view-wrap{position:relative;flex:1 1 0;min-height:0;width:100%;display:flex;background:var(--ags-bg-canvas,#FAF9F5)}',
-      '.ags-gw-webview{width:100%;height:100%;flex:1 1 auto;border:none;display:flex;background:#FFFFFF}',
+      '.ags-gw-webview{width:100%;height:100%;flex:1 1 auto;border:none;display:none;background:#FFFFFF}',
+      '.ags-gw-webview[data-active="1"]{display:flex}',
       '.ags-gw-error{position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:24px;background:var(--ags-bg-canvas,#FAF9F5);z-index:7}',
       '.ags-gw-error[data-visible="1"]{display:flex}',
       '.ags-gw-error-card{max-width:420px;width:100%;padding:18px 20px;border-radius:14px;background:var(--ags-bg-surface,#FFFFFF);border:1px solid var(--ags-border,#E6E2D8);box-shadow:var(--ags-shadow,0 12px 32px rgba(0,0,0,0.18));display:flex;flex-direction:column;gap:10px}',
@@ -9480,11 +9501,11 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
       : function () { return typeof document !== 'undefined' ? document : null; };
 
     var mode = 'code'; // 'code' | 'gemini'
+    var activeSite = 'gemini'; // 'gemini' | 'aistudio'
     var destroyed = false;
     var enabled = true;
     var currentCfg = {};
     var currentApi = opts.api || null;
-    var currentUrl = GEMINI_URL;
     var lastStatus = { isGenerating: false, awaitingDecision: false };
     var onOpenSettingsCb = typeof opts.onOpenSettings === 'function' ? opts.onOpenSettings : null;
 
@@ -9495,6 +9516,12 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
     var geminiBtnEl = null;
     var dotEl = null;
     var sidebarPaneEl = null;
+    var heroTitleEl = null;
+    var heroBadgeEl = null;
+    var heroSubEl = null;
+    var siteSegEl = null;
+    var siteTabBtns = { gemini: null, aistudio: null };
+    var newBtnLabelEl = null;
     var proxyDotEl = null;
     var proxyStatusLabelEl = null;
     var footNoteEl = null;
@@ -9502,12 +9529,17 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
     var floatBackEl = null;
     var progressEl = null;
     var viewWrapEl = null;
-    var webviewEl = null;
+    var webviews = { gemini: null, aistudio: null };
+    var currentUrls = { gemini: GEMINI_URL, aistudio: AISTUDIO_URL };
     var errorOverlayEl = null;
     var errorDescEl = null;
     var hiddenNodes = [];
     var observer = null;
     var syncTimer = 0;
+
+    function getActiveWebview() {
+      return webviews[activeSite] || null;
+    }
 
     function ensureStyle(doc) {
       if (!doc || typeof doc.createElement !== 'function') return;
@@ -9536,7 +9568,16 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
       hiddenNodes = [];
     }
 
-    function updateProxyIndicators() {
+    function updateSiteMetaUi() {
+      var spec = getSiteSpec(activeSite);
+      if (heroTitleEl) heroTitleEl.textContent = spec.name;
+      if (heroBadgeEl) heroBadgeEl.textContent = spec.badge;
+      if (heroSubEl) heroSubEl.textContent = spec.desc;
+      if (siteSegEl) siteSegEl.setAttribute('data-site', activeSite);
+      if (siteTabBtns.gemini) siteTabBtns.gemini.setAttribute('data-active', activeSite === 'gemini' ? '1' : '0');
+      if (siteTabBtns.aistudio) siteTabBtns.aistudio.setAttribute('data-active', activeSite === 'aistudio' ? '1' : '0');
+      if (newBtnLabelEl) newBtnLabelEl.textContent = activeSite === 'aistudio' ? '新建提示词 / 对话' : '发起新对话';
+
       var pCfg = (currentCfg && currentCfg.proxy) || {};
       var pOn = Boolean(pCfg.enabled && pCfg.proxyUrl);
       if (proxyDotEl) proxyDotEl.setAttribute('data-on', pOn ? '1' : '0');
@@ -9548,13 +9589,13 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
       }
     }
 
-    function showErrorOverlay(code, desc) {
-      if (!errorOverlayEl || !errorDescEl) return;
+    function showErrorOverlay(siteId, code, desc) {
+      if (siteId !== activeSite || !errorOverlayEl || !errorDescEl) return;
       var hint = '';
       if (code === -118 || code === -105 || code === -130 || code === -102 || code === -106) {
         hint = '（请确认本地代理已开启且端口正确，例如 http://127.0.0.1:7897）';
       }
-      errorDescEl.textContent = '无法连接 ' + formatHostLabel(currentUrl) + '（错误码 ' + code + (desc ? ': ' + desc : '') + '）' + hint;
+      errorDescEl.textContent = '无法连接 ' + formatHostLabel(currentUrls[siteId]) + '（错误码 ' + code + (desc ? ': ' + desc : '') + '）' + hint;
       errorOverlayEl.setAttribute('data-visible', '1');
     }
 
@@ -9562,53 +9603,62 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
       if (errorOverlayEl) errorOverlayEl.setAttribute('data-visible', '0');
     }
 
-    function navigateToUrl(nextUrl) {
-      currentUrl = sanitizeWebUrl(nextUrl || GEMINI_URL);
+    function navigateSite(siteId, nextUrl) {
+      var sid = siteId === 'aistudio' ? 'aistudio' : 'gemini';
+      var spec = getSiteSpec(sid);
+      var safe = sanitizeWebUrl(nextUrl || spec.url);
+      currentUrls[sid] = safe;
       hideErrorOverlay();
-      if (webviewEl) {
-        if (typeof webviewEl.loadURL === 'function') {
-          try { webviewEl.loadURL(currentUrl); } catch (_e) { webviewEl.setAttribute('src', currentUrl); }
+      var wv = webviews[sid];
+      if (wv) {
+        if (typeof wv.loadURL === 'function') {
+          try { wv.loadURL(safe); } catch (_e) { wv.setAttribute('src', safe); }
         } else {
-          webviewEl.setAttribute('src', currentUrl);
+          wv.setAttribute('src', safe);
         }
       }
     }
 
-    function ensureWebview(doc) {
-      if (webviewEl && webviewEl.parentNode === viewWrapEl) return webviewEl;
+    function ensureWebviewForSite(doc, siteId) {
+      var sid = siteId === 'aistudio' ? 'aistudio' : 'gemini';
+      if (webviews[sid] && webviews[sid].parentNode === viewWrapEl) return webviews[sid];
       if (!viewWrapEl || !doc) return null;
+
       var wv = markOwned(doc.createElement('webview'));
       wv.className = 'ags-gw-webview';
       wv.setAttribute('partition', PARTITION_NAME);
       wv.setAttribute('allowpopups', 'true');
-      wv.setAttribute('src', sanitizeWebUrl(currentUrl));
+      wv.setAttribute('data-ags-site', sid);
+      wv.setAttribute('data-active', sid === activeSite ? '1' : '0');
+      wv.setAttribute('src', sanitizeWebUrl(currentUrls[sid]));
       wv.style.width = '100%';
       wv.style.height = '100%';
       wv.style.flex = '1';
       wv.style.border = 'none';
-      wv.style.display = 'flex';
 
       wv.addEventListener('did-start-loading', function () {
-        hideErrorOverlay();
-        if (progressEl) progressEl.setAttribute('data-loading', '1');
+        if (sid === activeSite) {
+          hideErrorOverlay();
+          if (progressEl) progressEl.setAttribute('data-loading', '1');
+        }
       });
       wv.addEventListener('did-stop-loading', function () {
-        if (progressEl) progressEl.setAttribute('data-loading', '0');
+        if (sid === activeSite && progressEl) progressEl.setAttribute('data-loading', '0');
       });
       wv.addEventListener('did-navigate', function (e) {
-        if (e && e.url) currentUrl = sanitizeWebUrl(e.url);
+        if (e && e.url) currentUrls[sid] = sanitizeWebUrl(e.url);
       });
       wv.addEventListener('did-navigate-in-page', function (e) {
-        if (e && e.isMainFrame !== false && e.url) currentUrl = sanitizeWebUrl(e.url);
+        if (e && e.isMainFrame !== false && e.url) currentUrls[sid] = sanitizeWebUrl(e.url);
       });
       wv.addEventListener('did-fail-load', function (e) {
-        if (progressEl) progressEl.setAttribute('data-loading', '0');
+        if (sid === activeSite && progressEl) progressEl.setAttribute('data-loading', '0');
         if (!e || e.errorCode === -3 || e.isMainFrame === false) return;
-        showErrorOverlay(e.errorCode, e.errorDescription || '');
+        showErrorOverlay(sid, e.errorCode, e.errorDescription || '');
       });
 
       viewWrapEl.appendChild(wv);
-      webviewEl = wv;
+      webviews[sid] = wv;
       return wv;
     }
 
@@ -9629,7 +9679,7 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
         row.appendChild(rowOpts.trailingEl);
       }
       row.addEventListener('click', onClick);
-      return row;
+      return { row: row, labelEl: lbl };
     }
 
     function ensureDockAndSidebar(doc, slots) {
@@ -9698,7 +9748,7 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
         sidebarPaneEl.className = 'ags-gw-sidebar-pane';
         sidebarPaneEl.setAttribute('data-active', mode === 'gemini' ? '1' : '0');
 
-        // 1. Minimalist Gemini Brand Hero Card
+        // 1. Minimalist Brand Hero Card
         var hero = doc.createElement('div');
         hero.className = 'ags-gw-hero';
         var heroTop = doc.createElement('div');
@@ -9707,37 +9757,63 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
         brand.className = 'ags-gw-hero-brand';
         var star = makeGeminiBrandSvg(doc, 18);
         if (star) brand.appendChild(star);
-        var bText = doc.createElement('span');
-        bText.textContent = 'Gemini';
-        brand.appendChild(bText);
-        var pill = doc.createElement('span');
-        pill.className = 'ags-gw-hero-pill';
-        pill.textContent = '独立额度';
+        heroTitleEl = doc.createElement('span');
+        heroTitleEl.textContent = 'Gemini';
+        brand.appendChild(heroTitleEl);
+        heroBadgeEl = doc.createElement('span');
+        heroBadgeEl.className = 'ags-gw-hero-pill';
+        heroBadgeEl.textContent = '独立额度';
         heroTop.appendChild(brand);
-        heroTop.appendChild(pill);
+        heroTop.appendChild(heroBadgeEl);
         hero.appendChild(heroTop);
 
-        var heroSub = doc.createElement('div');
-        heroSub.className = 'ags-gw-hero-sub';
-        heroSub.textContent = '使用网页端额度 · 不占客户端配额';
-        hero.appendChild(heroSub);
+        heroSubEl = doc.createElement('div');
+        heroSubEl.className = 'ags-gw-hero-sub';
+        heroSubEl.textContent = '使用网页端额度 · 不占客户端配额';
+        hero.appendChild(heroSubEl);
         sidebarPaneEl.appendChild(hero);
 
-        // 2. Native-style Primary Action
+        // 2. Compact 2-Tab Switcher: Gemini | AI Studio
+        siteSegEl = doc.createElement('div');
+        siteSegEl.className = 'ags-gw-site-seg';
+        siteSegEl.setAttribute('role', 'tablist');
+        siteSegEl.setAttribute('data-site', activeSite);
+        var siteSlider = doc.createElement('span');
+        siteSlider.className = 'ags-gw-site-slider';
+        siteSegEl.appendChild(siteSlider);
+
+        for (var si = 0; si < PRESET_SITES.length; si++) {
+          (function (spec) {
+            var tab = doc.createElement('button');
+            tab.type = 'button';
+            tab.className = 'ags-gw-site-tab';
+            tab.setAttribute('data-site-tab', spec.id);
+            tab.textContent = spec.label;
+            tab.addEventListener('click', function () {
+              setSite(spec.id);
+            });
+            siteSegEl.appendChild(tab);
+            siteTabBtns[spec.id] = tab;
+          })(PRESET_SITES[si]);
+        }
+        sidebarPaneEl.appendChild(siteSegEl);
+
+        // 3. Native-style Primary Action
         var newBtn = doc.createElement('button');
         newBtn.type = 'button';
         newBtn.className = 'ags-gw-new-btn';
         var plusIco = makeIconSvg(doc, ['M12 5V19', 'M5 12H19'], 14);
         if (plusIco) newBtn.appendChild(plusIco);
-        var newLbl = doc.createElement('span');
-        newLbl.textContent = '发起新对话';
-        newBtn.appendChild(newLbl);
+        newBtnLabelEl = doc.createElement('span');
+        newBtnLabelEl.textContent = '发起新对话';
+        newBtn.appendChild(newBtnLabelEl);
         newBtn.addEventListener('click', function () {
-          navigateToUrl(GEMINI_URL);
+          var spec = getSiteSpec(activeSite);
+          navigateSite(activeSite, spec.url);
         });
         sidebarPaneEl.appendChild(newBtn);
 
-        // 3. Borderless Native Action Rows
+        // 4. Borderless Native Action Rows
         var navList = doc.createElement('div');
         navList.className = 'ags-gw-nav-list';
 
@@ -9747,10 +9823,11 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
             '刷新页面',
             ['M21 12A9 9 0 1 1 18.36 5.64', 'M21 3V8H16'],
             function () {
-              if (webviewEl && typeof webviewEl.reload === 'function') webviewEl.reload();
-              else navigateToUrl(currentUrl);
+              var wv = getActiveWebview();
+              if (wv && typeof wv.reload === 'function') wv.reload();
+              else navigateSite(activeSite, currentUrls[activeSite]);
             }
-          )
+          ).row
         );
 
         navList.appendChild(
@@ -9759,11 +9836,12 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
             '返回上一页',
             ['M19 12H5', 'M12 19L5 12L12 5'],
             function () {
-              if (webviewEl && typeof webviewEl.canGoBack === 'function' && webviewEl.canGoBack()) {
-                webviewEl.goBack();
+              var wv = getActiveWebview();
+              if (wv && typeof wv.canGoBack === 'function' && wv.canGoBack()) {
+                wv.goBack();
               }
             }
-          )
+          ).row
         );
 
         navList.appendChild(
@@ -9772,7 +9850,7 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
             '在外部浏览器打开',
             ['M14 3H21V10', 'M10 14L21 3', 'M21 14V19A2 2 0 0 1 19 21H5A2 2 0 0 1 3 19V5A2 2 0 0 1 5 3H10'],
             function () { openCurrentExternal(); }
-          )
+          ).row
         );
 
         var proxyTrail = doc.createElement('span');
@@ -9792,7 +9870,7 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
               if (typeof onOpenSettingsCb === 'function') onOpenSettingsCb();
             },
             { trailingEl: proxyTrail }
-          )
+          ).row
         );
 
         var sep = doc.createElement('div');
@@ -9806,7 +9884,7 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
             ['M9 21H5A2 2 0 0 1 3 19V5A2 2 0 0 1 5 3H9', 'M16 17L21 12L16 7', 'M21 12H9'],
             function () { clearWebSession(); },
             { muted: true }
-          )
+          ).row
         );
 
         sidebarPaneEl.appendChild(navList);
@@ -9823,7 +9901,7 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
         }
       }
 
-      updateProxyIndicators();
+      updateSiteMetaUi();
     }
 
     function ensureStage(doc, rightPane) {
@@ -9871,7 +9949,7 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
         errCard.className = 'ags-gw-error-card';
         var errTitle = doc.createElement('div');
         errTitle.className = 'ags-gw-error-title';
-        errTitle.textContent = 'Gemini 网页加载失败';
+        errTitle.textContent = '网页加载失败';
         errorDescEl = doc.createElement('div');
         errorDescEl.className = 'ags-gw-error-desc';
         var errActs = doc.createElement('div');
@@ -9882,8 +9960,9 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
         retryBtn.textContent = '重试加载';
         retryBtn.addEventListener('click', function () {
           hideErrorOverlay();
-          if (webviewEl && typeof webviewEl.reload === 'function') webviewEl.reload();
-          else navigateToUrl(currentUrl);
+          var wv = getActiveWebview();
+          if (wv && typeof wv.reload === 'function') wv.reload();
+          else navigateSite(activeSite, currentUrls[activeSite]);
         });
         var proxyBtn = doc.createElement('button');
         proxyBtn.type = 'button';
@@ -9914,8 +9993,9 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
     }
 
     function openCurrentExternal() {
+      var wv = getActiveWebview();
       var safe = sanitizeWebUrl(
-        (webviewEl && typeof webviewEl.getURL === 'function' && webviewEl.getURL()) || currentUrl
+        (wv && typeof wv.getURL === 'function' && wv.getURL()) || currentUrls[activeSite]
       );
       if (currentApi && typeof currentApi.openGeminiWebExternal === 'function') {
         void currentApi.openGeminiWebExternal(safe);
@@ -9925,14 +10005,15 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
     }
 
     function clearWebSession() {
+      var reloadAny = function () {
+        hideErrorOverlay();
+        if (webviews.gemini) navigateSite('gemini', GEMINI_URL);
+        if (webviews.aistudio) navigateSite('aistudio', AISTUDIO_URL);
+      };
       if (currentApi && typeof currentApi.clearGeminiWebSession === 'function') {
-        Promise.resolve(currentApi.clearGeminiWebSession()).then(function () {
-          navigateToUrl(GEMINI_URL);
-        }).catch(function () {
-          navigateToUrl(GEMINI_URL);
-        });
+        Promise.resolve(currentApi.clearGeminiWebSession()).then(reloadAny).catch(reloadAny);
       } else {
-        navigateToUrl(GEMINI_URL);
+        reloadAny();
       }
     }
 
@@ -9972,7 +10053,10 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
         }
         if (sidebarPaneEl) sidebarPaneEl.setAttribute('data-active', '1');
         if (stageEl) stageEl.setAttribute('data-active', '1');
-        ensureWebview(doc);
+        ensureWebviewForSite(doc, activeSite);
+        if (webviews.gemini) webviews.gemini.setAttribute('data-active', activeSite === 'gemini' ? '1' : '0');
+        if (webviews.aistudio) webviews.aistudio.setAttribute('data-active', activeSite === 'aistudio' ? '1' : '0');
+        updateSiteMetaUi();
       } else {
         restoreCodeSidebar();
         if (sidebarPaneEl) sidebarPaneEl.setAttribute('data-active', '0');
@@ -10019,8 +10103,10 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
     function cleanupAll() {
       disconnectObserver();
       restoreCodeSidebar();
-      if (webviewEl && webviewEl.parentNode) webviewEl.parentNode.removeChild(webviewEl);
-      webviewEl = null;
+      ['gemini', 'aistudio'].forEach(function (k) {
+        if (webviews[k] && webviews[k].parentNode) webviews[k].parentNode.removeChild(webviews[k]);
+        webviews[k] = null;
+      });
       if (stageEl && stageEl.parentNode) stageEl.parentNode.removeChild(stageEl);
       stageEl = null;
       floatBackEl = null;
@@ -10030,6 +10116,12 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
       errorDescEl = null;
       if (sidebarPaneEl && sidebarPaneEl.parentNode) sidebarPaneEl.parentNode.removeChild(sidebarPaneEl);
       sidebarPaneEl = null;
+      heroTitleEl = null;
+      heroBadgeEl = null;
+      heroSubEl = null;
+      siteSegEl = null;
+      siteTabBtns = { gemini: null, aistudio: null };
+      newBtnLabelEl = null;
       proxyDotEl = null;
       proxyStatusLabelEl = null;
       footNoteEl = null;
@@ -10053,6 +10145,17 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
       return mode;
     }
 
+    function setSite(nextSite) {
+      if (destroyed) return activeSite;
+      activeSite = nextSite === 'aistudio' ? 'aistudio' : 'gemini';
+      hideErrorOverlay();
+      if (mode !== 'gemini') {
+        mode = 'gemini';
+      }
+      applyModeState();
+      return activeSite;
+    }
+
     function sync(params) {
       if (destroyed) return;
       var p = params || {};
@@ -10065,9 +10168,6 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
 
       var gw = (cfg && cfg.geminiWeb) || {};
       var nextEnabled = gw.enabled !== false;
-      if (!webviewEl) {
-        currentUrl = GEMINI_URL;
-      }
 
       if (!nextEnabled) {
         enabled = false;
@@ -10095,7 +10195,15 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
       sync: sync,
       setMode: setMode,
       getMode: function () { return mode; },
-      navigate: navigateToUrl,
+      setSite: setSite,
+      getSite: function () { return activeSite; },
+      navigate: function (urlOrSite, maybeUrl) {
+        if (urlOrSite === 'gemini' || urlOrSite === 'aistudio') {
+          navigateSite(urlOrSite, maybeUrl);
+        } else {
+          navigateSite(activeSite, urlOrSite);
+        }
+      },
       destroy: destroy
     };
   }
@@ -10104,6 +10212,7 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
     createGeminiWebController: createGeminiWebController,
     PRESET_SITES: PRESET_SITES,
     GEMINI_URL: GEMINI_URL,
+    AISTUDIO_URL: AISTUDIO_URL,
     PARTITION_NAME: PARTITION_NAME,
     sanitizeWebUrl: sanitizeWebUrl
   };

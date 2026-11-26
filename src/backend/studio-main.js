@@ -37,7 +37,9 @@ function normalizeThoughtConfigForService(thoughtCfg = {}) {
 let ipcRegistered = false;
 let rendererSourceCache = null;
 let i18nPreloadSourceCache = null;
+let aiStudioI18nSourceCache = null;
 let isAppQuitting = false;
+const aiStudioGuestContents = new Set();
 const boundWindows = new WeakSet();
 const boundWebContents = new WeakSet();
 const injectionTimers = new WeakMap();
@@ -114,6 +116,54 @@ function getI18nPreloadSource() {
     }
   }
   return i18nPreloadSourceCache || '';
+}
+
+function getAiStudioI18nSource() {
+  if (aiStudioI18nSourceCache) return aiStudioI18nSourceCache;
+  const candidates = [
+    path.join(__dirname, 'i18n', 'aistudio-i18n.js'),
+    path.resolve(__dirname, '..', 'i18n', 'aistudio-i18n.js'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      aiStudioI18nSourceCache = fs.readFileSync(p, 'utf8');
+      break;
+    }
+  }
+  return aiStudioI18nSourceCache || '';
+}
+
+async function injectAiStudioI18nIntoWebContents(wc, storeInstance = null) {
+  try {
+    if (!wc || wc.isDestroyed?.() || typeof wc.executeJavaScript !== 'function') {
+      return false;
+    }
+    const url = String(wc.getURL?.() || '');
+    if (!/^https:\/\/aistudio\.google\.com(\/|$)/i.test(url)) {
+      return false;
+    }
+    const store = storeInstance || new ConfigStore();
+    const lang = store.load()?.i18n?.language || 'zh-CN';
+    const langJson = JSON.stringify(lang);
+
+    let mounted = false;
+    try {
+      mounted = Boolean(await wc.executeJavaScript('Boolean(window.__AG_STUDIO_AISTUDIO_I18N__ && typeof window.__AG_STUDIO_AISTUDIO_I18N__.applyLanguage === "function")'));
+    } catch {}
+
+    if (!mounted) {
+      if (lang === 'en') return false;
+      const src = getAiStudioI18nSource();
+      if (!src) return false;
+      await wc.executeJavaScript(`${src}\ntry { if (window.__AG_STUDIO_AISTUDIO_I18N__ && typeof window.__AG_STUDIO_AISTUDIO_I18N__.applyLanguage === 'function') { window.__AG_STUDIO_AISTUDIO_I18N__.applyLanguage(${langJson}); } } catch {}`);
+      return true;
+    }
+
+    await wc.executeJavaScript(`try { if (window.__AG_STUDIO_AISTUDIO_I18N__ && typeof window.__AG_STUDIO_AISTUDIO_I18N__.applyLanguage === 'function') { window.__AG_STUDIO_AISTUDIO_I18N__.applyLanguage(${langJson}); } } catch {}`);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function loadPackagedDictionary(lang) {
@@ -371,6 +421,15 @@ function broadcastToAllWindows(channel, payload) {
     try {
       for (const win of electron.BrowserWindow.getAllWindows() || []) sendToWin(win);
     } catch {}
+  }
+  if (channel === 'ag-studio:i18n-changed') {
+    for (const guestWc of Array.from(aiStudioGuestContents)) {
+      if (!guestWc || guestWc.isDestroyed?.()) {
+        aiStudioGuestContents.delete(guestWc);
+        continue;
+      }
+      void injectAiStudioI18nIntoWebContents(guestWc);
+    }
   }
 }
 
@@ -2532,6 +2591,25 @@ try {
     };
     app.on('browser-window-created', handleCreated);
     app.on('base-window-created', handleCreated);
+    app.on('web-contents-created', (_event, contents) => {
+      try {
+        if (!contents || contents.getType?.() !== 'webview') return;
+        const onGuestNavOrReady = () => {
+          const url = String(contents.getURL?.() || '');
+          if (/^https:\/\/aistudio\.google\.com(\/|$)/i.test(url)) {
+            aiStudioGuestContents.add(contents);
+            void injectAiStudioI18nIntoWebContents(contents);
+          }
+        };
+        contents.on?.('dom-ready', onGuestNavOrReady);
+        contents.on?.('did-finish-load', onGuestNavOrReady);
+        contents.on?.('did-navigate', onGuestNavOrReady);
+        contents.on?.('did-navigate-in-page', onGuestNavOrReady);
+        contents.once?.('destroyed', () => {
+          aiStudioGuestContents.delete(contents);
+        });
+      } catch {}
+    });
     app.on('activate', () => {
       try {
         const utils = getHostUtilsSafe();
@@ -2562,6 +2640,7 @@ module.exports = {
   attachWindow,
   ensureInjected,
   injectI18nIntoSubframe,
+  injectAiStudioI18nIntoWebContents,
   buildI18nPayload,
   getWindowWebContents,
   getActiveHubWindowOrigins,

@@ -4,6 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const proxyManager = require('../src/backend/proxy-manager');
 const geminiWebMod = require('../src/renderer/gemini-web-mode');
+const aiStudioI18n = require('../src/i18n/aistudio-i18n');
+const studioMain = require('../src/backend/studio-main');
 
 function createMiniDom() {
   function makeClassList(el) {
@@ -53,6 +55,9 @@ function createMiniDom() {
       removeAttribute(k) {
         el.attributes.delete(k);
       },
+      get nodeValue() { return el.textContent; },
+      set nodeValue(v) { el.textContent = String(v || ''); },
+      get childNodes() { return el.children; },
       addEventListener(type, fn) {
         if (!el.listeners.has(type)) el.listeners.set(type, []);
         el.listeners.get(type).push(fn);
@@ -328,5 +333,96 @@ test('Gemini Web mode unwraps 2.35.2 nested sidebar-split wrapper divs (div.cont
   assert.equal(navItems.classList.contains('ags-gw-native-hidden'), true);
   assert.equal(convList.classList.contains('ags-gw-native-hidden'), true);
   assert.equal(footerSlot.classList.contains('ags-gw-native-hidden'), false);
+
+  // Dual-webview lazy creation & 0ms toggle between Gemini and AI Studio
+  assert.equal(doc.querySelectorAll('webview').length, 1, 'only gemini webview created initially');
+  assert.ok(doc.querySelector('.ags-gw-site-seg'), 'compact Gemini | AI Studio switcher must exist');
+  assert.equal(doc.querySelector('[data-site-tab="gemini"]').getAttribute('data-active'), '1');
+
+  ctrl.setSite('aistudio');
+  const wvsAfter = doc.querySelectorAll('webview');
+  assert.equal(wvsAfter.length, 2, 'second webview created lazily on AI Studio tab switch');
+  assert.equal(wvsAfter[0].getAttribute('data-active'), '0');
+  assert.equal(wvsAfter[1].getAttribute('data-active'), '1');
+  assert.equal(wvsAfter[1].getAttribute('partition'), 'persist:ag-studio-gemini-web');
+  assert.equal(wvsAfter[1].getAttribute('src'), 'https://aistudio.google.com/prompts/new_chat');
+
+  ctrl.setSite('gemini');
+  assert.equal(wvsAfter[0].getAttribute('data-active'), '1');
+  assert.equal(wvsAfter[1].getAttribute('data-active'), '0');
+
   ctrl.destroy();
+});
+
+test('aistudio-i18n translates UI chrome, supports zh-TW & en restore, and protects prompts/code/icons', () => {
+  const tr = aiStudioI18n.createAiStudioTranslator('zh-CN');
+  assert.equal(tr.translateText('Run settings'), '运行设置');
+  assert.equal(tr.translateText('System instructions'), '系统指令');
+  assert.equal(tr.translateText('Grounding with Google Search'), 'Google 搜索联网依据');
+  assert.equal(tr.translateText('Thought for 4.2s'), '已思考 4.2 秒');
+  assert.equal(tr.translateText('Run (Ctrl+Enter)'), '运行 (Ctrl+Enter)');
+  assert.equal(tr.translateText('Saved 5 minutes ago'), '5 分钟前已保存');
+
+  tr.setLanguage('zh-TW');
+  assert.equal(tr.translateText('Run settings'), '執行設定');
+  assert.equal(tr.translateText('System instructions'), '系統指令');
+
+  const { doc, makeEl } = createMiniDom();
+  const textNode = (txt) => ({ nodeType: 3, nodeValue: txt, parentElement: null });
+  const mountText = (el, txt) => {
+    const t = textNode(txt);
+    t.parentElement = el;
+    el.children.push(t);
+    return t;
+  };
+
+  const runBtn = makeEl('button', { class: 'run-btn [&:has(>.material-symbols-outlined:first-child)]:pl-1' });
+  const runText = mountText(runBtn, 'Run settings');
+  const matIcon = makeEl('mat-icon', { class: 'material-symbols-outlined' });
+  const iconText = mountText(matIcon, 'tune');
+  const modelChunk = makeEl('ms-text-chunk');
+  modelChunk.setAttribute('data-turn-role', 'model');
+  const replyText = mountText(modelChunk, 'Run settings should stay untouched in model reply.');
+  const promptInput = makeEl('textarea');
+  promptInput.setAttribute('placeholder', 'Ask anything');
+
+  doc.body.appendChild(runBtn);
+  doc.body.appendChild(matIcon);
+  doc.body.appendChild(modelChunk);
+  doc.body.appendChild(promptInput);
+
+  assert.equal(aiStudioI18n.shouldIgnoreAiStudioElement(runBtn), false);
+  assert.equal(aiStudioI18n.shouldIgnoreAiStudioElement(matIcon), true);
+  assert.equal(aiStudioI18n.shouldIgnoreAiStudioElement(modelChunk), true);
+
+  const handle = aiStudioI18n.mountAiStudioI18n('zh-CN', { document: doc });
+  assert.equal(runText.nodeValue, '运行设置');
+  assert.equal(iconText.nodeValue, 'tune', 'mat-icon ligature text must not be translated');
+  assert.equal(replyText.nodeValue, 'Run settings should stay untouched in model reply.');
+  assert.equal(promptInput.getAttribute('placeholder'), '随便问点什么...');
+
+  handle.applyLanguage('en');
+  assert.equal(runText.nodeValue, 'Run settings');
+  assert.equal(promptInput.getAttribute('placeholder'), 'Ask anything');
+  handle.destroy();
+});
+
+test('injectAiStudioI18nIntoWebContents only injects on aistudio.google.com', async () => {
+  const execCalls = [];
+  const makeFakeWc = (url) => ({
+    getURL: () => url,
+    isDestroyed: () => false,
+    async executeJavaScript(code) {
+      execCalls.push({ url, len: code.length });
+      return false;
+    },
+  });
+  const fakeStore = { load: () => ({ i18n: { language: 'zh-CN' } }) };
+
+  assert.equal(await studioMain.injectAiStudioI18nIntoWebContents(makeFakeWc('https://gemini.google.com/app'), fakeStore), false);
+  assert.equal(await studioMain.injectAiStudioI18nIntoWebContents(makeFakeWc('https://accounts.google.com/signin'), fakeStore), false);
+  assert.equal(execCalls.length, 0);
+
+  assert.equal(await studioMain.injectAiStudioI18nIntoWebContents(makeFakeWc('https://aistudio.google.com/prompts/new_chat'), fakeStore), true);
+  assert.ok(execCalls.length >= 2 && execCalls[1].len > 2000);
 });
