@@ -54,9 +54,6 @@
     '[data-line-number]',
     '.codicon',
     '.google-symbols',
-    '[class*="material-icons"]',
-    '[class*="material-symbols"]',
-    '[class*="lucide"]',
     '[data-project-glyph]',
     '[data-testid*="user-message"]',
     '[data-testid="user-message-content"]',
@@ -101,6 +98,27 @@
   var COMBINED_STATIC_IGNORE_SEL = STATIC_IGNORE_SELECTORS.join(', ');
 
   var codeClassPattern = /(?:^|[\s_-])(monaco-editor|editor-instance|hljs|shiki|prism|codemirror|line-content|gutter|codeblock|code-block|code-line|view-line|xterm|xterm-rows|xterm-screen|xterm-accessibility)(?:$|[\s_-])/i;
+  var ICON_CLASS_TOKEN_RE = /^(?:codicon|google-symbols|material-icons(?:-[a-z0-9-]+)?|material-symbols(?:-[a-z0-9-]+)?|lucide(?:-[a-z0-9-]+)?)$/i;
+
+  function hasIconClassToken(el) {
+    if (!el || el.nodeType !== 1) return false;
+    var i;
+    if (el.classList && typeof el.classList.length === 'number') {
+      for (i = 0; i < el.classList.length; i++) {
+        if (ICON_CLASS_TOKEN_RE.test(el.classList[i])) return true;
+      }
+      return false;
+    }
+    var raw = typeof el.className === 'string'
+      ? el.className
+      : (el.className && typeof el.className.baseVal === 'string' ? el.className.baseVal : '');
+    if (!raw) return false;
+    var tokens = raw.split(/\s+/);
+    for (i = 0; i < tokens.length; i++) {
+      if (tokens[i] && ICON_CLASS_TOKEN_RE.test(tokens[i])) return true;
+    }
+    return false;
+  }
 
   var CODE_OR_LITERAL_TAGS = new Set([
     'CODE', 'PRE', 'KBD', 'SAMP', 'VAR', 'SVG', 'MATH', 'MJX-CONTAINER'
@@ -668,7 +686,7 @@
     if (CODE_OR_LITERAL_TAGS.has(curTag) || curTag === 'SCRIPT' || curTag === 'STYLE' || curTag === 'NOSCRIPT') {
       return true;
     }
-    if (isProtectedMarkdownElement(cur) || isSwarmProtectedElement(cur) || isOrchestratorOrSliderSelf(cur)) {
+    if (isProtectedMarkdownElement(cur) || isSwarmProtectedElement(cur) || isOrchestratorOrSliderSelf(cur) || hasIconClassToken(cur)) {
       return true;
     }
     if (cur.getAttribute) {

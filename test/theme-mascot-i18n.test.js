@@ -1115,3 +1115,40 @@ test('home-overview-card deterministic model colors & topModel fallback, mascot 
     global.document = prevDoc;
   }
 });
+
+test('dom-runtime matches icon classes by token so Tailwind :has() menu items still translate', () => {
+  const makeNode = (tag, cls, parent = null) => {
+    const tokens = cls.split(/\s+/).filter(Boolean);
+    return {
+      nodeType: 1,
+      tagName: tag,
+      className: cls,
+      classList: {
+        length: tokens.length,
+        contains: (c) => tokens.includes(c),
+        ...Object.fromEntries(tokens.map((t, idx) => [idx, t])),
+      },
+      parentElement: parent,
+      getAttribute: () => null,
+      hasAttribute: () => false,
+      closest: () => null,
+    };
+  };
+
+  const menuItem = makeNode(
+    'DIV',
+    'agy-overlay-item group w-full pr-2 pl-2 [&:has(>svg:first-child)]:pl-1.5 [&:has(>.material-symbols-outlined:first-child)]:pl-1.5'
+  );
+  const labelSpan = makeNode('SPAN', 'truncate', menuItem);
+  assert.equal(domI18n.shouldIgnoreElement(menuItem), false, 'Tailwind :has(>.material-symbols-outlined) must NOT trigger icon skip');
+  assert.equal(domI18n.shouldIgnoreElement(labelSpan), false, 'Menu item label inside Tailwind :has() container must translate');
+
+  const realMatSym = makeNode('SPAN', 'material-symbols-outlined text-muted', menuItem);
+  const realMatIcons = makeNode('SPAN', 'material-icons', menuItem);
+  const realLucide = makeNode('SPAN', 'lucide-edit w-4 h-4', menuItem);
+  const realGoogleSym = makeNode('SPAN', 'google-symbols shrink-0', menuItem);
+  assert.equal(domI18n.shouldIgnoreElement(realMatSym), true);
+  assert.equal(domI18n.shouldIgnoreElement(realMatIcons), true);
+  assert.equal(domI18n.shouldIgnoreElement(realLucide), true);
+  assert.equal(domI18n.shouldIgnoreElement(realGoogleSym), true);
+});
