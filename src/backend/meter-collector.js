@@ -19,7 +19,7 @@ const origFsMethods = {
   statSync: fs.statSync,
   existsSync: fs.existsSync
 };
-const { safeWriteJsonSync, safeReadJsonSync, withFileLockSync } = require('./meter-storage');
+const { safeWriteJsonSync, safeReadJsonSync, withFileLockSync, withFileLockAsync } = require('./meter-storage');
 const {
   buildCliProxyEnv,
   detectProxyConfig,
@@ -84,11 +84,317 @@ const {
   isValidSpeedSample,
   MAX_SPEED_SAMPLES_PER_MODEL,
   calculateRequestApiCost,
+  setDynamicPricingCatalog,
+  setCustomPricingCatalog,
+  getDynamicPricingCatalog,
+  parseModelsDevPricingCatalog,
+  parseLiteLlmPricingCatalog,
+  mergePricingCatalogs,
   filterReleases,
   findReleaseAsset,
   compareVersions
 } = require('./meter-core');
 const { PROJECT_VERSION } = require('./modules-config');
+
+const PRICING_FEED_MODELS_DEV = 'https://models.dev/api.json';
+const PRICING_FEED_LITELLM = 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json';
+const PRICING_CATALOG_TTL_MS = 24 * 60 * 60 * 1000;
+const PRICING_AUTO_RETRY_COOLDOWN_MS = 10 * 60 * 1000;
+
+let _lastPricingCacheSig = '';
+let _lastCustomPricingSig = '';
+let _lastPricingAutoAttemptMs = 0;
+let _activePricingSyncPromise = null;
+
+function resolvePricingStateDir(options = {}) {
+  if (options && typeof options.stateDir === 'string' && options.stateDir.trim()) {
+    return path.resolve(options.stateDir.trim());
+  }
+  const { getStateDir } = require('./asar-engine');
+  return getStateDir();
+}
+
+function getPricingCatalogCachePath(stateDir = null) {
+  return path.join(stateDir || resolvePricingStateDir(), 'pricing_catalog_cache.json');
+}
+
+function getCustomPricingPath(stateDir = null) {
+  return path.join(stateDir || resolvePricingStateDir(), 'custom_pricing.json');
+}
+
+function loadPersistedPricingCatalog(options = {}) {
+  const isIsolatedWithoutState = Boolean(
+    !options.stateDir && (
+      options.agDir ||
+      options.fs ||
+      options.hostFetcher ||
+      process.env.NODE_TEST_CONTEXT
+    )
+  );
+  if (isIsolatedWithoutState) return getDynamicPricingCatalog();
+  try {
+    const stateDir = resolvePricingStateDir(options);
+    const cachePath = getPricingCatalogCachePath(stateDir);
+    let cacheSig = `${cachePath}:missing`;
+    if (origFsMethods.existsSync(cachePath)) {
+      const st = origFsMethods.statSync(cachePath);
+      cacheSig = `${cachePath}:${st.size}:${st.mtimeMs}`;
+    }
+    if (cacheSig !== _lastPricingCacheSig) {
+      const prevSig = _lastPricingCacheSig;
+      _lastPricingCacheSig = cacheSig;
+      if (origFsMethods.existsSync(cachePath)) {
+        const readRes = safeReadJsonSync(cachePath, null);
+        const parsed = readRes && readRes.ok ? readRes.data : null;
+        if (parsed && typeof parsed === 'object' && parsed.models && typeof parsed.models === 'object') {
+          setDynamicPricingCatalog(parsed);
+        }
+      } else if (prevSig && !prevSig.endsWith(':missing')) {
+        setDynamicPricingCatalog(null);
+      }
+    }
+
+    const customPath = getCustomPricingPath(stateDir);
+    let customSig = `${customPath}:missing`;
+    if (origFsMethods.existsSync(customPath)) {
+      const st = origFsMethods.statSync(customPath);
+      customSig = `${customPath}:${st.size}:${st.mtimeMs}`;
+    }
+    if (customSig !== _lastCustomPricingSig) {
+      _lastCustomPricingSig = customSig;
+      if (origFsMethods.existsSync(customPath)) {
+        const readCustom = safeReadJsonSync(customPath, null);
+        const parsedCustom = readCustom && readCustom.ok ? readCustom.data : null;
+        if (parsedCustom && typeof parsedCustom === 'object') {
+          setCustomPricingCatalog(parsedCustom);
+        }
+      } else {
+        setCustomPricingCatalog({});
+      }
+    }
+  } catch { }
+  return getDynamicPricingCatalog();
+}
+
+async function fetchPricingFeedJson(urlStr, options = {}) {
+  if (typeof options.fetcher === 'function') {
+    return options.fetcher(urlStr);
+  }
+  const rawText = await requestGithubUrl(urlStr, {
+    method: 'GET',
+    timeout: Number(options.timeoutMs) || 12000,
+    maxBytes: 24 * 1024 * 1024,
+    phase: 'pricing_sync',
+    accept: 'application/json',
+    headers: {
+      'User-Agent': `AntigravityStudio/${PROJECT_VERSION}`,
+      'Accept': 'application/json',
+      'Accept-Encoding': 'identity'
+    },
+    ...(options.proxyUrl ? { proxyConfigOptions: { proxyUrl: options.proxyUrl } } : {}),
+    _isAllowedRedirectUrl: (nextUrl) => {
+      try {
+        return new URL(nextUrl).protocol === 'https:';
+      } catch {
+        return false;
+      }
+    }
+  });
+  let parsed = null;
+  try {
+    parsed = JSON.parse(String(rawText || ''));
+  } catch {
+    throw new Error('返回内容不是有效 JSON');
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('返回内容不是有效 JSON');
+  }
+  return parsed;
+}
+
+function repriceUnpricedLedgerCallsUnlocked(agDir, resolvedLedgerPath, options = {}) {
+  let repricedCount = 0;
+  ledgerCacheByPath.delete(normalizeLedgerKey(resolvedLedgerPath));
+  const ledger = loadPricingLedger(agDir);
+  if (!ledger || ledger.__corrupted || ledger.__unreadable) return 0;
+  const calls = ledger.calls && typeof ledger.calls === 'object' ? ledger.calls : {};
+  let changed = false;
+  for (const [k, c] of Object.entries(calls)) {
+    if (!c || typeof c !== 'object') continue;
+    if (c.isPriced && !options.repriceAll) continue;
+    const calc = calculateRequestApiCost(c);
+    if (calc && calc.isPriced) {
+      const nextCost = calc.costUSD ?? 0;
+      if (!c.isPriced || c.modelKey !== calc.modelKey || Number(c.costUSD || 0) !== nextCost) {
+        calls[k] = {
+          ...c,
+          modelKey: calc.modelKey,
+          isPriced: true,
+          costUSD: nextCost
+        };
+        repricedCount++;
+        changed = true;
+      }
+    }
+  }
+  if (changed) {
+    savePricingLedger(ledger, agDir);
+    try { syncAccountLedgerPartitions(resolvedLedgerPath, calls); } catch { }
+  }
+  return repricedCount;
+}
+
+function repriceUnpricedLedgerCalls(customAgDir = null, options = {}) {
+  const agDir = customAgDir ? path.resolve(customAgDir) : resolvePrimaryGeminiDirs(options).agDir;
+  const ledgerPath = getPricingLedgerPath(agDir);
+  if (!origFsMethods.existsSync(ledgerPath)) return 0;
+  let repricedCount = 0;
+  try {
+    const resolvedLedgerPath = path.resolve(ledgerPath);
+    withFileLockSync(ledgerPath, () => {
+      repricedCount = repriceUnpricedLedgerCallsUnlocked(agDir, resolvedLedgerPath, options);
+    }, { timeoutMs: 4000 });
+  } catch { }
+  if (repricedCount > 0) {
+    cachedTokenHistoryAt = 0;
+  }
+  return repricedCount;
+}
+
+async function repriceUnpricedLedgerCallsAsync(customAgDir = null, options = {}) {
+  const agDir = customAgDir ? path.resolve(customAgDir) : resolvePrimaryGeminiDirs(options).agDir;
+  const ledgerPath = getPricingLedgerPath(agDir);
+  if (!origFsMethods.existsSync(ledgerPath)) return 0;
+  let repricedCount = 0;
+  try {
+    const resolvedLedgerPath = path.resolve(ledgerPath);
+    await withFileLockAsync(ledgerPath, () => {
+      repricedCount = repriceUnpricedLedgerCallsUnlocked(agDir, resolvedLedgerPath, options);
+    }, { timeoutMs: 4000 });
+  } catch { }
+  if (repricedCount > 0) {
+    cachedTokenHistoryAt = 0;
+  }
+  return repricedCount;
+}
+
+async function syncPricingCatalogAsync(options = {}) {
+  const isolated = Boolean(options.stateDir || options.agDir || options.fetcher);
+  if (!isolated && _activePricingSyncPromise) {
+    return _activePricingSyncPromise;
+  }
+  const run = (async () => {
+    const stateDir = resolvePricingStateDir(options);
+    const cachePath = getPricingCatalogCachePath(stateDir);
+    loadPersistedPricingCatalog({ stateDir });
+    const existing = getDynamicPricingCatalog();
+    const ttlMs = Number.isFinite(Number(options.ttlMs)) ? Number(options.ttlMs) : PRICING_CATALOG_TTL_MS;
+    if (!options.force && existing.modelCount > 0 && existing.fetchedAtMs > 0 && (Date.now() - existing.fetchedAtMs) < ttlMs) {
+      return {
+        ok: true,
+        cached: true,
+        skipped: true,
+        updatedAt: existing.updatedAt,
+        fetchedAtMs: existing.fetchedAtMs,
+        sources: existing.sources,
+        modelCount: existing.modelCount,
+        customCount: existing.customCount || 0,
+        repricedCount: 0
+      };
+    }
+
+    const modelsDevUrl = options.modelsDevUrl || PRICING_FEED_MODELS_DEV;
+    const liteLlmUrl = options.liteLlmUrl || PRICING_FEED_LITELLM;
+    const [rModelsDev, rLiteLlm] = await Promise.allSettled([
+      fetchPricingFeedJson(modelsDevUrl, options),
+      fetchPricingFeedJson(liteLlmUrl, options)
+    ]);
+
+    const errors = [];
+    const sources = [];
+    let mapModelsDev = null;
+    let mapLiteLlm = null;
+
+    if (rModelsDev.status === 'fulfilled') {
+      const parsed = parseModelsDevPricingCatalog(rModelsDev.value);
+      if (Object.keys(parsed).length > 0) {
+        mapModelsDev = parsed;
+        sources.push('models.dev');
+      } else {
+        errors.push('models.dev: 未解析到有效模型价目');
+      }
+    } else {
+      errors.push(`models.dev: ${sanitizeDiagnosticErrorText(rModelsDev.reason?.message || String(rModelsDev.reason || 'fetch_failed'))}`);
+    }
+
+    if (rLiteLlm.status === 'fulfilled') {
+      const parsed = parseLiteLlmPricingCatalog(rLiteLlm.value);
+      if (Object.keys(parsed).length > 0) {
+        mapLiteLlm = parsed;
+        sources.push('litellm');
+      } else {
+        errors.push('litellm: 未解析到有效模型价目');
+      }
+    } else {
+      errors.push(`litellm: ${sanitizeDiagnosticErrorText(rLiteLlm.reason?.message || String(rLiteLlm.reason || 'fetch_failed'))}`);
+    }
+
+    const mergedModels = mergePricingCatalogs(mapModelsDev, mapLiteLlm);
+    const modelCount = Object.keys(mergedModels).length;
+    if (modelCount === 0) {
+      return {
+        ok: false,
+        error: errors.join('；') || '所有价格源拉取失败',
+        errors,
+        sources: [],
+        modelCount: existing.modelCount || 0,
+        repricedCount: 0
+      };
+    }
+
+    const nowMs = Date.now();
+    const updatedAt = new Date(nowMs).toISOString();
+    const payload = {
+      schemaVersion: 1,
+      updatedAt,
+      fetchedAtMs: nowMs,
+      sources,
+      modelCount,
+      models: mergedModels
+    };
+    try {
+      fs.mkdirSync(stateDir, { recursive: true });
+      safeWriteJsonSync(cachePath, payload);
+      const st = origFsMethods.statSync(cachePath);
+      _lastPricingCacheSig = `${cachePath}:${st.size}:${st.mtimeMs}`;
+    } catch { }
+
+    setDynamicPricingCatalog(payload);
+    loadPersistedPricingCatalog({ stateDir });
+    const repricedCount = options.skipReprice ? 0 : await repriceUnpricedLedgerCallsAsync(options.agDir || null);
+    cachedTokenHistoryAt = 0;
+
+    return {
+      ok: true,
+      cached: false,
+      updatedAt,
+      fetchedAtMs: nowMs,
+      sources,
+      modelCount,
+      customCount: getDynamicPricingCatalog().customCount || 0,
+      repricedCount,
+      errors
+    };
+  })();
+
+  if (!isolated) {
+    _activePricingSyncPromise = run.finally(() => {
+      if (_activePricingSyncPromise === run) _activePricingSyncPromise = null;
+    });
+    return _activePricingSyncPromise;
+  }
+  return run;
+}
 
 let cachedPython = undefined;
 function resolvePython() {
@@ -506,6 +812,15 @@ async function scanFiles(media, scanOptions = {}) {
           continue;
         }
       }
+      if (!item.inlineData && (scanOptions.isRemote === true || /^(?:ssh|vscode-remote|remote):/i.test(String(item.uri || '')))) {
+        results.set(item.uri, {
+          ...empty(),
+          status: 'unknown',
+          remoteSkipped: true,
+          unknownParts: [item.reason || '远程/SSH 对话不支持扫描远端磁盘附件']
+        });
+        continue;
+      }
       if (!item.uri || /^https?:/i.test(item.uri)) throw new Error('无可用本地附件，内容未知');
       const targetPath = item.uri.startsWith('file:') ? fileURLToPath(item.uri) : item.uri;
       let target;
@@ -660,10 +975,29 @@ async function collect(origin, id, options = {}) {
         } catch { }
       }
       if (!token) {
-        const html = await request(origin, null, null, null, signal);
-        if (isSuperseded()) return { version: PROJECT_VERSION, conversation: id, abortedStale: true, scannedAt: Date.now(), errors: [] };
-        token = JSON.parse(html.match(/window.__APP_CONFIG__ = (.*?);/)[1]).csrfToken;
-        csrfTokenByOrigin.set(origin, token);
+        let htmlErr = null;
+        try {
+          const html = await request(origin, null, null, null, signal);
+          if (isSuperseded()) return { version: PROJECT_VERSION, conversation: id, abortedStale: true, scannedAt: Date.now(), errors: [] };
+          const cfgMatch = String(html || '').match(/window\.__APP_CONFIG__\s*=\s*(.*?);/);
+          if (cfgMatch) {
+            token = JSON.parse(cfgMatch[1]).csrfToken;
+          }
+        } catch (e) {
+          if (e?.name === 'AbortError' || signal?.aborted) throw e;
+          htmlErr = e;
+        }
+        if (!token && (!htmlErr || /HTTP 40[13]\b/.test(String(htmlErr.message || '')))) {
+          try {
+            const { resolveOriginCsrfToken } = require('./local-api');
+            token = resolveOriginCsrfToken(origin, options) || '';
+          } catch { }
+        }
+        if (!token && typeof options.fallbackCsrfToken === 'string' && options.fallbackCsrfToken.trim()) {
+          token = options.fallbackCsrfToken.trim();
+        }
+        if (!token && htmlErr) throw htmlErr;
+        if (token) csrfTokenByOrigin.set(origin, token);
       }
       const call = async (method, body) => {
         try {
@@ -679,11 +1013,22 @@ async function collect(origin, id, options = {}) {
               } catch { }
             }
             if (!refreshedToken) {
-              const html = await request(origin, null, null, null, signal);
-              refreshedToken = JSON.parse(html.match(/window.__APP_CONFIG__ = (.*?);/)[1]).csrfToken;
+              try {
+                const html = await request(origin, null, null, null, signal);
+                const cfgMatch = String(html || '').match(/window\.__APP_CONFIG__\s*=\s*(.*?);/);
+                if (cfgMatch) refreshedToken = JSON.parse(cfgMatch[1]).csrfToken;
+              } catch { }
             }
-            token = refreshedToken;
-            csrfTokenByOrigin.set(origin, token);
+            if (!refreshedToken) {
+              try {
+                const { resolveOriginCsrfToken } = require('./local-api');
+                refreshedToken = resolveOriginCsrfToken(origin, options) || null;
+              } catch { }
+            }
+            if (refreshedToken) {
+              token = refreshedToken;
+              csrfTokenByOrigin.set(origin, token);
+            }
             return await request(origin, method, body, token, signal);
           }
           throw err;
@@ -715,8 +1060,15 @@ async function collect(origin, id, options = {}) {
       }
       if (isSuperseded()) return { version: PROJECT_VERSION, conversation: id, abortedStale: true, scannedAt: Date.now(), errors: [] };
       const session = analyzeSteps(steps);
+      const trajectoryMeta = trajectory.metadata || trajectory.trajectoryMetadata;
+      const workspaceUris = Array.isArray(trajectoryMeta?.workspaceUris) ? trajectoryMeta.workspaceUris : [];
+      const workspaceEntries = Array.isArray(trajectoryMeta?.workspaces) ? trajectoryMeta.workspaces : [];
+      session.isRemote = full.isRemote === true || trajectory.isRemote === true || trajectoryMeta?.isRemote === true
+        || [...workspaceUris, ...workspaceEntries.flatMap(ws => [ws?.workspaceFolderAbsoluteUri, ws?.gitRootAbsoluteUri])]
+          .some(uri => typeof uri === 'string' && /^(?:ssh:\/\/|vscode-remote:\/\/)/i.test(uri));
+      session.locationKind = session.isRemote ? 'remote' : 'local';
       const stepCapabilities = extractObservedModelInfoFromSteps(steps);
-      const attachments = await scanFiles(session.media, { signal });
+      const attachments = await scanFiles(session.media, { signal, isRemote: session.isRemote === true });
       if (isSuperseded()) return { version: PROJECT_VERSION, conversation: id, abortedStale: true, scannedAt: Date.now(), errors: [] };
       const attachmentTotal = empty();
       for (const a of attachments) { const n = a.references || 1; add(attachmentTotal, Object.fromEntries(['chars', 'bytes', 'low', 'high'].map(k => [k, (a[k] || 0) * n]))); }
@@ -1962,8 +2314,7 @@ function resolveCallAccountAttribution(call, options = {}, existing = null) {
   };
 }
 
-function recordModelCalls(newCalls = [], options = {}) {
-  if (!Array.isArray(newCalls) || !newCalls.length) return createRecordResult(true, false);
+function buildRecordModelCallsExecutor(newCalls = [], options = {}) {
   const targetDir = typeof options === 'string' ? options : (options.ledgerPath || options.agDir);
   const fsOpt = (options && typeof options === 'object' && options.fs) ? { fs: options.fs } : undefined;
   const resolvedLedgerPath = path.resolve(getPricingLedgerPath(targetDir));
@@ -2145,10 +2496,25 @@ function recordModelCalls(newCalls = [], options = {}) {
     return createRecordResult(true, changed);
   };
 
+  return { fsOpt, resolvedLedgerPath, executeLocked };
+}
+
+function recordModelCalls(newCalls = [], options = {}) {
+  if (!Array.isArray(newCalls) || !newCalls.length) return createRecordResult(true, false);
+  const { fsOpt, resolvedLedgerPath, executeLocked } = buildRecordModelCallsExecutor(newCalls, options);
   if (fsOpt) {
     return executeLocked();
   }
   return withFileLockSync(resolvedLedgerPath, executeLocked);
+}
+
+async function recordModelCallsLockedAsync(newCalls = [], options = {}) {
+  if (!Array.isArray(newCalls) || !newCalls.length) return createRecordResult(true, false);
+  const { fsOpt, resolvedLedgerPath, executeLocked } = buildRecordModelCallsExecutor(newCalls, options);
+  if (fsOpt) {
+    return executeLocked();
+  }
+  return withFileLockAsync(resolvedLedgerPath, executeLocked);
 }
 
 function syncAccountLedgerPartitions(resolvedLedgerPath, callsMap = {}, fsImpl = fs) {
@@ -2570,6 +2936,136 @@ function buildAccountUsageBreakdown({
   };
 }
 
+function sanitizeBackupSuffix(rawSuffix) {
+  if (rawSuffix === null || rawSuffix === undefined) return '';
+  return String(rawSuffix).trim().replace(/[^A-Za-z0-9._-]/g, '');
+}
+
+const MAX_LEDGER_REPAIR_BACKUPS = 3;
+const LEDGER_BACKUP_CLEANUP_MARKER_VERSION = '0.8.9';
+
+function listLedgerRepairBackups(resolvedLedgerPath, fsImpl = fs) {
+  const dir = path.dirname(resolvedLedgerPath);
+  const prefix = `${path.basename(resolvedLedgerPath)}.bak-pre-elv89-`;
+  if (!fsImpl.existsSync(dir)) return [];
+  const entries = fsImpl.readdirSync(dir, { withFileTypes: true });
+  const items = [];
+  for (const entry of entries) {
+    const name = typeof entry === 'string' ? entry : entry.name;
+    if (typeof name !== 'string' || !name.startsWith(prefix) || path.basename(name) !== name) continue;
+    if (typeof entry !== 'string' && typeof entry.isFile === 'function' && !entry.isFile()) continue;
+    const fullPath = path.join(dir, name);
+    const suffix = name.slice(prefix.length);
+    const numericTs = /^\d{10,16}$/.test(suffix) ? Number(suffix) : NaN;
+    let mtimeMs = 0;
+    let size = 0;
+    try {
+      const lst = typeof fsImpl.lstatSync === 'function' ? fsImpl.lstatSync(fullPath) : fsImpl.statSync(fullPath);
+      if (lst && ((typeof lst.isSymbolicLink === 'function' && lst.isSymbolicLink()) || (typeof lst.isFile === 'function' && !lst.isFile()))) {
+        continue;
+      }
+      mtimeMs = Number(lst.mtimeMs) || 0;
+      size = Number(lst.size) || 0;
+    } catch {
+      continue;
+    }
+    items.push({ name, path: fullPath, numericTs, mtimeMs, size });
+  }
+  items.sort((a, b) => {
+    const aHasTs = Number.isFinite(a.numericTs);
+    const bHasTs = Number.isFinite(b.numericTs);
+    if (aHasTs && bHasTs && b.numericTs !== a.numericTs) return b.numericTs - a.numericTs;
+    if (b.mtimeMs !== a.mtimeMs) return b.mtimeMs - a.mtimeMs;
+    return b.name.localeCompare(a.name);
+  });
+  return items;
+}
+
+function pruneLedgerRepairBackups(resolvedLedgerPath, { keep = MAX_LEDGER_REPAIR_BACKUPS, fs: fsImpl = fs } = {}) {
+  const keepCount = Math.max(0, Number.isFinite(Number(keep)) ? Math.floor(Number(keep)) : MAX_LEDGER_REPAIR_BACKUPS);
+  const all = listLedgerRepairBackups(resolvedLedgerPath, fsImpl);
+  const kept = all.slice(0, keepCount);
+  const toRemove = all.slice(keepCount);
+  const removed = [];
+  let removedBytes = 0;
+  for (const item of toRemove) {
+    try {
+      fsImpl.unlinkSync(item.path);
+      removed.push(item.path);
+      removedBytes += item.size;
+    } catch {}
+  }
+  return {
+    totalBefore: all.length,
+    keptCount: kept.length,
+    keptPaths: kept.map((x) => x.path),
+    removedCount: removed.length,
+    removedPaths: removed,
+    removedBytes
+  };
+}
+
+function cleanupUpgradeLedgerBackups({
+  agDir = null,
+  ledgerPath = null,
+  stateDir = null,
+  keep = 1,
+  force = false,
+  readOnly = false,
+  fs: fsImpl = fs
+} = {}) {
+  const targetDir = ledgerPath || agDir;
+  const resolvedLedgerPath = path.resolve(getPricingLedgerPath(targetDir));
+  if (readOnly) {
+    return { ok: true, skipped: true, reason: 'read_only', ledgerPath: resolvedLedgerPath, removedCount: 0 };
+  }
+  const markerDir = stateDir || path.dirname(resolvedLedgerPath);
+  const markerPath = path.join(markerDir, '.pricing_ledger_backup_cleanup_v1.json');
+
+  try {
+    if (!force && fsImpl.existsSync(markerPath)) {
+      const parsed = JSON.parse(fsImpl.readFileSync(markerPath, 'utf8'));
+      if (parsed && parsed.cleanedVersion === LEDGER_BACKUP_CLEANUP_MARKER_VERSION &&
+        parsed.ledgerPath === resolvedLedgerPath) {
+        return { ok: true, skipped: true, reason: 'already_cleaned', ledgerPath: resolvedLedgerPath, removedCount: 0 };
+      }
+    }
+  } catch {}
+
+  const existing = listLedgerRepairBackups(resolvedLedgerPath, fsImpl);
+  if (existing.length <= Math.max(1, keep) && !force) {
+    return {
+      ok: true,
+      skipped: false,
+      ledgerPath: resolvedLedgerPath,
+      totalBefore: existing.length,
+      keptCount: existing.length,
+      removedCount: 0,
+      removedPaths: [],
+      removedBytes: 0
+    };
+  }
+
+  const pruneRes = pruneLedgerRepairBackups(resolvedLedgerPath, { keep, fs: fsImpl });
+  try {
+    fsImpl.mkdirSync(markerDir, { recursive: true });
+    fsImpl.writeFileSync(markerPath, JSON.stringify({
+      cleanedVersion: LEDGER_BACKUP_CLEANUP_MARKER_VERSION,
+      ledgerPath: resolvedLedgerPath,
+      cleanedAt: new Date().toISOString(),
+      keptPaths: pruneRes.keptPaths,
+      removedCount: pruneRes.removedCount
+    }, null, 2));
+  } catch {}
+
+  return {
+    ok: true,
+    skipped: false,
+    ledgerPath: resolvedLedgerPath,
+    ...pruneRes
+  };
+}
+
 const CURRENT_ATTRIBUTION_REPAIR_VERSION = 'elv89-v3';
 
 function repairAndMigrateAccountLedger({
@@ -2578,12 +3074,19 @@ function repairAndMigrateAccountLedger({
   accountSessions = [],
   force = false,
   dryRun = false,
-  backupSuffix = null
+  backupSuffix = null,
+  maxBackups = MAX_LEDGER_REPAIR_BACKUPS,
+  stateDir = null
 } = {}) {
   const targetDir = ledgerPath || agDir;
   const resolvedLedgerPath = path.resolve(getPricingLedgerPath(targetDir));
 
   const runLocked = () => {
+    if (!dryRun) {
+      try {
+        cleanupUpgradeLedgerBackups({ agDir, ledgerPath, stateDir, keep: 1 });
+      } catch {}
+    }
     ledgerCacheByPath.delete(normalizeLedgerKey(resolvedLedgerPath));
     const ledger = loadPricingLedger(targetDir);
     if (!ledger || ledger.__corrupted || ledger.__unreadable) {
@@ -2683,14 +3186,26 @@ function repairAndMigrateAccountLedger({
     }
 
     const after = summarizeCounts(nextCalls);
+    const safeSuffix = sanitizeBackupSuffix(backupSuffix);
+    const hasContentChange = updatedCount > 0 || Boolean(force);
+    const shouldSave = !dryRun && hasContentChange;
     let backupPath = null;
-    if (!dryRun && fs.existsSync(resolvedLedgerPath)) {
-      const tsTag = backupSuffix || `${Date.now()}`;
-      backupPath = `${resolvedLedgerPath}.bak-pre-elv89-${tsTag}`;
-      fs.copyFileSync(resolvedLedgerPath, backupPath);
-    }
-
-    if (!dryRun && (updatedCount > 0 || force)) {
+    let prunedBackups = null;
+    if (shouldSave) {
+      if (fs.existsSync(resolvedLedgerPath)) {
+        const existingBackups = (!force && !safeSuffix)
+          ? listLedgerRepairBackups(resolvedLedgerPath, fs)
+          : [];
+        if (existingBackups.length > 0) {
+          backupPath = existingBackups[0].path;
+          prunedBackups = pruneLedgerRepairBackups(resolvedLedgerPath, { keep: maxBackups });
+        } else {
+          const tsTag = safeSuffix || `${Date.now()}`;
+          backupPath = `${resolvedLedgerPath}.bak-pre-elv89-${tsTag}`;
+          fs.copyFileSync(resolvedLedgerPath, backupPath);
+          prunedBackups = pruneLedgerRepairBackups(resolvedLedgerPath, { keep: maxBackups });
+        }
+      }
       const draftLedger = {
         ...ledger,
         calls: nextCalls,
@@ -2702,15 +3217,17 @@ function repairAndMigrateAccountLedger({
       }
       try {
         syncAccountLedgerPartitions(resolvedLedgerPath, nextCalls, fs);
-      } catch { }
+      } catch {}
       cachedTokenHistoryAt = 0;
     }
 
     return {
       ok: true,
       dryRun: Boolean(dryRun),
+      changed: hasContentChange,
       ledgerPath: resolvedLedgerPath,
       backupPath,
+      prunedBackups,
       updatedCount,
       clearedCount,
       attributedOrFixedCount,
@@ -3881,6 +4398,16 @@ async function discoverWslGeminiDirsAsync(options = {}) {
     return { distros: [], roots: [], desktopDirs: [], cliDirs: [], skippedRoots: [] };
   }
   const hasCustomOverride = Boolean(options.fs || options.wslDistros || options.wslProbeFn || options.wslProbeTimeoutMs);
+  loadPersistedPricingCatalog(options);
+  const isRuntimeHostScan = !options.agDir && !options.fs && !options.hostFetcher && !process.env.NODE_TEST_CONTEXT;
+  if (isRuntimeHostScan) {
+    const cat = getDynamicPricingCatalog();
+    const isCatalogStale = !cat.fetchedAtMs || (Date.now() - cat.fetchedAtMs) >= PRICING_CATALOG_TTL_MS;
+    if (isCatalogStale && (Date.now() - _lastPricingAutoAttemptMs) >= PRICING_AUTO_RETRY_COOLDOWN_MS) {
+      _lastPricingAutoAttemptMs = Date.now();
+      void syncPricingCatalogAsync({ force: false }).catch(() => {});
+    }
+  }
   const scopeKey = getEffectiveScanScopeKey(options);
   if (!hasCustomOverride && !options.force && wslDiscoveryCache.value && wslDiscoveryCache.scopeKey === scopeKey && (Date.now() - wslDiscoveryCache.at) < WSL_DISCOVERY_CACHE_TTL_MS) {
     return wslDiscoveryCache.value;
@@ -4171,7 +4698,7 @@ async function recordModelCallsAsync(newCalls = [], options = {}) {
         return res;
       }
     }
-    const res = recordModelCalls(newCalls, optsObj);
+    const res = await recordModelCallsLockedAsync(newCalls, optsObj);
     if (res && res.changed) {
       invalidateHostLedgerAndHistoryCaches();
     }
@@ -6124,12 +6651,44 @@ async function collectTokenHistoryCoreAsync(options = {}, extraContext = {}) {
     }
   } catch { }
 
+  const { updatedAt: _collectedAt, ...visibleHistory } = out;
+  out.accountKey = currentAccountKey ? String(currentAccountKey) : null;
+  out.revision = crypto.createHash('sha256')
+    .update(String(out.accountKey || '') + '|' + JSON.stringify(visibleHistory))
+    .digest('hex');
+
   return {
     out,
     archiveSig,
     accountKey: currentAccountKey ? String(currentAccountKey) : null,
     stale: false
   };
+}
+
+function shouldSkipTokenHistoryRefresh({ force, knownRevision, revision, knownAccountKey, accountKey } = {}) {
+  if (force === true) return false;
+  if (typeof knownRevision !== 'string' || !knownRevision) return false;
+  if (!revision || knownRevision !== revision) return false;
+  if (typeof knownAccountKey === 'string' && knownAccountKey) {
+    if (!accountKey) return false;
+    if (knownAccountKey !== accountKey) return false;
+  }
+  return true;
+}
+
+async function getTokenHistoryResponse({ force = false, knownRevision, knownAccountKey, ...rest } = {}) {
+  const data = await collectTokenHistoryAsync({ ...rest, force });
+  const accountKey = data?.accountKey ? String(data.accountKey) : null;
+  if (shouldSkipTokenHistoryRefresh({
+    force,
+    knownRevision,
+    revision: data?.revision,
+    knownAccountKey,
+    accountKey
+  })) {
+    return { ok: true, unchanged: true, revision: data.revision, accountKey };
+  }
+  return { ok: true, data };
 }
 
 async function collectTokenHistoryAsync(options = {}) {
@@ -7975,6 +8534,12 @@ module.exports = {
   collect,
   collectTokenHistory,
   collectTokenHistoryAsync,
+  shouldSkipTokenHistoryRefresh,
+  getTokenHistoryResponse,
+  syncPricingCatalogAsync,
+  loadPersistedPricingCatalog,
+  repriceUnpricedLedgerCalls,
+  repriceUnpricedLedgerCallsAsync,
   parseLxssRegistryOutput,
   listRegisteredWslDistros,
   resolveWslDistroUncRoot,
@@ -8005,6 +8570,9 @@ module.exports = {
   buildAccountUsageBreakdown,
   summarizeAccountWindowUsage,
   repairAndMigrateAccountLedger,
+  listLedgerRepairBackups,
+  pruneLedgerRepairBackups,
+  cleanupUpgradeLedgerBackups,
   loadPricingLedger,
   savePricingLedger,
   getPricingLedgerPath,

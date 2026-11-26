@@ -15,7 +15,7 @@ const {
 const { installStudio, getStudioStatus } = require('../src/core/installer');
 const { restoreStudio } = require('../src/core/restore');
 
-function makeTempSandbox() {
+function makeTempSandbox(version = '2.34.0') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-studio-test-'));
   const srcDir = path.join(root, 'mock-app');
   const distDir = path.join(srcDir, 'dist');
@@ -24,7 +24,7 @@ function makeTempSandbox() {
 
   fs.writeFileSync(path.join(srcDir, 'package.json'), JSON.stringify({
     name: 'antigravity',
-    version: '2.34.0',
+    version,
     main: 'dist/main.js',
   }, null, 2));
 
@@ -159,5 +159,55 @@ test('ASAR pack, idempotent install, legacy cleanup, and lossless restore', () =
     assert.equal(sha256File(asarPath), origSha);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('host upgrade rotates stale backup and prevents restore downgrade', () => {
+  const { root, asarPath, stateDir } = makeTempSandbox('2.34.0');
+  const upgradeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-studio-up-'));
+  try {
+    const origSha234 = sha256File(asarPath);
+    const backupPath = `${asarPath}.studio-orig.bak`;
+
+    // 1. Install on 2.34.0 and verify idempotent reinstall keeps backup untouched
+    installStudio({ asarPath, stateDir });
+    assert.equal(sha256File(backupPath), origSha234);
+    installStudio({ asarPath, stateDir });
+    assert.equal(sha256File(backupPath), origSha234);
+    assert.equal(fs.existsSync(`${asarPath}.studio-orig.2.34.0.bak`), false);
+
+    // 2. Host upgrades to unpatched 2.35.2 (no dist/ag-studio/manifest.json inside app.asar)
+    const stock235Src = path.join(upgradeRoot, 'mock-app');
+    fs.cpSync(path.join(root, 'mock-app'), stock235Src, { recursive: true });
+    fs.writeFileSync(path.join(stock235Src, 'package.json'), JSON.stringify({
+      name: 'antigravity',
+      version: '2.35.2',
+      main: 'dist/main.js',
+    }, null, 2));
+    fs.writeFileSync(path.join(stock235Src, 'dist', 'customWindowControls.js'), '"use strict";\n');
+    packDirectoryToAsar(stock235Src, asarPath);
+    const origSha235 = sha256File(asarPath);
+    assert.notEqual(origSha235, origSha234);
+
+    // 3. Install Studio onto unpatched 2.35.2 -> rotates stale 2.34.0 backup & updates .studio-orig.bak
+    const instUp = installStudio({ asarPath, stateDir });
+    assert.equal(instUp.appVersion, '2.35.2');
+    assert.equal(instUp.previousBackupVersion, '2.34.0');
+    assert.equal(sha256File(`${asarPath}.studio-orig.2.34.0.bak`), origSha234);
+    assert.equal(sha256File(backupPath), origSha235);
+
+    // 4. Reinstall on patched 2.35.2 remains idempotent on backupPath
+    installStudio({ asarPath, stateDir });
+    assert.equal(sha256File(backupPath), origSha235);
+
+    // 5. Restore must return 2.35.2 stock ASAR, never downgrading to 2.34.0
+    const res = restoreStudio({ asarPath, stateDir });
+    assert.equal(res.restored, true);
+    assert.equal(sha256File(asarPath), origSha235);
+    const restoredPkg = JSON.parse(readAsarFile(asarPath, 'package.json').toString('utf8'));
+    assert.equal(restoredPkg.version, '2.35.2');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(upgradeRoot, { recursive: true, force: true });
   }
 });

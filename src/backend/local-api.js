@@ -1,5 +1,6 @@
 'use strict';
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const http = require('http');
 const https = require('https');
@@ -145,6 +146,18 @@ function fetchJsonList(port, timeoutMs = 1500) {
   });
 }
 
+async function probeAntigravityOrigin(origin, timeoutMs = 1200) {
+  try {
+    const html = await request(origin + '/', null, null, timeoutMs);
+    return /window\.__APP_CONFIG__\s*=/.test(String(html || '')) ? 'antigravity' : 'other_http';
+  } catch (err) {
+    if (String(err?.message || '').startsWith('HTTP ')) {
+      return 'other_http';
+    }
+    return 'unreachable';
+  }
+}
+
 async function discoverAntigravityCdp(options = {}) {
   const explicit = parseExplicitPort(options.port ?? process.env.AG_CDP_PORT);
   const inIsolatedTest =
@@ -193,6 +206,34 @@ async function discoverAntigravityCdp(options = {}) {
         item => item && item.type === 'page' && Boolean(normalizeLoopbackOrigin(item.url))
       );
       if (matchedPages.length > 0) {
+        if (matchedPages.length > 1) {
+          const uniqueOrigins = Array.from(
+            new Set(matchedPages.map(item => normalizeLoopbackOrigin(item?.url)).filter(Boolean))
+          );
+          const originKinds = new Map();
+          const probeTimeoutMs = Math.min(timeoutMs, 1200);
+          await Promise.all(
+            uniqueOrigins.map(async origin => {
+              originKinds.set(origin, await probeAntigravityOrigin(origin, probeTimeoutMs));
+            })
+          );
+          const hasAntigravity = uniqueOrigins.some(origin => originKinds.get(origin) === 'antigravity');
+          if (hasAntigravity) {
+            const filtered = matchedPages.filter(
+              item => originKinds.get(normalizeLoopbackOrigin(item?.url)) !== 'other_http'
+            );
+            const prioritized = [
+              ...filtered.filter(item => originKinds.get(normalizeLoopbackOrigin(item?.url)) === 'antigravity'),
+              ...filtered.filter(item => originKinds.get(normalizeLoopbackOrigin(item?.url)) !== 'antigravity')
+            ];
+            return {
+              port,
+              page: prioritized[0],
+              pages: prioritized,
+              allPages
+            };
+          }
+        }
         return {
           port,
           page: matchedPages[0],
@@ -492,6 +533,154 @@ async function createCdpClient(wsUrl, options = {}) {
   };
 }
 
+function isIsolatedLocalApiOptions(options = {}) {
+  return (
+    Boolean(options && (options.appDataDir || options.homeDir || options.daemonDir || options.platform)) ||
+    process.env.AG_METER_TEST_MODE === '1' ||
+    isIsolatedTestPath(process.env.APPDATA) ||
+    isIsolatedTestPath(process.env.AG_STUDIO_STATE_DIR) ||
+    isIsolatedTestPath(process.env.AG_METER_STATE_DIR)
+  );
+}
+
+function defaultIsPidAlive(pid) {
+  const num = Number(pid);
+  if (!Number.isInteger(num) || num <= 0) return false;
+  try {
+    process.kill(num, 0);
+    return true;
+  } catch (err) {
+    return err?.code === 'EPERM';
+  }
+}
+
+function discoverLiveDaemonHubs(options = {}) {
+  if (options?.allowDaemonFallback === false) return [];
+  const inIsolatedTest = isIsolatedLocalApiOptions(options);
+  if (inIsolatedTest && !options?.daemonDir && !options?.homeDir) return [];
+  const homeDir = options?.homeDir || os.homedir();
+  const daemonDir = options?.daemonDir || path.join(homeDir, '.gemini', 'antigravity', 'daemon');
+  const isPidAlive = typeof options?.isPidAlive === 'function' ? options.isPidAlive : defaultIsPidAlive;
+  const out = [];
+  try {
+    if (!fs.existsSync(daemonDir)) return out;
+    const files = fs.readdirSync(daemonDir);
+    for (const name of files) {
+      if (!/^hub_.*\.json$/i.test(name)) continue;
+      const filePath = path.join(daemonDir, name);
+      try {
+        const st = fs.statSync(filePath);
+        const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        const pid = Number(raw?.pid);
+        const httpsPort = Number(raw?.httpsPort);
+        const httpPort = Number(raw?.httpPort);
+        const csrfToken = typeof raw?.csrfToken === 'string' ? raw.csrfToken.trim() : '';
+        if (!csrfToken || !isPidAlive(pid)) continue;
+        const httpsOrigin = Number.isInteger(httpsPort) && httpsPort >= 1 && httpsPort <= 65535
+          ? normalizeLoopbackOrigin(`https://127.0.0.1:${httpsPort}`)
+          : null;
+        const httpOrigin = Number.isInteger(httpPort) && httpPort >= 1 && httpPort <= 65535
+          ? normalizeLoopbackOrigin(`http://127.0.0.1:${httpPort}`)
+          : null;
+        const primaryOrigin = httpsOrigin || httpOrigin;
+        if (!primaryOrigin) continue;
+        out.push({
+          origin: primaryOrigin,
+          httpsOrigin,
+          httpOrigin,
+          httpsPort: httpsOrigin ? httpsPort : null,
+          httpPort: httpOrigin ? httpPort : null,
+          csrfToken,
+          pid,
+          filePath,
+          mtimeMs: Number(st.mtimeMs) || 0
+        });
+      } catch {}
+    }
+  } catch {}
+  out.sort((a, b) => (b.mtimeMs - a.mtimeMs) || ((b.httpsPort || 0) - (a.httpsPort || 0)));
+  return out;
+}
+
+function loadHostAuthBootstrap(options = {}) {
+  if (options?.authBootstrap === null) return null;
+  const inIsolatedTest = isIsolatedLocalApiOptions(options);
+  if (inIsolatedTest && !options?.authBootstrap) return null;
+
+  const candidates = [];
+  if (options?.authBootstrap) {
+    candidates.push(options.authBootstrap);
+  } else {
+    for (const modPath of ['./authBootstrap', '../authBootstrap', '../languageServer']) {
+      try {
+        const loaded = require(modPath);
+        if (loaded && typeof loaded === 'object') candidates.push(loaded);
+      } catch {}
+    }
+  }
+
+  for (const mod of candidates) {
+    if (!mod || typeof mod !== 'object') continue;
+    let activeOrigin = null;
+    try {
+      if (typeof mod.getActiveLsBaseUrl === 'function') {
+        activeOrigin = normalizeLoopbackOrigin(mod.getActiveLsBaseUrl());
+      } else if (typeof mod.getLsBaseUrl === 'function') {
+        activeOrigin = normalizeLoopbackOrigin(mod.getLsBaseUrl());
+      }
+    } catch {}
+    if (!activeOrigin) {
+      try {
+        const rawPort = typeof mod.getActiveLsPort === 'function'
+          ? mod.getActiveLsPort()
+          : (typeof mod.getLsPort === 'function' ? mod.getLsPort() : null);
+        const port = Number(rawPort);
+        if (Number.isInteger(port) && port >= 1 && port <= 65535) {
+          activeOrigin = normalizeLoopbackOrigin(`https://127.0.0.1:${port}`);
+        }
+      } catch {}
+    }
+    let token = '';
+    try {
+      if (typeof mod.getActiveLsCsrfToken === 'function') {
+        token = String(mod.getActiveLsCsrfToken() || '').trim();
+      } else if (typeof mod.getLsCsrfToken === 'function') {
+        token = String(mod.getLsCsrfToken() || '').trim();
+      }
+    } catch {}
+    if (activeOrigin && token) {
+      return { origin: activeOrigin, csrfToken: token };
+    }
+  }
+  return null;
+}
+
+function resolveAuthBootstrapForOrigin(rawOrigin, options = {}) {
+  const safeOrigin = normalizeLoopbackOrigin(rawOrigin);
+  if (!safeOrigin) return null;
+  const auth = loadHostAuthBootstrap(options);
+  if (!auth || auth.origin !== safeOrigin) return null;
+  return auth.csrfToken;
+}
+
+function resolveDaemonHubForOrigin(rawOrigin, options = {}) {
+  const safeOrigin = normalizeLoopbackOrigin(rawOrigin);
+  if (!safeOrigin) return null;
+  const hubs = discoverLiveDaemonHubs(options);
+  for (const hub of hubs) {
+    if (hub.httpsOrigin === safeOrigin || hub.httpOrigin === safeOrigin) {
+      return hub.csrfToken;
+    }
+  }
+  return null;
+}
+
+function resolveOriginCsrfToken(rawOrigin, options = {}) {
+  const safeOrigin = normalizeLoopbackOrigin(rawOrigin);
+  if (!safeOrigin) return null;
+  return resolveAuthBootstrapForOrigin(safeOrigin, options) || resolveDaemonHubForOrigin(safeOrigin, options) || null;
+}
+
 async function extractAppConfigViaCdp(page) {
   if (!page || !page.webSocketDebuggerUrl) return null;
   let client;
@@ -501,7 +690,7 @@ async function extractAppConfigViaCdp(page) {
       'Runtime.evaluate',
       {
         expression:
-          '(() => { try { if (!window.__APP_CONFIG__) return null; return { hasConfig: true, csrfToken: window.__APP_CONFIG__.csrfToken || "" }; } catch (e) { return null; } })()',
+          '(() => { try { const cfg = window.__APP_CONFIG__; const direct = typeof cfg?.csrfToken === "string" ? cfg.csrfToken.trim() : ""; let stored = ""; try { stored = String(window.localStorage?.getItem?.("agy_session_csrf_token") || "").trim(); } catch {} if (!cfg && !stored) return null; return { hasConfig: Boolean(cfg || stored), csrfToken: direct || stored }; } catch (e) { return null; } })()',
         returnByValue: true
       },
       3000
@@ -514,61 +703,106 @@ async function extractAppConfigViaCdp(page) {
   }
 }
 
-async function connectOrigin(rawOrigin, page = null, origins = null, extraMeta = {}) {
+async function connectOrigin(rawOrigin, page = null, origins = null, extraMeta = {}, options = {}) {
   const origin = normalizeLoopbackOrigin(rawOrigin);
   if (!origin) {
     throw new Error('非法的本机回环页面地址');
   }
-  let hasConfig = false;
-  let token = (typeof extraMeta.csrfToken === 'string' && extraMeta.csrfToken.trim()) ? extraMeta.csrfToken.trim() : null;
-  if (token) {
-    hasConfig = true;
-  }
+  const mergedMeta = { ...(extraMeta || {}), ...(options || {}) };
 
-  if (!token) {
+  const resolveAuth = async (retryOpts = {}) => {
+    let hasConfig = false;
+    let token = (!retryOpts.skipExplicit && typeof mergedMeta.csrfToken === 'string' && mergedMeta.csrfToken.trim())
+      ? mergedMeta.csrfToken.trim()
+      : '';
+    if (token) {
+      hasConfig = true;
+      return token;
+    }
+
+    let htmlFetchErr = null;
     try {
       const html = await request(origin + '/');
       const config = html.match(/window\.__APP_CONFIG__\s*=\s*(\{.*?\})\s*;/s);
       if (config) {
         hasConfig = true;
-        token = JSON.parse(config[1]).csrfToken;
+        const parsedCfg = JSON.parse(config[1]);
+        token = typeof parsedCfg?.csrfToken === 'string' ? parsedCfg.csrfToken.trim() : '';
       }
     } catch (err) {
-      if (!page?.webSocketDebuggerUrl && !extraMeta.fallbackCsrfToken) throw err;
+      htmlFetchErr = err;
     }
-  }
 
-  if (!hasConfig && page && page.webSocketDebuggerUrl) {
-    const cdpCfg = await extractAppConfigViaCdp(page);
-    if (cdpCfg && cdpCfg.hasConfig) {
+    if ((!hasConfig || !token) && page && page.webSocketDebuggerUrl) {
+      const cdpCfg = await extractAppConfigViaCdp(page);
+      if (cdpCfg && cdpCfg.hasConfig) {
+        hasConfig = true;
+        const cdpToken = typeof cdpCfg.csrfToken === 'string' ? cdpCfg.csrfToken.trim() : '';
+        if (cdpToken) token = cdpToken;
+      }
+    }
+
+    const canUseHostAuthFallback = !htmlFetchErr || /^HTTP 40[13]\b/.test(String(htmlFetchErr.message || ''));
+    if (!token && canUseHostAuthFallback) {
+      const bootstrapToken = resolveAuthBootstrapForOrigin(origin, mergedMeta);
+      if (bootstrapToken) {
+        token = bootstrapToken;
+        hasConfig = true;
+      }
+    }
+    if (!token && canUseHostAuthFallback) {
+      const daemonToken = resolveDaemonHubForOrigin(origin, mergedMeta);
+      if (daemonToken) {
+        token = daemonToken;
+        hasConfig = true;
+      }
+    }
+    if (!token && !retryOpts.skipExplicit && typeof mergedMeta.fallbackCsrfToken === 'string' && mergedMeta.fallbackCsrfToken.trim()) {
+      token = mergedMeta.fallbackCsrfToken.trim();
       hasConfig = true;
-      token = cdpCfg.csrfToken;
     }
-  }
 
-  if (!token && typeof extraMeta.fallbackCsrfToken === 'string' && extraMeta.fallbackCsrfToken.trim()) {
-    token = extraMeta.fallbackCsrfToken.trim();
-    hasConfig = true;
-  }
+    if (!hasConfig && !token && htmlFetchErr) {
+      throw htmlFetchErr;
+    }
+    if (!hasConfig) {
+      throw new Error('Antigravity 本地连接信息尚未就绪，请稍后重试');
+    }
+    if (!token) {
+      throw new Error('Antigravity 本地鉴权信息尚未就绪，请稍后重试');
+    }
+    return token;
+  };
 
-  if (!hasConfig) {
-    throw new Error('Antigravity 本地连接信息尚未就绪，请稍后重试');
-  }
-  if (!token) {
-    throw new Error('Antigravity 本地鉴权信息尚未就绪，请稍后重试');
-  }
+  let activeToken = await resolveAuth();
 
   return {
     origin,
-    csrfToken: token,
+    get csrfToken() {
+      return activeToken;
+    },
     page,
-    ...(extraMeta.port ? { port: extraMeta.port } : {}),
-    ...(Array.isArray(extraMeta.pages) ? { pages: extraMeta.pages } : {}),
+    ...(mergedMeta.port ? { port: mergedMeta.port } : {}),
+    ...(Array.isArray(mergedMeta.pages) ? { pages: mergedMeta.pages } : {}),
     origins: Array.isArray(origins) && origins.length ? origins : [origin],
-    call: async (method, body) =>
-      JSON.parse(
-        await request(`${origin}/exa.language_server_pb.LanguageServerService/${method}`, body, token)
-      )
+    call: async (method, body) => {
+      const endpoint = `${origin}/exa.language_server_pb.LanguageServerService/${method}`;
+      try {
+        return JSON.parse(await request(endpoint, body, activeToken));
+      } catch (err) {
+        if (/^HTTP 40[13]\b/.test(String(err?.message || ''))) {
+          let refreshed = '';
+          try {
+            refreshed = await resolveAuth({ skipExplicit: true });
+          } catch {}
+          if (refreshed && refreshed !== activeToken) {
+            activeToken = refreshed;
+            return JSON.parse(await request(endpoint, body, activeToken));
+          }
+        }
+        throw err;
+      }
+    }
   };
 }
 
@@ -583,22 +817,63 @@ async function connect(options = {}) {
     if (!explicitOrigin) {
       throw new Error('非法的本机回环页面地址');
     }
-    return connectOrigin(explicitOrigin, null, [explicitOrigin], {
-      csrfToken: options.csrfToken || null,
-      fallbackCsrfToken: options.fallbackCsrfToken || null,
-    });
+    return connectOrigin(explicitOrigin, null, [explicitOrigin], options);
   }
-  const { port, page, pages } = await discoverAntigravityCdp(options);
-  const origins = Array.from(
-    new Set((Array.isArray(pages) ? pages : [page]).map(item => normalizeLoopbackOrigin(item?.url)).filter(Boolean))
-  );
-  const targetOrigin = normalizeLoopbackOrigin(page.url);
-  return connectOrigin(targetOrigin, page, origins, { port, pages });
+  let cdpInfo = null;
+  let cdpErr = null;
+  try {
+    cdpInfo = await discoverAntigravityCdp(options);
+  } catch (err) {
+    cdpErr = err;
+  }
+  if (cdpInfo) {
+    const { port, page, pages } = cdpInfo;
+    const candidatePages = Array.isArray(pages) && pages.length ? pages : [page];
+    const origins = Array.from(
+      new Set(candidatePages.map(item => normalizeLoopbackOrigin(item?.url)).filter(Boolean))
+    );
+    let lastError = null;
+    for (const cand of candidatePages) {
+      const targetOrigin = normalizeLoopbackOrigin(cand?.url);
+      if (!targetOrigin) continue;
+      try {
+        return await connectOrigin(targetOrigin, cand, origins, { ...options, port, pages });
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    throw lastError || new Error('Antigravity 本地连接信息尚未就绪，请稍后重试');
+  }
+
+  if (options?.strictPort !== true) {
+    const bootstrapAuth = loadHostAuthBootstrap(options);
+    if (bootstrapAuth && bootstrapAuth.origin) {
+      try {
+        return await connectOrigin(bootstrapAuth.origin, null, [bootstrapAuth.origin], options);
+      } catch {}
+    }
+    const liveHubs = discoverLiveDaemonHubs(options);
+    if (liveHubs.length > 0) {
+      const hubOrigins = Array.from(new Set(liveHubs.map(h => h.origin).filter(Boolean)));
+      for (const hub of liveHubs) {
+        try {
+          return await connectOrigin(hub.origin, null, hubOrigins, options);
+        } catch {}
+      }
+    }
+  }
+
+  throw cdpErr || new Error('Antigravity 本地连接信息尚未就绪，请稍后重试');
 }
 
 module.exports = {
   connect,
   connectOrigin,
+  resolveOriginCsrfToken,
+  resolveAuthBootstrapForOrigin,
+  resolveDaemonHubForOrigin,
+  discoverLiveDaemonHubs,
+  probeAntigravityOrigin,
   normalizeLoopbackOrigin,
   parseExplicitPort,
   getAppDataDir,

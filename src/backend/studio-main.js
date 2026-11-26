@@ -327,6 +327,24 @@ function broadcastToAllWindows(channel, payload) {
     try {
       wc.send(channel, payload);
     } catch {}
+    if (channel === 'ag-studio:i18n-changed') {
+      try {
+        const frames = wc.mainFrame?.framesInSubtree;
+        if (Array.isArray(frames)) {
+          const payloadJson = JSON.stringify(payload);
+          for (const frame of frames) {
+            try {
+              if (!frame || frame === wc.mainFrame || frame.isDestroyed?.()) continue;
+              if (/^plugin:\/\//i.test(String(frame.url || '')) && typeof frame.executeJavaScript === 'function') {
+                void frame.executeJavaScript(
+                  `try { if (window.__AG_STUDIO_I18N__ && typeof window.__AG_STUDIO_I18N__.applyPayload === 'function') { window.__AG_STUDIO_I18N__.applyPayload(${payloadJson}); } } catch {}`
+                );
+              }
+            } catch {}
+          }
+        }
+      } catch {}
+    }
   };
 
   const utils = getHostUtilsSafe();
@@ -1939,6 +1957,11 @@ function registerIpcOnce() {
     if (opts?.pricingOverrides && typeof opts.pricingOverrides === 'object') {
       store.save({ enhance: { pricingOverrides: opts.pricingOverrides } });
     }
+    if (typeof meterCollector.syncPricingCatalogAsync === 'function') {
+      try {
+        await meterCollector.syncPricingCatalogAsync({ force: opts?.force === true });
+      } catch {}
+    }
     const authCtx = resolveHostAuthContext(event);
     const history = await meterCollector.collectTokenHistoryAsync({
       force: opts?.force !== false,
@@ -2321,6 +2344,43 @@ async function ensureInjected(win, options = {}) {
   }
 }
 
+async function injectI18nIntoSubframe(frame, storeInstance = null) {
+  try {
+    if (!frame || frame.isDestroyed?.() || typeof frame.executeJavaScript !== 'function') {
+      return false;
+    }
+    const frameUrl = String(frame.url || '');
+    if (!/^plugin:\/\//i.test(frameUrl)) {
+      return false;
+    }
+    const store = storeInstance || new ConfigStore();
+    const payload = buildI18nPayload(store);
+    const payloadJson = JSON.stringify(payload);
+
+    let alreadyMounted = false;
+    try {
+      alreadyMounted = Boolean(
+        await frame.executeJavaScript('Boolean(window.__AG_STUDIO_I18N__ && typeof window.__AG_STUDIO_I18N__.applyPayload === "function")')
+      );
+    } catch {}
+
+    if (!alreadyMounted) {
+      const i18nCode = getI18nPreloadSource();
+      if (!i18nCode) return false;
+      await frame.executeJavaScript(
+        `${i18nCode}\ntry { if (window.__AG_STUDIO_I18N_MODULE__ && typeof window.__AG_STUDIO_I18N_MODULE__.initPreloadI18n === 'function') { window.__AG_STUDIO_I18N_MODULE__.initPreloadI18n(${payloadJson}); } } catch {}`
+      );
+    }
+
+    await frame.executeJavaScript(
+      `try { if (window.__AG_STUDIO_I18N__ && typeof window.__AG_STUDIO_I18N__.applyPayload === 'function') { window.__AG_STUDIO_I18N__.applyPayload(${payloadJson}); } } catch {}`
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function attachWindow(win) {
   registerIpcOnce();
   if (!win || win.isDestroyed?.()) return;
@@ -2340,6 +2400,16 @@ function attachWindow(win) {
     boundWebContents.add(wc);
     wc.on('did-finish-load', () => {
       void ensureInjected(win, { force: true });
+    });
+    wc.on('did-frame-finish-load', (_event, isMainFrame, frameProcessId, frameRoutingId) => {
+      if (isMainFrame) return;
+      try {
+        const electron = getElectronSafe();
+        const frame = electron?.webFrameMain?.fromId?.(frameProcessId, frameRoutingId);
+        if (frame && !frame.isDestroyed?.() && /^plugin:\/\//i.test(String(frame.url || ''))) {
+          void injectI18nIntoSubframe(frame);
+        }
+      } catch {}
     });
     wc.on('dom-ready', () => {
       void ensureInjected(win, { force: false });
@@ -2426,6 +2496,7 @@ module.exports = {
   registerIpcOnce,
   attachWindow,
   ensureInjected,
+  injectI18nIntoSubframe,
   buildI18nPayload,
   getWindowWebContents,
   getActiveHubWindowOrigins,

@@ -134,6 +134,9 @@
       lastThemeSig = themeSig;
       themes.applyThemeToDocument(currentConfig.theme);
     }
+    if (typeof themes.syncSidecarIframeThemes === 'function') {
+      themes.syncSidecarIframeThemes(effMode);
+    }
     var fontsSig = JSON.stringify((currentConfig.theme && currentConfig.theme.fonts) || {}) + '|' + scannedFonts.length;
     if (fontsSig !== lastTypoSig) {
       lastTypoSig = fontsSig;
@@ -402,6 +405,7 @@
     hostThemeRaf = rafFn(function () {
       hostThemeRaf = 0;
       applyVisuals();
+      if (effortSlider) effortSlider.sync(currentConfig);
       hud.update(latestSnapshot, currentConfig, anchors && anchors.findComposerTarget());
       if (drawer.isOpen()) drawer.render();
     });

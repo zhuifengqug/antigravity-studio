@@ -2,6 +2,13 @@
   'use strict';
 
   var PROSE_SEL = '[data-testid="planner-response-text"], [data-testid="agent-response"] [data-markdown-root]';
+  var INK_HIGHLIGHT_STYLE_ID = 'ag-studio-prism-ink-highlight-style';
+  var INK_HIGHLIGHT_CSS = [
+    '::highlight(ags-ink-0) { opacity: 0.20; }',
+    '::highlight(ags-ink-1) { opacity: 0.45; }',
+    '::highlight(ags-ink-2) { opacity: 0.72; }',
+    '::highlight(ags-ink-3) { opacity: 0.90; }'
+  ].join('\n');
 
   function ensurePrismFxStyles() {
     if (typeof document === 'undefined') return;
@@ -18,13 +25,29 @@
       '#ag-studio-edge-aura { position:fixed; inset:0; pointer-events:none; z-index:2147482890; opacity:0; transition:opacity 280ms ease, box-shadow 280ms ease; }',
       '#ag-studio-edge-aura[data-aura="waiting"] { opacity:1; box-shadow:inset 0 0 38px rgba(245,158,11,0.22), inset 0 2px 14px rgba(245,158,11,0.26); }',
       '#ag-studio-edge-aura[data-aura="error"] { opacity:1; box-shadow:inset 0 0 42px rgba(239,68,68,0.24), inset 0 2px 16px rgba(239,68,68,0.28); }',
-      '#ag-studio-edge-aura[data-aura="complete"] { opacity:1; box-shadow:inset 0 0 38px rgba(16,185,129,0.22), inset 0 2px 14px rgba(16,185,129,0.26); }',
-      '::highlight(ags-ink-0) { opacity: 0.20; }',
-      '::highlight(ags-ink-1) { opacity: 0.45; }',
-      '::highlight(ags-ink-2) { opacity: 0.72; }',
-      '::highlight(ags-ink-3) { opacity: 0.90; }'
+      '#ag-studio-edge-aura[data-aura="complete"] { opacity:1; box-shadow:inset 0 0 38px rgba(16,185,129,0.22), inset 0 2px 14px rgba(16,185,129,0.26); }'
     ].join('\n');
     (document.head || document.documentElement).appendChild(s);
+  }
+
+  function syncInkHighlightStyles(active) {
+    if (typeof document === 'undefined') return;
+    var existing = typeof document.getElementById === 'function' ? document.getElementById(INK_HIGHLIGHT_STYLE_ID) : null;
+    if (!active) {
+      if (existing) {
+        if (typeof existing.remove === 'function') existing.remove();
+        else if (existing.parentNode) existing.parentNode.removeChild(existing);
+      }
+      return;
+    }
+    if (!existing) {
+      var s = document.createElement('style');
+      s.id = INK_HIGHLIGHT_STYLE_ID;
+      s.textContent = INK_HIGHLIGHT_CSS;
+      (document.head || document.documentElement).appendChild(s);
+    } else if (existing.textContent !== INK_HIGHLIGHT_CSS) {
+      existing.textContent = INK_HIGHLIGHT_CSS;
+    }
   }
 
   function createPrismFxController() {
@@ -223,6 +246,16 @@
       return hlBuckets;
     }
 
+    function deleteHighlightBuckets() {
+      clearInkHighlights();
+      if (typeof CSS !== 'undefined' && CSS.highlights && typeof CSS.highlights.delete === 'function') {
+        for (var i = 0; i < 4; i++) {
+          try { CSS.highlights.delete('ags-ink-' + i); } catch (_e) {}
+        }
+      }
+      hlBuckets = null;
+    }
+
     function stopStreamObserver() {
       if (streamObs) {
         try { streamObs.disconnect(); } catch (_e) {}
@@ -233,6 +266,10 @@
     }
 
     function syncInkStream(isGenerating) {
+      syncInkHighlightStyles(!destroyed && fxCfg.inkStream);
+      if (!fxCfg.inkStream) {
+        deleteHighlightBuckets();
+      }
       if (destroyed || !fxCfg.inkStream || !isGenerating || document.hidden) {
         stopStreamObserver();
         return;
@@ -304,6 +341,8 @@
     function destroy() {
       destroyed = true;
       stopStreamObserver();
+      deleteHighlightBuckets();
+      syncInkHighlightStyles(false);
       if (caretTypingTimer) clearTimeout(caretTypingTimer);
       document.removeEventListener('input', onCaretInput, true);
       document.removeEventListener('keyup', onCaretNav, true);

@@ -46,11 +46,11 @@ if (a === b) return true;
 var ka = _normEffTxt(a), kb = _normEffTxt(b);
 return ka && kb ? ka === kb : Boolean(a && b && String(a).trim().toLowerCase() === String(b).trim().toLowerCase());
 }
-var _NO_TR_A = { "data-ag-i18n-skip": "1", "data-ag-no-tr": "1", "data-no-translate": "1", "data-translate": "no", translate: "no", "data-ag-localization-skip": "true", "data-agy-no-translate": "true", "data-antigravity-zh-skip": "1" };
+var _NO_TR_A = { "data-ag-i18n-skip": "1", "data-ag-no-tr": "1", "data-no-translate": "1", "data-translate": "no", translate: "no", "data-ag-localization-skip": "true", "data-agy-no-translate": "true", "data-antigravity-zh-skip": "1", "data-ag-no-i18n": "" };
 function markNoTranslate(el) {
 if (!el) return el;
 var hc = el.classList && el.classList.contains ? el.classList.contains("notranslate") : (typeof el.className === "string" && /(?:^|\s)notranslate(?:\s|$)/.test(el.className));
-if (hc && el.getAttribute && el.getAttribute("data-ag-i18n-skip") === "1" && el.getAttribute("data-antigravity-zh-skip") === "1") return el;
+if (hc && el.getAttribute && el.getAttribute("data-ag-i18n-skip") === "1" && el.getAttribute("data-antigravity-zh-skip") === "1" && el.getAttribute("data-ag-no-i18n") === "") return el;
 if (el.setAttribute) {
 for (var k in _NO_TR_A) if (!el.getAttribute || el.getAttribute(k) !== _NO_TR_A[k]) el.setAttribute(k, _NO_TR_A[k]);
 }
@@ -498,7 +498,7 @@ if (isClaude && n === 3 && idx === 1) return "#a78bfa";
 return mixHex(lo, hi, clamp01((idx - first) / Math.max(1, n - 1 - first)));
 }
 // ── 样式表注入（对齐 dsh-codex-effort-slider 右向左星尘横穿 + 星云扫光 + Antigravity 面板适配） ──
-var SLIDER_CSS = "@keyframes ces-sweep{0%{transform:translateX(100%)}100%{transform:translateX(-100%)}}@keyframes ces-star-sweep{0%{transform:translate3d(0,0,0);opacity:0}6%,94%{opacity:1}100%{transform:translate3d(-100%,0,0);opacity:0}}.ces-inline,.ces-root,.ces-track,.ces-ag-section,.ces-ag-effort-row{box-sizing:border-box}.ces-inline,.ces-root,.ces-ag-section,.ces-ag-section *{user-select:none!important;-webkit-user-select:none!important;-webkit-tap-highlight-color:transparent!important}.ces-inline{width:100%;padding-top:6px}.ces-root{position:relative;width:100%;outline:none!important;box-shadow:none!important}.ces-track{position:relative;width:100%;height:28px;border-radius:999px;background:rgba(128,128,145,.18);box-shadow:inset 0 1px 2px rgba(0,0,0,.24),inset 0 0 0 1px rgba(255,255,255,.06);cursor:pointer;touch-action:none;transition:opacity .15s,box-shadow .2s}.ces-root[data-energy='1'] .ces-track{box-shadow:0 0 calc(var(--ces-energy,0) * 16px) rgba(168,85,247,.5),inset 0 1px 2px rgba(0,0,0,.24)}.ces-root[data-energy='0'] .ces-star,.ces-root[data-energy='0'] .ces-energy__sweep{animation-play-state:paused}.ces-track.is-locked{opacity:.45;cursor:not-allowed;filter:saturate(.25)}.ces-fill,.ces-energy,.ces-stars{position:absolute;top:0;left:0;bottom:0;width:var(--ces-fill,14px);border-radius:14px 0 0 14px;pointer-events:none}.ces-fill{background:var(--ces-fill-bg,#4d93f8);overflow:hidden}.ces-energy{overflow:hidden;opacity:var(--ces-energy,0);transition:opacity .2s;background:linear-gradient(90deg,#3b1178,#6d28d9 30%,#9333ea 62%,#c084fc)}.ces-energy__sweep{position:absolute;inset:0;background:linear-gradient(100deg,transparent 18%,rgba(255,255,255,.3) 50%,transparent 82%);transform:translateX(100%);animation:ces-sweep 2.4s linear infinite;pointer-events:none}.ces-stars{opacity:var(--ces-star-opacity,0);transition:opacity .2s;overflow:hidden}.ces-star{position:absolute;left:0;right:0;height:3px;margin-top:-1.5px;pointer-events:none;animation:ces-star-sweep linear infinite}.ces-star__dot{position:absolute;left:100%;top:0;width:3px;height:3px;margin-left:-1.5px;border-radius:50%;background:#f5f3ff;box-shadow:0 0 5px rgba(216,180,254,.95);opacity:var(--ces-b,1);transform:scale(var(--ces-b,1))}.ces-ticks{position:absolute;inset:0;pointer-events:none}.ces-tick{position:absolute;top:50%;width:3px;height:3px;margin:-1.5px 0 0 -1.5px;border-radius:50%;background:rgba(255,255,255,.28);pointer-events:none;transition:background-color .12s}.ces-tick.is-on{background:rgba(255,255,255,.65)}.ces-tick.is-dim{background:rgba(255,255,255,.28)}.ces-knob{position:absolute;top:50%;left:var(--ces-fill,14px);width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.34),0 0 0 .5px rgba(0,0,0,.06);pointer-events:none;will-change:transform}.ces-root[data-theme='claude'] .ces-stars,.ces-root[data-theme='claude'] .ces-energy{display:none!important}.ces-root[data-theme='claude'] .ces-track{background:rgba(128,128,145,.16);box-shadow:inset 0 1px 2px rgba(0,0,0,.22),inset 0 0 0 1px rgba(255,255,255,.08)}.ces-root[data-theme='claude'][data-energy='1'] .ces-track{box-shadow:0 0 16px rgba(167,139,250,.45),inset 0 1px 2px rgba(0,0,0,.22)}.ces-root[data-theme='claude'] .ces-knob{width:24px;height:30px;margin:-15px 0 0 -12px;border-radius:7px;box-shadow:0 2px 6px rgba(0,0,0,.4),0 0 0 .5px rgba(0,0,0,.12);display:flex;align-items:center;justify-content:center}.ces-knob-notch{display:none;width:2px;height:10px;border-radius:999px;background:rgba(0,0,0,.28)}.ces-root[data-theme='claude'] .ces-knob-notch{display:block}.ces-claude-canvas{position:absolute;left:0;top:0;border-radius:14px 0 0 14px;display:none;pointer-events:none}.ces-root[data-theme='claude'][data-energy='1'] .ces-claude-canvas{display:block}@keyframes ces-claude-rise{0%{transform:translateY(20%) scale(.98);opacity:.15}60%{opacity:1}85%{transform:translateY(-2%) scale(1.01)}100%{transform:none;opacity:1}}.ces-ag-effort-value:is(.is-claude-changing,.ces-text-rise){animation:ces-claude-rise .24s cubic-bezier(.2,.85,.25,1)}.ces-ag-effort-value.is-glowing:is(.is-claude-changing,.ces-text-rise){animation:ces-claude-rise .24s cubic-bezier(.2,.85,.25,1),ces-text-bloom .4s cubic-bezier(.16,1,.3,1) forwards}[data-testid='model-selector-panel'].ces-ag-panel-enhanced{max-height:26rem!important}.ces-ag-section,.ces-ag-section *{outline:none!important}.ces-ag-section,.ces-ag-effort-row{display:flex;flex-direction:column;width:100%}.ces-ag-section{flex-shrink:0}.ces-ag-effort-row{padding:6px 8px 8px;border-radius:6px;transition:box-shadow .2s,background-color .2s}.ces-ag-effort-row:hover{background:rgba(128,128,145,.08)}.ces-ag-effort-row[data-ces-max='true'],[data-ces-effort-row='true'][data-ces-max='true']{box-shadow:inset 0 0 0 1px rgba(139,92,246,.42),0 0 14px -4px rgba(139,92,246,.45)!important;background:rgba(139,92,246,.06)}.ces-ag-effort-head{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:18px;padding:1px 0;font-size:12px;line-height:16px;overflow-y:clip;overflow-clip-margin:10px}.ces-ag-effort-title{display:inline-flex;align-items:center;gap:6px;color:inherit;font-weight:500;opacity:.9}.ces-ag-effort-value{position:relative;z-index:1;display:inline-block;font-size:12px;font-weight:600;transition:color .15s}.ces-ag-effort-value::after{content:'';position:absolute;top:50%;left:50%;width:52px;height:26px;border-radius:999px;transform:translate(-50%,-50%) scale(.6);background:radial-gradient(ellipse,var(--ces-glow-color,rgba(168,85,247,.85)),var(--ces-glow-color,rgba(168,85,247,.45)) 45%,rgba(168,85,247,0) 75%);filter:blur(8px);pointer-events:none;opacity:0;z-index:-1}@keyframes ces-glow-flash{0%{opacity:.95;transform:translate(-50%,-50%) scale(.65);filter:blur(6px)}25%{opacity:1;transform:translate(-50%,-50%) scale(1.15);filter:blur(8px)}100%{opacity:0;transform:translate(-50%,-50%) scale(1.5);filter:blur(14px)}}@keyframes ces-text-bloom{0%{text-shadow:0 0 8px var(--ces-glow-color,#c084fc)}30%{text-shadow:0 0 14px var(--ces-glow-color,#c084fc),0 0 3px #fff}100%{text-shadow:none}}.ces-ag-effort-value.is-glowing{animation:ces-text-bloom .4s cubic-bezier(.16,1,.3,1) forwards}.ces-ag-effort-value.is-glowing::after{animation:ces-glow-flash .4s cubic-bezier(.16,1,.3,1) forwards}@media (prefers-reduced-motion:reduce){.ces-panel-shaking,.ces-ag-effort-value.is-glowing,.ces-ag-effort-value.is-glowing::after,.ces-ag-effort-value.ces-text-rise,.ces-ag-effort-value.is-claude-changing{animation:none!important}}html[data-ces-slider-ready='1'] [role='menu']:has([data-testid='model-selector-effort-option']):not(:has([data-testid='model-selector-panel'])),html[data-ces-slider-ready='1'] div[role='presentation']:has(>[role='menu'] [data-testid='model-selector-effort-option']):not(:has([data-testid='model-selector-panel'])),html[data-ces-slider-ready='1'] [data-ag-cs-orch-l3='1']{display:none!important;visibility:hidden!important;pointer-events:none!important;opacity:0!important}html[data-ces-slider-ready='1'] [role='menuitem']:has([data-testid='model-selector-effort-group'])>span.shrink-0:last-child,html[data-ces-slider-ready='1'] [data-ces-orch-row='1']>svg:last-child:not(:first-child):not(.lucide-check),html[data-ces-slider-ready='1'] [data-ces-orch-row='1']>span:last-child:not(:first-child):has(>svg:only-child:not(.lucide-check)),html[data-ces-slider-ready='1'] [data-ces-orch-row='1']>*:last-child>svg:last-child:not(.lucide-check){display:none!important}html[data-ces-slider-ready='1'] [role='menuitem']:has([data-testid='model-selector-effort-group'])>.group-hover\\:hidden{display:flex!important}[role='menuitem'][data-ces-model-selected='true'],[data-ces-orch-row='1'][data-ces-model-selected='true']{background:rgba(128,128,145,.14)}.ces-set{position:fixed;z-index:2147483646;width:268px;padding:12px;border-radius:10px;background:rgba(24,24,28,.96);color:#f4f4f6;border:1px solid rgba(255,255,255,.12);box-shadow:0 12px 32px rgba(0,0,0,.55);backdrop-filter:blur(12px);font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:12px;box-sizing:border-box;user-select:none}.ces-set-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.08);font-weight:600;font-size:12.5px}.ces-set-ver{font-size:11px;font-weight:400;opacity:.55}.ces-set-group{margin-bottom:10px}.ces-set-label{margin-bottom:5px;font-size:11px;opacity:.72}.ces-set-opts{display:flex;gap:4px}.ces-set-opt{flex:1;padding:5px 6px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#d4d4d8;font-size:11.5px;cursor:pointer;text-align:center;transition:all .12s ease}.ces-set-opt:hover{background:rgba(255,255,255,.1);color:#fff}.ces-set-opt.is-on{background:rgba(139,92,246,.28);border-color:rgba(139,92,246,.75);color:#fff;font-weight:600}.ces-set-actions{display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)}.ces-set-btn{flex:1;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#e4e4e7;font-size:11px;cursor:pointer}.ces-set-btn:hover{background:rgba(255,255,255,.14)}[data-testid='model-selector-panel'] .ces-ag-section[data-effort-slot='true']{grid-template-rows:auto auto}[data-testid='model-selector-panel'] .ces-ag-section[data-effort-slot='true']>[role='separator']{grid-row:1;grid-column:1}[data-testid='model-selector-panel'] .ces-ag-section[data-effort-slot='true']>:is(.ces-ag-effort-row,[data-testid='orchestrator-effort-bar']){grid-row:2!important;grid-column:1!important}";
+var SLIDER_CSS = "@keyframes ces-sweep{0%{transform:translateX(100%)}100%{transform:translateX(-100%)}}@keyframes ces-star-sweep{0%{transform:translate3d(0,0,0);opacity:0}6%,94%{opacity:1}100%{transform:translate3d(-100%,0,0);opacity:0}}.ces-inline,.ces-root,.ces-track,.ces-ag-section,.ces-ag-effort-row{box-sizing:border-box}.ces-inline,.ces-root,.ces-ag-section,.ces-ag-section *{user-select:none!important;-webkit-user-select:none!important;-webkit-tap-highlight-color:transparent!important}.ces-inline{width:100%;padding-top:6px}.ces-root{position:relative;width:100%;outline:none!important;box-shadow:none!important}.ces-track{position:relative;width:100%;height:28px;border-radius:999px;background:rgba(128,128,145,.18);box-shadow:inset 0 1px 2px rgba(0,0,0,.24),inset 0 0 0 1px rgba(255,255,255,.06);cursor:pointer;touch-action:none;transition:opacity .15s,box-shadow .2s}.ces-root[data-energy='1'] .ces-track{box-shadow:0 0 calc(var(--ces-energy,0) * 16px) rgba(168,85,247,.5),inset 0 1px 2px rgba(0,0,0,.24)}.ces-root[data-energy='0'] .ces-star,.ces-root[data-energy='0'] .ces-energy__sweep{animation-play-state:paused}.ces-track.is-locked{opacity:.45;cursor:not-allowed;filter:saturate(.25)}.ces-fill,.ces-energy,.ces-stars{position:absolute;top:0;left:0;bottom:0;width:var(--ces-fill,14px);border-radius:14px 0 0 14px;pointer-events:none}.ces-fill{background:var(--ces-fill-bg,#4d93f8);overflow:hidden}.ces-energy{overflow:hidden;opacity:var(--ces-energy,0);transition:opacity .2s;background:linear-gradient(90deg,#3b1178,#6d28d9 30%,#9333ea 62%,#c084fc)}.ces-energy__sweep{position:absolute;inset:0;background:linear-gradient(100deg,transparent 18%,rgba(255,255,255,.3) 50%,transparent 82%);transform:translateX(100%);animation:ces-sweep 2.4s linear infinite;pointer-events:none}.ces-stars{opacity:var(--ces-star-opacity,0);transition:opacity .2s;overflow:hidden}.ces-star{position:absolute;left:0;right:0;height:3px;margin-top:-1.5px;pointer-events:none;animation:ces-star-sweep linear infinite}.ces-star__dot{position:absolute;left:100%;top:0;width:3px;height:3px;margin-left:-1.5px;border-radius:50%;background:#f5f3ff;box-shadow:0 0 5px rgba(216,180,254,.95);opacity:var(--ces-b,1);transform:scale(var(--ces-b,1))}.ces-ticks{position:absolute;inset:0;pointer-events:none}.ces-tick{position:absolute;top:50%;width:3px;height:3px;margin:-1.5px 0 0 -1.5px;border-radius:50%;background:rgba(255,255,255,.28);pointer-events:none;transition:background-color .12s}.ces-tick.is-on{background:rgba(255,255,255,.65)}.ces-tick.is-dim{background:rgba(255,255,255,.28)}.ces-knob{position:absolute;top:50%;left:var(--ces-fill,14px);width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.34),0 0 0 .5px rgba(0,0,0,.06);pointer-events:none;will-change:transform}.ces-root[data-theme='claude'] .ces-stars,.ces-root[data-theme='claude'] .ces-energy{display:none!important}.ces-root[data-theme='claude'] .ces-track{background:rgba(128,128,145,.16);box-shadow:inset 0 1px 2px rgba(0,0,0,.22),inset 0 0 0 1px rgba(255,255,255,.08)}.ces-root[data-theme='claude'][data-energy='1'] .ces-track{box-shadow:0 0 16px rgba(167,139,250,.45),inset 0 1px 2px rgba(0,0,0,.22)}.ces-root[data-theme='claude'] .ces-knob{width:24px;height:30px;margin:-15px 0 0 -12px;border-radius:7px;box-shadow:0 2px 6px rgba(0,0,0,.4),0 0 0 .5px rgba(0,0,0,.12);display:flex;align-items:center;justify-content:center}.ces-knob-notch{display:none;width:2px;height:10px;border-radius:999px;background:rgba(0,0,0,.28)}.ces-root[data-theme='claude'] .ces-knob-notch{display:block}.ces-claude-canvas{position:absolute;left:0;top:0;border-radius:14px 0 0 14px;display:none;pointer-events:none}.ces-root[data-theme='claude'][data-energy='1'] .ces-claude-canvas{display:block}@keyframes ces-claude-rise{0%{transform:translateY(20%) scale(.98);opacity:.15}60%{opacity:1}85%{transform:translateY(-2%) scale(1.01)}100%{transform:none;opacity:1}}.ces-ag-effort-value:is(.is-claude-changing,.ces-text-rise){animation:ces-claude-rise .24s cubic-bezier(.2,.85,.25,1)}.ces-ag-effort-value.is-glowing:is(.is-claude-changing,.ces-text-rise){animation:ces-claude-rise .24s cubic-bezier(.2,.85,.25,1),ces-text-bloom .4s cubic-bezier(.16,1,.3,1) forwards}[data-testid='model-selector-panel'].ces-ag-panel-enhanced{max-height:26rem!important}.ces-ag-section,.ces-ag-section *{outline:none!important}.ces-ag-section,.ces-ag-effort-row{display:flex;flex-direction:column;width:100%}.ces-ag-section{flex-shrink:0}.ces-ag-effort-row{padding:6px 8px 8px;border-radius:6px;transition:box-shadow .2s,background-color .2s}.ces-ag-effort-row:hover{background:rgba(128,128,145,.08)}.ces-ag-effort-row[data-ces-max='true'],[data-ces-effort-row='true'][data-ces-max='true']{box-shadow:inset 0 0 0 1px rgba(139,92,246,.42),0 0 14px -4px rgba(139,92,246,.45)!important;background:rgba(139,92,246,.06)}.ces-ag-effort-head{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:18px;padding:1px 0;font-size:12px;line-height:16px;overflow-y:clip;overflow-clip-margin:10px}.ces-ag-effort-title{display:inline-flex;align-items:center;gap:6px;color:inherit;font-weight:500;opacity:.9}.ces-ag-effort-value{position:relative;z-index:1;display:inline-block;font-size:12px;font-weight:600;transition:color .15s}.ces-ag-effort-value::after{content:'';position:absolute;top:50%;left:50%;width:52px;height:26px;border-radius:999px;transform:translate(-50%,-50%) scale(.6);background:radial-gradient(ellipse,var(--ces-glow-color,rgba(168,85,247,.85)),var(--ces-glow-color,rgba(168,85,247,.45)) 45%,rgba(168,85,247,0) 75%);filter:blur(8px);pointer-events:none;opacity:0;z-index:-1}@keyframes ces-glow-flash{0%{opacity:.95;transform:translate(-50%,-50%) scale(.65);filter:blur(6px)}25%{opacity:1;transform:translate(-50%,-50%) scale(1.15);filter:blur(8px)}100%{opacity:0;transform:translate(-50%,-50%) scale(1.5);filter:blur(14px)}}@keyframes ces-text-bloom{0%{text-shadow:0 0 8px var(--ces-glow-color,#c084fc)}30%{text-shadow:0 0 14px var(--ces-glow-color,#c084fc),0 0 3px #fff}100%{text-shadow:none}}.ces-ag-effort-value.is-glowing{animation:ces-text-bloom .4s cubic-bezier(.16,1,.3,1) forwards}.ces-ag-effort-value.is-glowing::after{animation:ces-glow-flash .4s cubic-bezier(.16,1,.3,1) forwards}@media (prefers-reduced-motion:reduce){.ces-panel-shaking,.ces-ag-effort-value.is-glowing,.ces-ag-effort-value.is-glowing::after,.ces-ag-effort-value.ces-text-rise,.ces-ag-effort-value.is-claude-changing{animation:none!important}}html[data-ces-slider-ready='1'] [role='menu']:has([data-testid='model-selector-effort-option']):not(:has([data-testid='model-selector-panel'])),html[data-ces-slider-ready='1'] div[role='presentation']:has(>[role='menu'] [data-testid='model-selector-effort-option']):not(:has([data-testid='model-selector-panel'])),html[data-ces-slider-ready='1'] [role='menu']:has([data-testid='orchestrator-picker-effort']):not(:has([data-testid='model-selector-panel'])):not(:has([data-testid='orchestrator-picker-row'])):not([data-ag-cs-orch-l2='1']),html[data-ces-slider-ready='1'] div[role='presentation']:has([data-testid='orchestrator-picker-effort']):not(:has([data-testid='model-selector-panel'])):not(:has([data-testid='orchestrator-picker-row'])):not(:has([data-ag-cs-orch-l2='1'])),html[data-ces-slider-ready='1'] [data-testid='orchestrator-picker-effort']:not(:has([data-testid='model-selector-panel'])),html[data-ces-slider-ready='1'] [data-ag-cs-orch-l3='1']{display:none!important;visibility:hidden!important;pointer-events:none!important;opacity:0!important}html[data-ces-slider-ready='1'] [role='menuitem']:has([data-testid='model-selector-effort-group'])>span.shrink-0:last-child,html[data-ces-slider-ready='1'] [data-ces-orch-row='1']>svg:last-child:not(:first-child):not(.lucide-check),html[data-ces-slider-ready='1'] [data-ces-orch-row='1']>span:last-child:not(:first-child):has(>svg:only-child:not(.lucide-check)),html[data-ces-slider-ready='1'] [data-ces-orch-row='1']>*:last-child>svg:last-child:not(.lucide-check){display:none!important}html[data-ces-slider-ready='1'] [role='menuitem']:has([data-testid='model-selector-effort-group'])>.group-hover\\:hidden{display:flex!important}[role='menuitem'][data-ces-model-selected='true'],[data-ces-orch-row='1'][data-ces-model-selected='true']{background:rgba(128,128,145,.14)}.ces-set{position:fixed;z-index:2147483646;width:268px;padding:12px;border-radius:10px;background:rgba(24,24,28,.96);color:#f4f4f6;border:1px solid rgba(255,255,255,.12);box-shadow:0 12px 32px rgba(0,0,0,.55);backdrop-filter:blur(12px);font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:12px;box-sizing:border-box;user-select:none}.ces-set-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.08);font-weight:600;font-size:12.5px}.ces-set-ver{font-size:11px;font-weight:400;opacity:.55}.ces-set-group{margin-bottom:10px}.ces-set-label{margin-bottom:5px;font-size:11px;opacity:.72}.ces-set-opts{display:flex;gap:4px}.ces-set-opt{flex:1;padding:5px 6px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#d4d4d8;font-size:11.5px;cursor:pointer;text-align:center;transition:all .12s ease}.ces-set-opt:hover{background:rgba(255,255,255,.1);color:#fff}.ces-set-opt.is-on{background:rgba(139,92,246,.28);border-color:rgba(139,92,246,.75);color:#fff;font-weight:600}.ces-set-actions{display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)}.ces-set-btn{flex:1;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#e4e4e7;font-size:11px;cursor:pointer}.ces-set-btn:hover{background:rgba(255,255,255,.14)}[data-testid='model-selector-panel'] .ces-ag-section[data-effort-slot='true']{grid-template-rows:auto auto}[data-testid='model-selector-panel'] .ces-ag-section[data-effort-slot='true']>[role='separator']{grid-row:1;grid-column:1}[data-testid='model-selector-panel'] .ces-ag-section[data-effort-slot='true']>:is(.ces-ag-effort-row,[data-testid='orchestrator-effort-bar']){grid-row:2!important;grid-column:1!important}";
 function installStyles(doc) {
 var d = doc || (typeof document !== "undefined" ? document : null);
 if (!d || !d.head) return null;
@@ -508,25 +508,45 @@ if (s.textContent !== SLIDER_CSS) s.textContent = SLIDER_CSS;
 return s;
 }
 // ── 右键设置面板 ────────────────────────────────────────────────────────────
-var SET_TITLE_I18N = { "zh-CN": "推理等级滑条设置", "zh-TW": "推理等級滑桿設定", yue: "推理等級滑桿設定", en: "Effort Slider", ja: "推論スライダー設定" };
-var SET_HEAD_I18N = { "zh-CN": "推理等级滑条", "zh-TW": "推理等級滑桿", yue: "推理等級滑桿", en: "Effort Slider", ja: "推論スライダー" };
-function _isZhLang(lk) { return !lk || /^(?:zh|yue)\b/i.test(String(lk)); }
+var SET_TITLE_I18N = { "zh-CN": "推理等级滑条设置", "zh-TW": "推理等級滑桿設定", en: "Effort Slider", ja: "推論スライダー設定", ko: "추론 슬라이더 설정", es: "Ajustes de esfuerzo", fr: "Réglages d’effort", de: "Aufwandsregler-Einstellungen" };
+var SET_HEAD_I18N = { "zh-CN": "推理等级滑条", "zh-TW": "推理等級滑桿", en: "Effort Slider", ja: "推論スライダー", ko: "추론 슬라이더", es: "Nivel de esfuerzo", fr: "Niveau d’effort", de: "Aufwandsregler" };
+var FIXED_I18N = { "zh-CN": "固定", "zh-TW": "固定", en: "Fixed", ja: "固定", ko: "고정", es: "Fijo", fr: "Fixe", de: "Fest" };
+function _normSliderLang(raw, win) {
+var v = String(raw || "").trim();
+if (!v || v.toLowerCase() === "auto") {
+var w = _win(win);
+var navObj = w && "navigator" in w ? w.navigator : (typeof navigator !== "undefined" ? navigator : null);
+v = String(navObj?.language || "").trim();
+}
+var s = v.toLowerCase().replace(/_/g, "-");
+if (!s || s === "auto") return "en";
+if (s === "yue" || s.startsWith("yue-") || s === "zh-yue" || s.includes("cantonese")) return "zh-CN";
+if (/^zh-(tw|hant|hk|mo)/.test(s) || s === "tw" || s === "hant") return "zh-TW";
+if (/^zh/.test(s)) return "zh-CN";
+if (/^(ja|jp)/.test(s) || s === "japanese") return "ja";
+if (/^(ko|kr)/.test(s) || s === "korean") return "ko";
+if (/^es/.test(s) || s === "spanish") return "es";
+if (/^fr/.test(s) || s === "french") return "fr";
+if (/^de/.test(s) || s === "german") return "de";
+return "en";
+}
+function _isZhLang(lk) { var n = _normSliderLang(lk); return n === "zh-CN" || n === "zh-TW"; }
 function openSettingsPanel(options) {
 var o = options || {}, d = o.document || (typeof document !== "undefined" ? document : null);
 var w = o.window || d?.defaultView || (typeof window !== "undefined" ? window : globalRoot);
 if (!d?.body) return () => {};
 installStyles(d);
-var lk = getPrismRootAttr(d, w, "data-ag-cs-lang") || "zh-CN";
-var zh = _isZhLang(lk);
+var lk = _normSliderLang(getPrismRootAttr(d, w, "data-ag-cs-lang"), w);
+var zh = lk === "zh-CN" || lk === "zh-TW";
 d.querySelector(".ces-set")?.remove?.();
 var mk = (t, c, tx) => { var e = d.createElement(t); if (c) e.className = c; if (tx) e.textContent = tx; return e; };
 var p = markNoTranslate(mk("div", "ces-set"));
 p.setAttribute("role", "dialog");
-p.setAttribute("aria-label", SET_TITLE_I18N[lk] || (zh ? SET_TITLE_I18N["zh-CN"] : SET_TITLE_I18N.en));
+p.setAttribute("aria-label", SET_TITLE_I18N[lk] || SET_TITLE_I18N.en);
 p.style.left = Math.max(8, Math.min((w?.innerWidth || 800) - 276, typeof o.x === "number" ? o.x : 120)) + "px";
 p.style.top = Math.max(8, Math.min((w?.innerHeight || 600) - 230, typeof o.y === "number" ? o.y : 120)) + "px";
 var hd = mk("div", "ces-set-head");
-hd.appendChild(mk("span", "", SET_HEAD_I18N[lk] || (zh ? SET_HEAD_I18N["zh-CN"] : SET_HEAD_I18N.en)));
+hd.appendChild(mk("span", "", SET_HEAD_I18N[lk] || SET_HEAD_I18N.en));
 hd.appendChild(mk("span", "ces-set-ver", "v1.2.1"));
 p.appendChild(hd);
 var obs = [];
@@ -609,22 +629,108 @@ effort: effort,
 effortLabel: AG_EFFORT_LABELS[effort] || match[2]
 };
 }
+var _AG_TRIG_SEL = '[data-testid="model-selector-trigger"],button[aria-label^="Select model"]';
+var _AG_PANE_SEL = '[data-testid="agent-input-box"],[data-testid="conversation-view"],.surface-composer-card,[data-tiling-pane]';
+var _lastTrigStateByDoc = typeof WeakMap === "function" ? new WeakMap() : null;
 function _isSubTrigger(el) { return Boolean(el && el.closest && el.closest('[data-testid="subagent-tab-conversation"]')); }
-function findAntigravityTrigger(doc) {
-var d = doc || (typeof document !== "undefined" ? document : null), sel = '[data-testid="model-selector-trigger"],button[aria-label^="Select model"]';
+function _isTrigVisible(el) {
+if (!el || el.isConnected === false || el.hidden === true) return false;
+if (el.style && (el.style.display === "none" || el.style.visibility === "hidden")) return false;
+if (el.closest && el.closest("[hidden], .hidden")) return false;
+if (el.checkVisibility) { try { if (!el.checkVisibility()) return false; } catch (e) {} }
+return true;
+}
+function _isTrigExpanded(el) {
+if (!el || !el.getAttribute) return false;
+return el.getAttribute("aria-expanded") === "true" || el.getAttribute("data-state") === "open" || (el.hasAttribute && el.hasAttribute("data-popup-open") && el.getAttribute("data-popup-open") !== "false");
+}
+function _rememberActiveTrigger(doc, triggerEl, paneEl) {
+if (!doc || !_lastTrigStateByDoc) return;
+var prev = _lastTrigStateByDoc.get(doc) || { trigger: null, pane: null };
+if (triggerEl !== undefined) prev.trigger = triggerEl;
+if (paneEl !== undefined) prev.pane = paneEl;
+_lastTrigStateByDoc.set(doc, prev);
+}
+function _mainTrigs(sc) {
+var l = sc?.querySelectorAll?.(_AG_TRIG_SEL), o = [];
+if (l) for (var i = 0; i < l.length; i++) if (l[i] && !_isSubTrigger(l[i])) o.push(l[i]);
+return o;
+}
+function _findTriggerInNode(scope) {
+if (!scope) return null;
+if (scope.matches?.(_AG_TRIG_SEL) && !_isSubTrigger(scope) && scope.isConnected !== false) return scope;
+if (scope.querySelectorAll) {
+var cs = _mainTrigs(scope), fb = null;
+if (cs.length <= 1) return cs[0] || null;
+for (var j = 0; j < cs.length; j++) {
+if (_isTrigVisible(cs[j])) return cs[j];
+if (!fb) fb = cs[j];
+}
+return fb;
+}
+var q = scope.querySelector?.(_AG_TRIG_SEL);
+return q && !_isSubTrigger(q) ? q : null;
+}
+function findAntigravityTrigger(doc, hintEl) {
+var d = doc || (typeof document !== "undefined" ? document : null);
 if (!d) return null;
+if (hintEl && hintEl.isConnected !== false) {
+var hHit = _findTriggerInNode(hintEl) || _findTriggerInNode(hintEl.closest?.(_AG_PANE_SEL));
+if (hHit) return hHit;
+}
+var visList = [], firstHidden = null;
 if (d.querySelectorAll) {
-var list = d.querySelectorAll(sel), fb = null;
-for (var i = 0; i < list.length; i += 1) {
-var el = list[i];
-if (!el || _isSubTrigger(el)) continue;
-if (el.checkVisibility) { try { if (!el.checkVisibility()) { if (!fb) fb = el; continue; } } catch (e) {} }
-return el;
+var cands = _mainTrigs(d);
+if (cands.length === 1) return cands[0];
+for (var j = 0; j < cands.length; j++) {
+var cEl = cands[j];
+if (_isTrigVisible(cEl)) {
+if (_isTrigExpanded(cEl)) return cEl;
+visList.push(cEl);
+} else if (!firstHidden) firstHidden = cEl;
 }
-if (fb) return fb;
 }
+if (visList.length > 1) {
+var openPanel = findAntigravityPanel(d);
+if (openPanel) {
+var pCtx = _rdAgFiber(openPanel);
+if (pCtx && pCtx.conversationId) {
+for (var pIdx = 0; pIdx < visList.length; pIdx += 1) {
+var tCtx = _rdAgFiber(visList[pIdx]);
+if (tCtx && tCtx.conversationId === pCtx.conversationId) return visList[pIdx];
+}
+}
+}
+var rec = _lastTrigStateByDoc ? _lastTrigStateByDoc.get(d) : null;
+if (rec) {
+if (rec.trigger && rec.trigger.isConnected !== false && !_isSubTrigger(rec.trigger) && _isTrigVisible(rec.trigger)) return rec.trigger;
+if (rec.pane && rec.pane.isConnected !== false && !_isSubTrigger(rec.pane)) {
+var fromRecPane = _findTriggerInNode(rec.pane);
+if (fromRecPane && _isTrigVisible(fromRecPane)) return fromRecPane;
+}
+}
+var actEl = d.activeElement;
+if (actEl && actEl !== d.body && actEl !== d.documentElement) {
+var actDirect = _findTriggerInNode(actEl);
+if (actDirect && _isTrigVisible(actDirect)) return actDirect;
+var actPane = actEl.closest && actEl.closest(_AG_PANE_SEL);
+if (actPane && !_isSubTrigger(actPane)) {
+var fromActPane = _findTriggerInNode(actPane);
+if (fromActPane && _isTrigVisible(fromActPane)) return fromActPane;
+}
+}
+}
+if (visList.length > 0) return visList[0];
+if (firstHidden) return firstHidden;
 var q = d.querySelector && (d.querySelector('[data-testid="model-selector-trigger"]') || d.querySelector('button[aria-label^="Select model"]'));
 return q && !_isSubTrigger(q) ? q : null;
+}
+function _isTrigLocked(doc, hintEl) {
+var tr = (hintEl && hintEl.isConnected !== false && hintEl.matches && hintEl.matches(_AG_TRIG_SEL) && !_isSubTrigger(hintEl)) ? hintEl : findAntigravityTrigger(doc, hintEl);
+if (!tr) return false;
+if (tr.disabled === true || (tr.hasAttribute && tr.hasAttribute("disabled")) || (tr.getAttribute && tr.getAttribute("aria-disabled") === "true")) return true;
+var dd = tr.getAttribute && tr.getAttribute("data-disabled");
+return dd !== null && dd !== undefined && dd !== "false";
 }
 function findAntigravityPanel(doc) {
 var d = doc || (typeof document !== "undefined" ? document : null);
@@ -664,10 +770,10 @@ if (INFERENCE_LABELS.indexOf(t) < 0) cand = c;
 }
 return cand;
 }
-function syncTriggerColor(doc, label, index, count, isMax, hasOffFirst, isClaude) {
+function syncTriggerColor(doc, label, index, count, isMax, hasOffFirst, isClaude, triggerEl) {
 var d = doc || (typeof document !== "undefined" ? document : null);
 if (!d) return;
-var ag = findAntigravityTrigger(d), col = valueColorFor(label, index, count, isMax, hasOffFirst, typeof isClaude === "boolean" ? isClaude : isClaudeModel(ag ? ag.textContent : ""), resolvePrismAccentTone(d, null)) || "";
+var ag = triggerEl || findAntigravityTrigger(d), col = valueColorFor(label, index, count, isMax, hasOffFirst, typeof isClaude === "boolean" ? isClaude : isClaudeModel(ag ? ag.textContent : ""), resolvePrismAccentTone(d, null)) || "";
 if (ag) {
 var sp = ag.querySelector("span.opacity-70, [data-ces-part='trigger-effort']");
 if (sp) { sp.setAttribute("data-ces-part", "trigger-effort"); sp.style.color = col; sp.style.opacity = col ? "1" : ""; sp.style.fontWeight = col ? "600" : ""; }
@@ -843,7 +949,7 @@ modelOption: byEffort.get(ck) || modelObj
 };
 }
 var sP = modelObj && parseModelLabel(modelObj.label), sE = sP ? sP.effort : "fixed";
-var sL = sP ? sP.effortLabel : (_isZhLang(getPrismRootAttr(null, null, "data-ag-cs-lang")) ? "固定" : "Fixed");
+var sL = sP ? sP.effortLabel : (FIXED_I18N[_normSliderLang(getPrismRootAttr(null, null, "data-ag-cs-lang"))] || FIXED_I18N.en);
 var bn = baseName || modelObj?.label || "", sC = isClaudeModel(bn);
 return {
 baseName: bn, isOrchestrator: isOrch, orchestratorTunable: false,
@@ -852,7 +958,7 @@ levels: [{ effort: sE, label: sL, modelOption: modelObj }],
 currentIndex: 0, currentEffort: sE, currentLabel: sL, modelOption: modelObj
 };
 }
-function _commitAgOpt(ctx, targetOption, isOrchPlan, keepOpen) {
+function _commitAgOpt(ctx, targetOption, isOrchPlan, keepOpen, triggerEl) {
 if (!ctx || !targetOption?.label) return false;
 var shouldKeep = keepOpen !== false;
 try {
@@ -868,7 +974,9 @@ ctx.setModelConfigByLabelForConversation(targetOption.label, ctx.conversationId,
 return true;
 }
 if (typeof ctx.unwrappedSetSelectedModel === "function") {
-var d = typeof document !== "undefined" ? document : null, ed = d?.querySelector?.('[contenteditable="true"]');
+var d = typeof document !== "undefined" ? document : null;
+var pScope = triggerEl && triggerEl.closest ? triggerEl.closest('[data-testid="agent-input-box"],[data-testid="conversation-view"]') : null;
+var ed = pScope?.querySelector?.('[contenteditable="true"]') || d?.querySelector?.('[contenteditable="true"]');
 var prevFocus = d?.activeElement, onFocus = (ev) => { ev?.stopPropagation?.(); try { ed?.blur?.(); } catch {} };
 ed?.addEventListener?.("focus", onFocus, true);
 try {
@@ -900,14 +1008,14 @@ if (typeof item?.label === "string" && item.label) return item.label;
 if (typeof seat?.formatEffortLabel === "function") { try { var f = seat.formatEffortLabel(effortKey); if (f) return String(f); } catch {} }
 return AG_EFFORT_LABELS[String(effortKey || "").toLowerCase()] || String(effortKey || "");
 }
-var EFFORT_TITLE_I18N = { "zh-CN": "推理等级", "zh-TW": "推理等級", yue: "推理等級", en: "Reasoning Effort", ja: "推論レベル" };
+var EFFORT_TITLE_I18N = { "zh-CN": "推理等级", "zh-TW": "推理等級", en: "Reasoning Effort", ja: "推論レベル", ko: "추론 수준", es: "Nivel de razonamiento", fr: "Niveau de raisonnement", de: "Denkaufwand" };
 function resolveEffortTitle(doc, win) {
-var lang = getPrismRootAttr(doc, win, "data-ag-cs-lang") || "zh-CN";
+var lang = _normSliderLang(getPrismRootAttr(doc, win, "data-ag-cs-lang"), win);
 try {
 var ui = (win?.__agCsLocales || globalRoot?.__agCsLocales)?.getUiStrings?.(lang);
 if (ui?.effortTitle) return String(ui.effortTitle);
 } catch {}
-return EFFORT_TITLE_I18N[lang] || EFFORT_TITLE_I18N["zh-CN"];
+return EFFORT_TITLE_I18N[lang] || EFFORT_TITLE_I18N.en;
 }
 function _clrSibs(r) {
 for (var g of r?.querySelectorAll?.('[data-testid="model-selector-effort-group"]') || []) if (g?.nextElementSibling) delete g.nextElementSibling.__cesLastText;
@@ -919,8 +1027,10 @@ if (sp.style) sp.style.color = sp.style.opacity = sp.style.fontWeight = "";
 sp.removeAttribute?.("data-ces-part");
 delete sp.__cesLastText;
 }
-var te = findAntigravityTrigger(doc)?.querySelector?.("span.opacity-70, [data-ces-part='trigger-effort']");
+for (var trEl of doc.querySelectorAll(_AG_TRIG_SEL)) {
+var te = trEl?.querySelector?.("span.opacity-70, [data-ces-part='trigger-effort']");
 if (te) delete te.__cesLastText;
+}
 _clrSibs(doc);
 for (var v of doc.querySelectorAll('[data-ces-part="value"], .ces-ag-effort-value')) { delete v.__cesLastLabel; delete v.__cesLastKey; }
 for (var p of doc.querySelectorAll(".ces-ag-panel-enhanced")) p.classList?.remove("ces-ag-panel-enhanced");
@@ -1611,6 +1721,59 @@ var _boundSubs = new Set();
 var _hiddenL3 = new Map();
 var observer = null;
 var _intMut = false;
+var trackedTrigger = null;
+var trackedPane = null;
+function _trackTarget(ev) {
+try {
+var t = ev && ev.target;
+if (!t || typeof t.closest !== "function") return;
+var trig = t.closest(_AG_TRIG_SEL);
+if (trig && !_isSubTrigger(trig)) {
+trackedTrigger = trig;
+var p0 = trig.closest(_AG_PANE_SEL);
+if (p0 && !_isSubTrigger(p0)) trackedPane = p0;
+_rememberActiveTrigger(doc, trackedTrigger, trackedPane);
+return;
+}
+var pane = t.closest(_AG_PANE_SEL);
+if (pane && !_isSubTrigger(pane)) {
+trackedPane = pane;
+var innerTrig = _findTriggerInNode(pane);
+if (innerTrig) trackedTrigger = innerTrig;
+_rememberActiveTrigger(doc, trackedTrigger, trackedPane);
+}
+} catch (e) {}
+}
+var _trackOpts = { capture: true, passive: true };
+doc.addEventListener?.("pointerdown", _trackTarget, _trackOpts);
+doc.addEventListener?.("focusin", _trackTarget, _trackOpts);
+function _resolveCurTrigger() {
+var allM = _mainTrigs(doc);
+if (allM.length === 1) { trackedTrigger = allM[0]; return allM[0]; }
+var p = findAntigravityPanel(doc);
+if (p) {
+var fromOpen = findAntigravityTrigger(doc);
+if (fromOpen && _isTrigExpanded(fromOpen)) { trackedTrigger = fromOpen; return fromOpen; }
+var pCtx = _rdAgFiber(p);
+if (pCtx && pCtx.conversationId && doc.querySelectorAll) {
+var allTr = doc.querySelectorAll(_AG_TRIG_SEL);
+for (var i = 0; i < allTr.length; i += 1) {
+var cTr = allTr[i];
+if (!cTr || _isSubTrigger(cTr) || !_isTrigVisible(cTr)) continue;
+var tc = _rdAgFiber(cTr);
+if (tc && tc.conversationId === pCtx.conversationId) { trackedTrigger = cTr; return cTr; }
+}
+}
+}
+if (trackedTrigger && trackedTrigger.isConnected !== false && !_isSubTrigger(trackedTrigger) && _isTrigVisible(trackedTrigger)) {
+return trackedTrigger;
+}
+if (trackedPane && trackedPane.isConnected !== false && !_isSubTrigger(trackedPane)) {
+var pt = _findTriggerInNode(trackedPane);
+if (pt && _isTrigVisible(pt)) { trackedTrigger = pt; return pt; }
+}
+return findAntigravityTrigger(doc);
+}
 function _setTxt(el, s) { _setTxtNode(el, s, doc); }
 function _setEffTxt(el, s) { _setEffTxtNode(el, s, doc); }
 function notifySeatListeners() { _seatLs.forEach(function (fn) { try { fn(); } catch (e) {} }); }
@@ -1627,7 +1790,7 @@ if (on) { if (r.setAttribute && r.getAttribute("data-ces-slider-ready") !== "1")
 else if (r.removeAttribute && (!r.hasAttribute || r.hasAttribute("data-ces-slider-ready"))) r.removeAttribute("data-ces-slider-ready");
 }
 function getLiveContext() {
-var p = findAntigravityPanel(doc), t = findAntigravityTrigger(doc);
+var p = findAntigravityPanel(doc), t = _resolveCurTrigger();
 return (p && _rdAgFiber(p)) || (t && _rdAgFiber(t)) || null;
 }
 function getActiveProfile(ctx) {
@@ -1647,7 +1810,7 @@ else _recEff(_effMap, profile.baseName, profile.currentEffort);
 }
 var count = profile.levels.length, idx = profile.currentIndex, isMax = !profile.locked && count > 1 && idx === count - 1 && !isOffLevel(profile.currentLabel);
 var _sa = (el, k, v) => { if (el && el.getAttribute(k) !== v) el.setAttribute(k, v); };
-var triggerBtn = findAntigravityTrigger(doc);
+var triggerBtn = _resolveCurTrigger();
 if (triggerBtn) {
 if (profile.isOrchestrator && profile.orchestratorTunable) _sa(triggerBtn, "data-ces-orch-b", profile.isClaude ? "claude" : "gemini");
 else triggerBtn.removeAttribute("data-ces-orch-b");
@@ -1672,7 +1835,7 @@ if (effortSpan) _setEffTxt(effortSpan, expEff);
 }
 }
 var trigLbl = profile.locked ? (profile.modelOption && parseModelLabel(profile.modelOption.label) ? profile.currentLabel : "") : profile.currentLabel;
-syncTriggerColor(doc, trigLbl, idx, count, isMax, false, Boolean(profile.isClaude));
+syncTriggerColor(doc, trigLbl, idx, count, isMax, false, Boolean(profile.isClaude), triggerBtn);
 var panel = findAntigravityPanel(doc);
 if (!panel) return;
 var _s = (st, c) => { var o = c ? "1" : "", w = c ? "600" : ""; if (st.color !== c) st.color = c; if (st.opacity !== o) st.opacity = o; if (st.fontWeight !== w) st.fontWeight = w; };
@@ -1706,14 +1869,16 @@ _mkSel(sItem, !profile.isOrchestrator && (profile.modelOption?.label === sLabel 
 function _curProf() { return getActiveProfile(getLiveContext()); }
 function _syP() { try { win?.__agPrism?.sync?.(); } catch {} }
 var agSeatAdapter = {
-_read: _curProf,
+_read: function () { var p = _curProf(); return p && _isTrigLocked(doc, _resolveCurTrigger()) ? Object.assign({}, p, { locked: true }) : p; },
 get effortLevels() { return _curProf()?.levels || []; },
 get currentEffort() { return _curProf()?.currentEffort || ""; },
-get locked() { return _curProf()?.locked ?? true; },
+get locked() { return _isTrigLocked(doc, _resolveCurTrigger()) || (_curProf()?.locked ?? true); },
 get baseName() { return _curProf()?.baseName || ""; },
 get isClaude() { return Boolean(_curProf()?.isClaude); },
 get theme() { return _curProf()?.theme || "codex"; },
 selectEffort: function (levelItem) {
+var curTrig = _resolveCurTrigger();
+if (_isTrigLocked(doc, curTrig)) return;
 var ctx = getLiveContext(), targetOpt = levelItem && (levelItem.modelOption || levelItem.raw?.modelOption);
 if (!ctx || !targetOpt) return;
 var curProf = getActiveProfile(ctx);
@@ -1721,7 +1886,7 @@ if (curProf?.isOrchestrator && curProf.orchestratorTunable) {
 var opP = parseModelLabel(targetOpt.label);
 if (opP) _recEff(_orchEffMap, opP.base, opP.effort);
 _orchPlanOvr = targetOpt;
-_commitAgOpt(ctx, targetOpt, true);
+_commitAgOpt(ctx, targetOpt, true, true, curTrig);
 _withMut(() => { var np = resolveModelEffortProfile(ctx, _actOptOvr || ctx.selectedModel, _curEffMap(), targetOpt); _syncAgDom(ctx, np); _sySubs(activePanel, ctx, np); notifySeatListeners(); _syP(); });
 return;
 }
@@ -1730,7 +1895,7 @@ if (parsed) { _recEff(_effMap, parsed.base, parsed.effort); activeBaseOverride =
 _actOptOvr = targetOpt;
 _lastHostLbl = (ctx.selectedModel && ctx.selectedModel.label) || "";
 _orchPlanOvr = null;
-_commitAgOpt(ctx, targetOpt);
+_commitAgOpt(ctx, targetOpt, false, true, curTrig);
 _withMut(function () {
 _syncAgDom(ctx, resolveModelEffortProfile(ctx, targetOpt, _curEffMap()));
 _syP();
@@ -1809,22 +1974,23 @@ return _okOpt(fb) ? { opt: fb, base: mb, fam: true } : null;
 }
 var _SUB_BOX = '[role="menu"],[role="listbox"],[data-testid="context-menu-submenu-popup"],.agy-overlay,[data-side]';
 var _SUB_IT = '[role^="menuitem"],[role="option"],.agy-overlay-item';
+var _S_ML = '[role="menu"],[role="listbox"]', _S_OV = '.agy-overlay,[data-radix-popper-content-wrapper],[role="presentation"],[data-side]', _OP_R = "orchestrator-picker-row", _OP_E = "orchestrator-picker-effort", _S_OR = '[data-testid="' + _OP_R + '"]', _S_OE = '[data-testid="' + _OP_E + '"]';
 var _L3_RE = /^(?:off|minimal|low|medium|high|xhigh|extra|max)(?:\s+thinking)?$|^(?:关闭|关|极低|最低|最小|低|中|中等|高|超高|极高|特高|最高|最大)(?:思考|推理|强度)?$/i;
 function _subIts(m) {
-if (!m || !m.querySelectorAll) return [];
+if (!m?.querySelectorAll) return [];
 var raw = m.querySelectorAll(_SUB_IT);
 if (!raw.length) raw = m.querySelectorAll("button,[tabindex]");
-var out = [], i, j, el;
+var out = [], i, j, el, mr = m.getAttribute?.("role"), isM = mr === "menu" || mr === "listbox", ef;
 for (i = 0; i < raw.length; i += 1) {
 el = raw[i];
-if (!el || el === m || _isBox(el) || (el.closest && el.closest(".ces-ag-section")) || !String(el.textContent || "").trim()) continue;
-for (j = 0; j < out.length; j += 1) if (out[j].contains && out[j].contains(el)) { el = null; break; }
+if (!el || el === m || _isBox(el) || (el.closest && (el.closest(".ces-ag-section") || ((ef = el.closest(_S_OE)) && ef !== m) || (isM && el.closest(_S_ML) !== m))) || !String(el.textContent || "").trim()) continue;
+for (j = 0; j < out.length; j += 1) if (out[j].contains?.(el)) { el = null; break; }
 if (el) out.push(el);
 }
 return out;
 }
 function _badBox(m) {
-return !m || !activePanel || m === activePanel || Boolean(m.contains && m.contains(activePanel)) || Boolean(m.querySelector && m.querySelector('[data-testid="model-selector-panel"],[data-testid="model-selector-orchestrator"],[data-testid="quota-progress-circle"],.ces-ag-section'));
+return !m || !activePanel || m === activePanel || !!m.contains?.(activePanel) || !!m.querySelector?.('[data-testid="model-selector-panel"],[data-testid="model-selector-orchestrator"],[data-testid="quota-progress-circle"],.ces-ag-section');
 }
 function _isSub(m, c) {
 if (_badBox(m) || !_hasOrch(c)) return false;
@@ -1834,17 +2000,21 @@ return n >= 1 && n * 2 >= its.length;
 }
 function _isL3(m, c) {
 if (_badBox(m) || !_hasOrch(c)) return false;
+var mt = m.getAttribute?.("data-testid");
+if (mt === _OP_R || m.querySelector?.(_S_OR) || m.getAttribute?.("data-ag-cs-orch-l2") === "1") return false;
+if (mt === _OP_E || (m.matches && m.matches('[data-testid="orchestrator-picker-effort"]')) || m.querySelector?.(_S_OE)) return true;
 var its = _subIts(m), i;
 if (its.length < 2 || its.length > 7) return false;
 for (i = 0; i < its.length; i += 1) if (!_L3_RE.test(String(its[i].textContent || "").replace(/[✓✔•·]/g, " ").replace(/\s+/g, " ").trim())) return false;
 return true;
 }
-function _wrapOv(m) {
-var o = (m.closest && m.closest('.agy-overlay,[data-radix-popper-content-wrapper],[role="presentation"],[data-side]')) || (m.parentElement && m.parentElement !== doc.body ? m.parentElement : null);
-if (!o || o === activePanel || (o.contains && o.contains(activePanel)) || (o.querySelector && o.querySelector('[data-testid="model-selector-panel"]'))) return null;
-if ((o.getAttribute && o.getAttribute("data-ag-cs-orch-l2") === "1") || (o.querySelector && o.querySelector('[data-ag-cs-orch-l2="1"]'))) return null;
+function _wrapOv(m, strict) {
+var p = m.parentElement && m.parentElement !== doc.body ? m.parentElement : null;
+var o = p?.closest?.(_S_OV) || (!strict && p && p.id !== "root" && !m.matches?.('.agy-overlay,[role="presentation"],[data-side]') ? p : null);
+if (!o || o === activePanel || o.contains?.(activePanel) || o.querySelector?.('[data-testid="model-selector-panel"]')) return null;
+if (o.getAttribute?.("data-ag-cs-orch-l2") === "1" || o.querySelector?.('[data-ag-cs-orch-l2="1"]')) return null;
 var hasL2 = false;
-_boundSubs.forEach(function (b) { if (b && (b === o || (o.contains && o.contains(b)))) hasL2 = true; });
+_boundSubs.forEach((b) => { if (b && (b === o || o.contains?.(b))) hasL2 = true; });
 return hasL2 ? null : o;
 }
 function _ubSub(m) { if (m) { try { if (typeof m.__cesSubUb === "function") m.__cesSubUb(); } catch (e) {} _boundSubs.delete(m); } }
@@ -1866,17 +2036,13 @@ if (its[i].getAttribute("data-ces-model-selected") !== v) its[i].setAttribute("d
 function _bdSub(m) {
 if (!m || m.__cesSubBd) return;
 m.__cesSubBd = true;
-var ov = _wrapOv(m);
+var ov = _wrapOv(m), ov2 = ov ? _wrapOv(ov, 1) : null, ovs = [ov, ov2];
 try {
-m.setAttribute("data-ag-cs-model-submenu", "1");
-m.setAttribute("data-ag-cs-orch-l2", "1");
-if (ov && ov !== m) {
-ov.setAttribute("data-ag-cs-model-submenu", "1");
-if (ov.getAttribute && ov.getAttribute("data-ag-cs-orch-l3") === "1") ov.removeAttribute("data-ag-cs-orch-l3");
-}
+m.setAttribute("data-ag-cs-model-submenu", "1"); m.setAttribute("data-ag-cs-orch-l2", "1");
+for (var w of ovs) if (w && w !== m) { w.setAttribute("data-ag-cs-model-submenu", "1"); if (w.getAttribute?.("data-ag-cs-orch-l3") === "1") w.removeAttribute("data-ag-cs-orch-l3"); }
 } catch (e) {}
 function rAct(t) {
-if (!t || typeof t.closest !== "function" || t.closest('button[aria-label="Edit Model"],a[href]')) return null;
+if (_isTrigLocked(doc) || !t || typeof t.closest !== "function" || t.closest('button[aria-label="Edit Model"],a[href]')) return null;
 var it = t.closest(_SUB_IT);
 if (!it || !m.contains(it)) it = t.closest("button,[tabindex]");
 if (!it || it === m || _isBox(it) || !m.contains(it) || _isDis(t, it)) return null;
@@ -1905,7 +2071,7 @@ m.__cesSubUb = function () {
 for (var u = 0; u < evs.length; u += 1) m.removeEventListener(evs[u][0], evs[u][1], true);
 try {
 m.removeAttribute("data-ag-cs-model-submenu"); m.removeAttribute("data-ag-cs-orch-l2");
-if (ov && ov !== m) ov.removeAttribute("data-ag-cs-model-submenu");
+for (var w of ovs) if (w && w !== m) w.removeAttribute("data-ag-cs-model-submenu");
 var rs = m.querySelectorAll ? m.querySelectorAll("[data-ces-orch-row]") : [];
 for (var r = 0; r < rs.length; r += 1) { rs[r].removeAttribute("data-ces-orch-row"); rs[r].removeAttribute("data-ces-model-selected"); }
 } catch (e) {}
@@ -1914,24 +2080,26 @@ delete m.__cesSubUb; delete m.__cesSubBd;
 _boundSubs.add(m);
 }
 function _sySubs(panel, c, p) {
-_boundSubs.forEach(function (m) { if (!m || m.isConnected === false || !panel || !_isSub(m, c)) _ubSub(m); });
-_hiddenL3.forEach(function (ov, m) { if (!m || m.isConnected === false || !panel || !_isL3(m, c)) _clrL3(ov, m); });
+_boundSubs.forEach((m) => { if (!m || m.isConnected === false || !panel || !_isSub(m, c)) _ubSub(m); });
+_hiddenL3.forEach((ov, m) => { if (!m || m.isConnected === false || !panel || !_isL3(m, c)) _clrL3(ov, m); });
 if (!panel || !_hasOrch(c)) return;
-var seen = new Set(), cands = [], qm = doc && doc.querySelectorAll ? doc.querySelectorAll(_SUB_BOX) : [], mis = doc && doc.querySelectorAll ? doc.querySelectorAll(_SUB_IT) : [], i, j;
+var seen = new Set(), cands = [], qm = doc?.querySelectorAll?.(_SUB_BOX + "," + _S_OE) || [], mis = doc?.querySelectorAll?.(_SUB_IT) || [], i, j;
 for (i = 0; i < qm.length; i += 1) if (!seen.has(qm[i])) { seen.add(qm[i]); cands.push(qm[i]); }
 for (i = 0; i < mis.length; i += 1) { var pr = mis[i].parentElement; if (pr && !seen.has(pr) && !_badBox(pr)) { seen.add(pr); cands.push(pr); } }
-var l2 = cands.filter(function (x) { return _isSub(x, c); });
+var l2 = cands.filter((x) => _isSub(x, c));
 for (i = 0; i < l2.length; i += 1) {
-for (j = 0; j < l2.length; j += 1) if (i !== j && l2[i].contains && l2[i].contains(l2[j])) { l2[i] = null; break; }
+for (j = 0; j < l2.length; j += 1) if (i !== j && l2[i].contains?.(l2[j])) { l2[i] = null; break; }
 if (l2[i]) { _bdSub(l2[i]); _sySubDom(l2[i], c, p); }
 }
 if (_boundSubs.size > 0 || panel.getAttribute("data-ces-orch-tunable") === "true") {
 for (i = 0; i < cands.length; i += 1) {
 var m3 = cands[i], inL2 = false;
 if (_boundSubs.has(m3) || !_isL3(m3, c)) continue;
-_boundSubs.forEach(function (b) { if (b === m3 || (b.contains && b.contains(m3)) || (m3.contains && m3.contains(b))) inL2 = true; });
+var isEff = m3.getAttribute?.("data-testid") === _OP_E || !!m3.querySelector?.(_S_OE);
+_boundSubs.forEach((b) => { if (b === m3 || m3.contains?.(b) || (!isEff && b.contains?.(m3))) inL2 = true; });
 if (inL2) continue;
 var ov3 = _wrapOv(m3);
+if (ov3 && ov3 !== m3 && ov3.querySelector?.(_S_OR)) ov3 = null;
 try {
 if (m3.getAttribute("data-ag-cs-orch-l3") !== "1") m3.setAttribute("data-ag-cs-orch-l3", "1");
 if (ov3 && ov3 !== m3 && ov3.getAttribute("data-ag-cs-orch-l3") !== "1") ov3.setAttribute("data-ag-cs-orch-l3", "1");
@@ -1944,7 +2112,7 @@ function _bindPnl(panel) {
 if (!panel || panel.__cesAgBound) return;
 panel.__cesAgBound = true;
 function rKeep(target) {
-if (!target || typeof target.closest !== "function" || target.closest('.ces-ag-section,.ces-set,button[aria-label="Edit Model"]')) return null;
+if (_isTrigLocked(doc) || !target || typeof target.closest !== "function" || target.closest('.ces-ag-section,.ces-set,button[aria-label="Edit Model"]')) return null;
 var menuItem = target.closest('[role^="menuitem"]');
 if (_isDis(target, menuItem)) return null;
 var oe = target.closest('[data-testid="model-selector-orchestrator"]') || (menuItem && menuItem.querySelector && menuItem.querySelector('[data-testid="model-selector-orchestrator"]'));
@@ -2211,11 +2379,12 @@ var onMemCk = null;
 if (memOnly) {
 var qOrch = (c, ob) => {
 var or = ob ? _orchEffMap.get(ob) : "", oi = c ? (c.orchIdx instanceof Map && c.orchIdx.size ? c.orchIdx : c.effortIndex) : null, oby = oi && or ? _luEff(oi, ob) : null, ot = oby?.get(or);
-if (ot && _okOpt(ot) && or !== (oby.has("medium") ? "medium" : "")) { lk = { o: true, b: ob, t: ot, u: Date.now() + 300 }; qM(() => _commitAgOpt(c, ot, true, false)); }
+var dp = c?.orchDef && parseModelLabel(c.orchDef.label), defEff = dp && _slug(dp.base) === _slug(ob) && oby?.has(dp.effort) ? dp.effort : "";
+if (ot && _okOpt(ot) && or !== defEff) { lk = { o: true, b: ob, t: ot, u: Date.now() + 300 }; qM(() => { if (!_isTrigLocked(doc)) _commitAgOpt(c, ot, true, false); }); }
 };
 onMemCk = (ev) => {
 var t = ev?.target;
-if (!t?.closest || _isDis(t)) return;
+if (!t?.closest || _isTrigLocked(doc) || _isDis(t)) return;
 if (t.closest('[data-testid="model-selector-effort-option"],[data-testid="orchestrator-picker-effort"]')) { lk = null; return; }
 if (t.closest('button[aria-label="Edit Model"],a[href]')) return;
 var oRow = t.closest('[data-testid="orchestrator-picker-row"][data-model-base]');
@@ -2245,7 +2414,7 @@ if (!c) return;
 var curP = c.selectedModel && !_isOrch(c.selectedModel) ? parseModelLabel(c.selectedModel.label) : null;
 if (curP?.base === b) return;
 var by = _luEff(c.effortIndex, b), tgt = by?.get(r);
-if (tgt && _okOpt(tgt) && r !== (by.has("medium") ? "medium" : "")) { lk = { o: false, b, t: tgt, u: Date.now() + 300 }; qM(() => _commitAgOpt(c, tgt, false, false)); }
+if (tgt && _okOpt(tgt)) { lk = { o: false, b, t: tgt, u: Date.now() + 300 }; qM(() => { if (_isTrigLocked(doc)) { lk = null; return; } var live = getLiveContext() || c; if (live?.selectedModel?.label === tgt.label) { lk = null; return; } _commitAgOpt(live, tgt, false, false); }); }
 };
 doc.addEventListener?.("click", onMemCk, true);
 }
@@ -2253,11 +2422,11 @@ scan();
 var MO = opts.MutationObserver || win?.MutationObserver || (typeof MutationObserver === "function" ? MutationObserver : null);
 if (typeof MO === "function") {
 var ctrlSel = '[data-testid="model-selector-trigger"],button[aria-label^="Select model"],[data-testid="model-selector-panel"],[role="menu"]';
-var noiseSel = '[data-testid="autoscroll-viewport"],.toast-viewport,[data-testid="sidebar-split"]>div:first-child';
+var noiseSel = '[data-testid="autoscroll-viewport"],.toast-viewport,[data-testid="sidebar-split"]>div:first-child,aside,[data-hover-card-popup]';
 observer = new MO((recs) => {
 if (_intMut) return;
-if (!memOnly && Array.isArray(recs) && recs.length) {
-if (activeSection && activePanel?.contains(activeSection) && recs.every((sr) => { var st = sr?.target, sel = st && (st.nodeType === 1 ? st : st.parentElement); return sel && activeSection.contains(sel); })) return;
+if (Array.isArray(recs) && recs.length) {
+if (!memOnly && activeSection && activePanel?.contains(activeSection) && recs.every((sr) => { var st = sr?.target, sel = st && (st.nodeType === 1 ? st : st.parentElement); return sel && activeSection.contains(sel); })) return;
 if (!activePanel) {
 var rel = recs.some((r) => {
 var t = r?.target, el = t && (t.nodeType === 1 ? t : t.parentElement);
@@ -2269,11 +2438,15 @@ if (!rel) return;
 }
 scan();
 });
-observer.observe(doc.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["aria-expanded", "data-state", "hidden", "data-selected"] });
+observer.observe(doc.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["aria-expanded", "data-state", "hidden", "data-selected", "disabled", "aria-disabled", "data-disabled"] });
 }
 return {
 stop: () => {
 observer?.disconnect(); observer = null;
+doc.removeEventListener?.("pointerdown", _trackTarget, _trackOpts);
+doc.removeEventListener?.("focusin", _trackTarget, _trackOpts);
+trackedTrigger = trackedPane = null;
+if (_lastTrigStateByDoc) _lastTrigStateByDoc.delete(doc);
 if (memOnly) { if (onMemCk) doc.removeEventListener?.("click", onMemCk, true); lk = null; _clrSibs(doc); }
 else { _unmntSec(); _clrAgDom(doc); }
 },

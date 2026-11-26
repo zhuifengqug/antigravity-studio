@@ -157,6 +157,26 @@ function extractWorkspaceFromTranscriptFile(transcriptPath) {
   return null;
 }
 
+function unwrapCmdTargetExe(candidatePath) {
+  let exePath = candidatePath;
+  if (!candidatePath) return exePath;
+  const lower = String(candidatePath).toLowerCase();
+  if (lower.endsWith('.cmd') || lower.endsWith('.bat')) {
+    try {
+      const content = fs.readFileSync(candidatePath, 'utf8');
+      const m = content.match(/"([^"]*agy\.exe)"/i);
+      if (m && m[1]) {
+        const resolvedM = m[1].replace(/%~dp0/gi, path.dirname(candidatePath) + path.sep);
+        if (fs.existsSync(resolvedM)) exePath = path.resolve(resolvedM);
+      } else {
+        const sib = path.join(path.dirname(candidatePath), 'agy.exe');
+        if (fs.existsSync(sib)) exePath = sib;
+      }
+    } catch {}
+  }
+  return exePath;
+}
+
 function resolveCliExecutable(customCliPath, options = {}) {
   const env = options.env || process.env;
   const platform = options.platform || process.platform;
@@ -164,11 +184,9 @@ function resolveCliExecutable(customCliPath, options = {}) {
     const explicit = path.resolve(String(customCliPath).trim());
     try {
       if (fs.existsSync(explicit) && fs.statSync(explicit).isFile()) {
-        const dir = path.dirname(explicit);
-        const siblingExe = path.join(dir, 'agy.exe');
         const directExe = explicit.toLowerCase().endsWith('.exe')
           ? explicit
-          : (platform === 'win32' && fs.existsSync(siblingExe) ? siblingExe : explicit);
+          : (platform === 'win32' ? unwrapCmdTargetExe(explicit) : explicit);
         return { ok: true, cliPath: explicit, exePath: directExe, source: 'explicit' };
       }
     } catch {}
@@ -189,7 +207,9 @@ function resolveCliExecutable(customCliPath, options = {}) {
   if (platform === 'win32') {
     candidates.push(
       { p: path.join(home, '.gemini', 'antigravity', 'bin', 'agy.exe'), src: 'gemini_bin_exe' },
+      { p: path.join(home, '.gemini', 'bin', 'agy.exe'), src: 'gemini_cli_bin_exe' },
       { p: path.join(home, '.gemini', 'antigravity', 'bin', 'agy.cmd'), src: 'gemini_bin_cmd' },
+      { p: path.join(home, '.gemini', 'bin', 'agy.cmd'), src: 'gemini_cli_bin_cmd' },
       { p: path.join(appData, 'Antigravity', 'bin', 'agy.exe'), src: 'appdata_bin_exe' },
       { p: path.join(appData, 'Antigravity', 'bin', 'agy.cmd'), src: 'appdata_bin_cmd' },
       { p: path.join(localAppData, 'Programs', 'Antigravity IDE', 'bin', 'agy.exe'), src: 'ide_bin_exe' },
@@ -215,6 +235,7 @@ function resolveCliExecutable(customCliPath, options = {}) {
     }
     candidates.push(
       { p: path.join(home, '.gemini', 'antigravity', 'bin', 'agy'), src: 'gemini_bin' },
+      { p: path.join(home, '.gemini', 'bin', 'agy'), src: 'gemini_cli_bin' },
       { p: path.join(home, '.local', 'bin', 'agy'), src: 'local_bin' },
       { p: '/opt/homebrew/bin/agy', src: 'homebrew_bin' },
       { p: '/usr/local/bin/agy', src: 'usr_local_bin' }
@@ -222,6 +243,7 @@ function resolveCliExecutable(customCliPath, options = {}) {
   } else {
     candidates.push(
       { p: path.join(home, '.gemini', 'antigravity', 'bin', 'agy'), src: 'gemini_bin' },
+      { p: path.join(home, '.gemini', 'bin', 'agy'), src: 'gemini_cli_bin' },
       { p: path.join(home, '.local', 'bin', 'agy'), src: 'local_bin' },
       { p: '/usr/local/bin/agy', src: 'usr_local_bin' }
     );
@@ -230,18 +252,7 @@ function resolveCliExecutable(customCliPath, options = {}) {
   for (const item of candidates) {
     try {
       if (item.p && fs.existsSync(item.p) && fs.statSync(item.p).isFile()) {
-        let exePath = item.p;
-        if (item.p.toLowerCase().endsWith('.cmd') || item.p.toLowerCase().endsWith('.bat')) {
-          const content = fs.readFileSync(item.p, 'utf8');
-          const m = content.match(/"([^"]*agy\.exe)"/i);
-          if (m && m[1]) {
-            const resolvedM = m[1].replace(/%~dp0/gi, path.dirname(item.p) + path.sep);
-            if (fs.existsSync(resolvedM)) exePath = path.resolve(resolvedM);
-          } else {
-            const sib = path.join(path.dirname(item.p), 'agy.exe');
-            if (fs.existsSync(sib)) exePath = sib;
-          }
-        }
+        const exePath = unwrapCmdTargetExe(item.p);
         return {
           ok: true,
           cliPath: item.launcher && fs.existsSync(item.launcher) ? item.launcher : item.p,
@@ -259,7 +270,7 @@ function resolveCliExecutable(customCliPath, options = {}) {
       const full = path.join(d, b);
       try {
         if (fs.existsSync(full) && fs.statSync(full).isFile()) {
-          return { ok: true, cliPath: full, exePath: full, source: 'PATH' };
+          return { ok: true, cliPath: full, exePath: unwrapCmdTargetExe(full), source: 'PATH' };
         }
       } catch {}
     }
@@ -420,6 +431,107 @@ function resolveHelperExecutable(options = {}) {
   return { ok: false, helperPath: null, helperSha256: null, error: '未找到原生辅助定位程序 cli-window-helper.exe' };
 }
 
+async function resolveCliAccountProfile(accountQuery, options = {}) {
+  const home = options.homeDir || process.env.USERPROFILE || os.homedir();
+  const cliAppDataDir = options.cliAppDataDir || path.join(home, '.gemini', 'antigravity-cli');
+  const profilesBaseDir = options.cliProfilesDir || path.join(cliAppDataDir, 'profiles');
+
+  let targetAccount = accountQuery || options.account || options.email || null;
+  if (!targetAccount) {
+    try {
+      const { getPluginSettings } = require('./meter-collector');
+      const settingsSnap = getPluginSettings({ stateDir: options.stateDir });
+      if (settingsSnap?.cliAccountEmail) {
+        targetAccount = settingsSnap.cliAccountEmail;
+      }
+    } catch {}
+  }
+
+  if (!targetAccount || typeof targetAccount !== 'string' || !targetAccount.trim()) {
+    return { ok: true, isolated: false, email: null, isolatedDir: null, accountRecord: null };
+  }
+
+  const queryRaw = targetAccount.trim();
+  const { getSharedAccountsManager, normalizeEmail } = require('./meter-accounts');
+  const mgr = getSharedAccountsManager({ stateDir: options.stateDir, forceNew: Boolean(options.stateDir) });
+  const store = mgr.loadStore();
+  const accounts = store.accounts || {};
+
+  const queryNorm = normalizeEmail(queryRaw);
+  let matchedAccount = null;
+  if (accounts[queryNorm]) {
+    matchedAccount = accounts[queryNorm];
+  } else {
+    const qLower = queryRaw.toLowerCase();
+    for (const [accEmail, acc] of Object.entries(accounts)) {
+      const el = accEmail.toLowerCase();
+      if (el === qLower || el.startsWith(qLower) || el.split('@')[0] === qLower) {
+        matchedAccount = acc;
+        break;
+      }
+    }
+  }
+
+  if (!matchedAccount) {
+    const available = Object.keys(accounts);
+    return {
+      ok: false,
+      code: 'ACCOUNT_NOT_FOUND',
+      error: `未在多账号管理器中找到指定账号: ${queryRaw}${available.length > 0 ? ` (可用账号: ${available.join(', ')})` : ' (暂无已配置账号)'}`,
+      targetAccount: queryRaw
+    };
+  }
+
+  const cred = matchedAccount.credential || {};
+  if (!cred.accessToken && !cred.refreshToken) {
+    return {
+      ok: false,
+      code: 'ACCOUNT_NO_CREDENTIALS',
+      error: `账号 ${matchedAccount.email} 暂无可用凭据，请先在面板多账号管理中登录或重新授权`,
+      email: matchedAccount.email
+    };
+  }
+
+  const safeDirName = matchedAccount.email.toLowerCase().replace(/[@.]/g, '_');
+  const isolatedDir = path.resolve(profilesBaseDir, safeDirName);
+  try {
+    fs.mkdirSync(isolatedDir, { recursive: true });
+    const tokenFile = path.join(isolatedDir, 'antigravity-oauth-token');
+    const tokenPayload = {
+      token: {
+        access_token: cred.accessToken || '',
+        token_type: 'Bearer',
+        refresh_token: cred.refreshToken || '',
+        expiry: cred.expiresAt ? new Date(cred.expiresAt).toISOString() : new Date(Date.now() + 3600000).toISOString()
+      },
+      auth_method: 'consumer',
+      id_token_email: matchedAccount.email,
+      id_token: cred.idToken || ''
+    };
+    fs.writeFileSync(tokenFile, JSON.stringify(tokenPayload, null, 2), 'utf8');
+
+    // Disable OS keyring lookup for isolated CLI profiles without passing unsupported flags.
+    const markerFile = path.join(isolatedDir, 'keyring-marker-disabled');
+    fs.writeFileSync(markerFile, '1', 'utf8');
+
+    return {
+      ok: true,
+      isolated: true,
+      email: matchedAccount.email,
+      accountRecord: matchedAccount,
+      isolatedDir,
+      tokenFile
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      code: 'PROFILE_PREPARE_ERROR',
+      error: `准备独立账号运行目录失败: ${err?.message || err}`,
+      email: matchedAccount.email
+    };
+  }
+}
+
 async function launchCliSession(options = {}, ownerHwnd = 0) {
   const cliInfo = resolveCliExecutable(options.cliPath, options);
   if (!cliInfo.ok) {
@@ -429,6 +541,11 @@ async function launchCliSession(options = {}, ownerHwnd = 0) {
   const wsInfo = await resolveCliWorkspace(options);
   if (!wsInfo.ok) {
     return wsInfo;
+  }
+
+  const accProfile = await resolveCliAccountProfile(options.account || options.email, options);
+  if (!accProfile.ok) {
+    return accProfile;
   }
 
   const cwd = wsInfo.cwd;
@@ -441,6 +558,13 @@ async function launchCliSession(options = {}, ownerHwnd = 0) {
 
   const cliArgs = ['--model', model, ...extraArgs];
   const env = buildCliProxyEnv(options.env || process.env, options);
+  if (accProfile.isolated) {
+    env.JETSKI_APP_DATA_DIR = accProfile.isolatedDir;
+    env.AG_CLI_ACCOUNT_EMAIL = accProfile.email;
+    if (accProfile.accountRecord?.credential?.accessToken) {
+      env.JETSKI_OAUTH_TOKEN = accProfile.accountRecord.credential.accessToken;
+    }
+  }
   delete env.NO_COLOR;
   env.TERM = 'xterm-256color';
   env.COLORTERM = 'truecolor';
@@ -455,13 +579,19 @@ async function launchCliSession(options = {}, ownerHwnd = 0) {
       cwd,
       cwdSource: wsInfo.source,
       model,
+      account: accProfile.isolated ? accProfile.email : null,
+      isolatedDir: accProfile.isolated ? accProfile.isolatedDir : null,
+      keyringBypassed: accProfile.isolated === true,
       args: cliArgs,
       env: {
         NO_COLOR: env.NO_COLOR,
         TERM: env.TERM,
         COLORTERM: env.COLORTERM,
         HTTP_PROXY: env.HTTP_PROXY,
-        HTTPS_PROXY: env.HTTPS_PROXY
+        HTTPS_PROXY: env.HTTPS_PROXY,
+        JETSKI_APP_DATA_DIR: env.JETSKI_APP_DATA_DIR,
+        JETSKI_OAUTH_TOKEN: env.JETSKI_OAUTH_TOKEN,
+        AG_CLI_ACCOUNT_EMAIL: env.AG_CLI_ACCOUNT_EMAIL
       }
     };
   }
@@ -477,13 +607,18 @@ async function launchCliSession(options = {}, ownerHwnd = 0) {
       try { if (fs.existsSync(probeFile)) fs.unlinkSync(probeFile); } catch {}
 
       const extraArgsStr = extraArgs.map(a => `"${String(a).replace(/"/g, '')}"`).join(' ');
+      const launchTarget = cliInfo.exePath || cliInfo.cliPath;
+      const isWrapperScript = /\.(cmd|bat)$/i.test(String(launchTarget));
+      const invokeLine = isWrapperScript
+        ? `call "${launchTarget}" --model "${model}" ${extraArgsStr}`
+        : `"${launchTarget}" --model "${model}" ${extraArgsStr}`;
       const batContent = [
         '@echo off',
         'chcp 65001 >nul',
         'if defined AG_CLI_PROBE_FILE (',
         '  > "%AG_CLI_PROBE_FILE%" echo %CD%',
         ')',
-        `"${cliInfo.exePath}" --model "${model}" ${extraArgsStr}`
+        invokeLine
       ].join('\r\n') + '\r\n';
       fs.writeFileSync(runnerBat, batContent, 'utf8');
 
@@ -600,6 +735,9 @@ async function launchCliSession(options = {}, ownerHwnd = 0) {
         cwd,
         cwdSource: wsInfo.source,
         model,
+        account: accProfile.isolated ? accProfile.email : null,
+        isolatedDir: accProfile.isolated ? accProfile.isolatedDir : null,
+        keyringBypassed: accProfile.isolated === true,
         args: cliArgs,
         runtimeInfo: {
           launcherModulePath: __filename,
@@ -620,7 +758,7 @@ async function launchCliSession(options = {}, ownerHwnd = 0) {
         `TERM=${escapePosixArg(env.TERM)}`,
         `COLORTERM=${escapePosixArg(env.COLORTERM)}`
       ];
-      for (const k of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY']) {
+      for (const k of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'JETSKI_APP_DATA_DIR', 'JETSKI_OAUTH_TOKEN', 'AG_CLI_ACCOUNT_EMAIL']) {
         if (env[k]) envAssigns.push(`${k}=${escapePosixArg(env[k])}`);
       }
       const shellCmd = `cd ${safeCwd} && export ${envAssigns.join(' ')} && ${safeCli} ${safeArgs}; exec ${safeShell} -l`;
@@ -754,8 +892,10 @@ module.exports = {
   extractWorkspacePathFromUri,
   extractWorkspaceFromTrajectory,
   extractWorkspaceFromTranscriptFile,
+  unwrapCmdTargetExe,
   resolveCliExecutable,
   resolveCliWorkspace,
+  resolveCliAccountProfile,
   resolveHelperExecutable,
   escapePosixArg,
   launchCliSession

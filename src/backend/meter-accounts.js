@@ -179,7 +179,8 @@ const ANTIGRAVITY_OAUTH_SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
   'https://www.googleapis.com/auth/cclog',
-  'https://www.googleapis.com/auth/experimentsandconfigs'
+  'https://www.googleapis.com/auth/experimentsandconfigs',
+  'https://www.googleapis.com/auth/aicode'
 ];
 const OAUTH_AUTH_URL = 'https://accounts.google.com/o/oauth2/auth';
 const OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -190,11 +191,29 @@ const CLOUDCODE_DAILY_URL = 'https://daily-cloudcode-pa.googleapis.com';
 const CALLBACK_PORT_START = 11451;
 const CALLBACK_PORT_RANGE = 80;
 
+const AUTO_SWITCH_QUOTA_TARGETS = Object.freeze([
+  Object.freeze({ targetKey: 'shared_gemini_main:5h', poolKey: 'shared_gemini_main', windowKey: '5h' }),
+  Object.freeze({ targetKey: 'shared_gemini_main:7d', poolKey: 'shared_gemini_main', windowKey: '7d' }),
+  Object.freeze({ targetKey: 'shared_3p_pool:5h', poolKey: 'shared_3p_pool', windowKey: '5h' }),
+  Object.freeze({ targetKey: 'shared_3p_pool:7d', poolKey: 'shared_3p_pool', windowKey: '7d' })
+]);
+const AUTO_SWITCH_FLOAT_EPS = 1e-9;
+
+function validateAutoSwitchQuotaTarget(poolKey, windowKey) {
+  const pk = String(poolKey || '').trim();
+  const wk = String(windowKey || '').trim().toLowerCase();
+  const matched = AUTO_SWITCH_QUOTA_TARGETS.find(t => t.poolKey === pk && t.windowKey === wk);
+  if (matched) {
+    return { valid: true, targetKey: matched.targetKey, poolKey: matched.poolKey, windowKey: matched.windowKey };
+  }
+  return { valid: false, targetKey: '', poolKey: pk, windowKey: wk, reason: 'legacy_rule_needs_migration' };
+}
+
 const DEFAULT_AUTO_SWITCH_CONFIG = Object.freeze({
   enabled: false,
   metricMode: 'remaining_pct',
   poolKey: 'shared_gemini_main',
-  windowKey: 'primary',
+  windowKey: '5h',
   thresholdPct: 10,
   debounceSec: 15,
   cooldownSec: 180,
@@ -302,6 +321,82 @@ function maskEmail(email) {
   if (local.length <= 2) return `${local[0] || '*'}*@${domain}`;
   if (local.length <= 5) return `${local.slice(0, 2)}***@${domain}`;
   return `${local.slice(0, 2)}***${local.slice(-2)}@${domain}`;
+}
+
+function deriveTrustedAutoSwitchQuotaContext({ res = null, raw = null, activeEmail = null, nowMs = Date.now(), maxAgeMs = 120000, maxFutureSkewMs = 5000 } = {}) {
+  if (!res || res.ok !== true || res.error || !res.snapshot) {
+    const rawState = String(res?.snapshot?.syncState || res?.syncState || 'error');
+    return {
+      trusted: false,
+      syncState: rawState === 'fresh' ? 'error' : rawState,
+      reason: res?.error || 'quota_snapshot_unavailable'
+    };
+  }
+  const snapSyncState = String(res.snapshot.syncState || res.syncState || 'unknown');
+  if (snapSyncState !== 'fresh') {
+    return {
+      trusted: false,
+      syncState: snapSyncState,
+      reason: `quota_state_${snapSyncState}`
+    };
+  }
+  const normActive = normalizeEmail(activeEmail || '');
+  const snapEmail = normalizeEmail(
+    res.email || res.snapshot.email || raw?.planStatus?.email || raw?.userStatus?.email || raw?.email || ''
+  );
+  if (!snapEmail) {
+    return {
+      trusted: false,
+      syncState: 'unverified_account',
+      reason: 'quota_snapshot_missing_account',
+      activeEmail: normActive || null
+    };
+  }
+  if (normActive && normActive !== snapEmail) {
+    return {
+      trusted: false,
+      syncState: 'account_mismatch',
+      reason: 'quota_snapshot_account_mismatch',
+      snapEmail,
+      activeEmail: normActive
+    };
+  }
+  const refNow = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+  const snapTs = Number(res.snapshot.updatedAtMs || res.updatedAtMs || res.snapshot.fetchedAtMs || res.fetchedAtMs || 0);
+  if (!Number.isFinite(snapTs) || snapTs <= 0) {
+    return {
+      trusted: false,
+      syncState: 'untrusted_timestamp',
+      reason: 'quota_snapshot_missing_timestamp',
+      email: snapEmail
+    };
+  }
+  const futureLimit = Number.isFinite(Number(maxFutureSkewMs)) ? Number(maxFutureSkewMs) : 5000;
+  if (snapTs > refNow + futureLimit) {
+    return {
+      trusted: false,
+      syncState: 'untrusted_timestamp',
+      reason: 'quota_snapshot_future_timestamp',
+      skewMs: snapTs - refNow,
+      email: snapEmail
+    };
+  }
+  if (Number.isFinite(Number(maxAgeMs)) && (refNow - snapTs) > Number(maxAgeMs)) {
+    return {
+      trusted: false,
+      syncState: 'stale',
+      reason: 'quota_state_stale',
+      ageMs: refNow - snapTs,
+      email: snapEmail
+    };
+  }
+  return {
+    trusted: true,
+    syncState: 'fresh',
+    reason: null,
+    email: snapEmail,
+    snapTs
+  };
 }
 
 function redactAccountDiagnosticEntry(entry = {}) {
@@ -1438,7 +1533,37 @@ function createAccountsManager(options = {}) {
   const keepaliveLockPath = path.join(stateDir, 'cache_keepalive.lock');
 
   const debounceState = new Map();
+  const autoSwitchDiagThrottle = new Map();
   let inFlightSwitch = null;
+
+  function logAutoSwitchDiag(store, stage, details = {}, minIntervalMs = 60000) {
+    const key = `${stage}|${details.reason || ''}`;
+    const now = Number(details.nowMs || Date.now());
+    const last = autoSwitchDiagThrottle.get(key) || 0;
+    if (minIntervalMs > 0 && (now - last) < minIntervalMs) return;
+    autoSwitchDiagThrottle.set(key, now);
+    try {
+      const msgParts = [
+        `stage=${stage}`,
+        details.poolKey ? `pool=${details.poolKey}` : '',
+        details.windowKey ? `win=${details.windowKey}` : '',
+        details.syncState ? `sync=${details.syncState}` : '',
+        details.remPct !== undefined && details.remPct !== null ? `rem=${details.remPct}%` : '',
+        details.thresholdPct !== undefined && details.thresholdPct !== null ? `th=${details.thresholdPct}%` : '',
+        details.candidateCount !== undefined ? `cands=${details.candidateCount}` : '',
+        details.eligibleCount !== undefined ? `eligible=${details.eligibleCount}` : '',
+        details.openWindowCount !== undefined ? `wins=${details.openWindowCount}` : '',
+        details.reason ? `reason=${details.reason}` : ''
+      ].filter(Boolean);
+      recordDiag(store, {
+        action: 'auto_switch',
+        stage,
+        ok: details.ok !== false,
+        message: msgParts.join(' '),
+        error: details.error || ''
+      });
+    } catch { }
+  }
 
   function importLegacyAccountsReadOnlyIfNeeded() {
     if (options.stateDir || process.env.AG_STUDIO_STATE_DIR || process.env.NODE_TEST_CONTEXT) {
@@ -1470,6 +1595,31 @@ function createAccountsManager(options = {}) {
     }
   }
 
+  function normalizeConsumedNoticeIds(rawList) {
+    if (!Array.isArray(rawList)) return [];
+    const seen = new Set();
+    const out = [];
+    for (const item of rawList) {
+      const s = typeof item === 'string' ? item.trim() : '';
+      if (!s || seen.has(s)) continue;
+      seen.add(s);
+      out.push(s);
+    }
+    return out.slice(-50);
+  }
+
+  function resolveAutoSwitchNoticeKey(lr) {
+    if (!lr || typeof lr !== 'object') return '';
+    if (typeof lr.noticeId === 'string' && lr.noticeId.trim()) {
+      return lr.noticeId.trim();
+    }
+    const at = lr.atMs ?? '';
+    const ver = lr.verifiedAtMs ?? '';
+    const dst = normalizeEmail(lr.toEmail || '') || String(lr.targetEmailMasked || '').trim();
+    if (!at && !ver && !dst) return '';
+    return `legacy:${at}:${ver}:${dst}`;
+  }
+
   function loadStore() {
     let raw = readJsonSafe(storePath, null);
     if (!raw && !fs.existsSync(storePath)) {
@@ -1487,7 +1637,8 @@ function createAccountsManager(options = {}) {
           lastSwitchAtMs: 0,
           lastResult: null,
           lastError: null,
-          blockedReason: null
+          blockedReason: null,
+          consumedNoticeIds: []
         },
         keepalive: { ...DEFAULT_KEEPALIVE_CONFIG },
         keepaliveState: {
@@ -1517,7 +1668,8 @@ function createAccountsManager(options = {}) {
         lastResult: null,
         lastError: null,
         blockedReason: null,
-        ...(raw.autoSwitchStatus || {})
+        ...(raw.autoSwitchStatus || {}),
+        consumedNoticeIds: normalizeConsumedNoticeIds(raw.autoSwitchStatus?.consumedNoticeIds)
       },
       keepalive: { ...DEFAULT_KEEPALIVE_CONFIG, ...(raw.keepalive || {}) },
       keepaliveState: {
@@ -2890,13 +3042,26 @@ function createAccountsManager(options = {}) {
           const okMessage = lsRestarted
             ? `已切换至 ${cleanTarget}，语言服务已重启并通过 GetUserStatus 核验生效。`
             : `已写入 ${cleanTarget} 凭据并通过生效校验（部分桌面扩展若仍显示旧缓存，建议重载窗口）。`;
+          const noticeId = opts.switchContext?.noticeId || (opts.trigger === 'auto_switch' ? `as_${nowMs}_${Math.random().toString(36).slice(2, 8)}` : undefined);
           nextStore.autoSwitchStatus = {
             ...nextStore.autoSwitchStatus,
             lastSwitchAtMs: nowMs,
+            blockedReason: null,
+            blockedMeta: null,
             lastResult: {
               ok: true,
               fromEmail: preActiveEmail,
               toEmail: cleanTarget,
+              targetEmailMasked: maskEmail(cleanTarget),
+              verifiedEffective: true,
+              verifiedAtMs: nowMs,
+              ...(noticeId ? { noticeId, noticeConsumedAtMs: null } : {}),
+              ...(opts.switchContext?.poolKey ? { poolKey: opts.switchContext.poolKey } : {}),
+              ...(opts.switchContext?.windowKey ? { windowKey: opts.switchContext.windowKey } : {}),
+              ...(opts.switchContext?.metricMode ? { metricMode: opts.switchContext.metricMode } : {}),
+              ...(opts.switchContext?.thresholdPct != null ? { thresholdPct: opts.switchContext.thresholdPct } : {}),
+              ...(opts.switchContext?.currentRemPct != null ? { currentRemPct: opts.switchContext.currentRemPct } : {}),
+              ...(opts.switchContext?.currentUsedPct != null ? { currentUsedPct: opts.switchContext.currentUsedPct } : {}),
               atMs: nowMs,
               trigger: opts.trigger || 'manual',
               rolledBack: false,
@@ -2956,57 +3121,162 @@ function createAccountsManager(options = {}) {
 
   function updateAutoSwitchConfig(patch = {}) {
     const store = loadStore();
-    const prevEnabled = Boolean(store.autoSwitch.enabled);
+    const prev = store.autoSwitch || DEFAULT_AUTO_SWITCH_CONFIG;
+    const prevEnabled = Boolean(prev.enabled);
     const next = {
-      ...store.autoSwitch,
-      enabled: patch.enabled !== undefined ? Boolean(patch.enabled) : store.autoSwitch.enabled,
-      metricMode: patch.metricMode === 'used_pct' ? 'used_pct' : (patch.metricMode === 'remaining_pct' ? 'remaining_pct' : store.autoSwitch.metricMode),
-      poolKey: patch.poolKey ? String(patch.poolKey).trim() : store.autoSwitch.poolKey,
-      windowKey: ['primary', '5h', '7d', '24h'].includes(patch.windowKey) ? patch.windowKey : store.autoSwitch.windowKey,
-      thresholdPct: patch.thresholdPct !== undefined && Number.isFinite(Number(patch.thresholdPct)) ? Math.max(1, Math.min(95, Number(patch.thresholdPct))) : store.autoSwitch.thresholdPct,
-      debounceSec: patch.debounceSec !== undefined && Number.isFinite(Number(patch.debounceSec)) ? Math.max(0, Math.min(300, Number(patch.debounceSec))) : store.autoSwitch.debounceSec,
-      cooldownSec: patch.cooldownSec !== undefined && Number.isFinite(Number(patch.cooldownSec)) ? Math.max(10, Math.min(3600, Number(patch.cooldownSec))) : store.autoSwitch.cooldownSec,
-      waitUntilIdle: patch.waitUntilIdle !== undefined ? Boolean(patch.waitUntilIdle) : store.autoSwitch.waitUntilIdle,
-      strategy: patch.strategy === 'candidate_order' ? 'candidate_order' : (patch.strategy === 'highest_quota' ? 'highest_quota' : store.autoSwitch.strategy),
+      ...prev,
+      enabled: patch.enabled !== undefined ? Boolean(patch.enabled) : prev.enabled,
+      metricMode: patch.metricMode === 'used_pct' ? 'used_pct' : (patch.metricMode === 'remaining_pct' ? 'remaining_pct' : prev.metricMode),
+      poolKey: patch.poolKey ? String(patch.poolKey).trim() : prev.poolKey,
+      windowKey: ['primary', '5h', '7d', '24h'].includes(patch.windowKey) ? patch.windowKey : prev.windowKey,
+      thresholdPct: patch.thresholdPct !== undefined && Number.isFinite(Number(patch.thresholdPct)) ? Math.max(1, Math.min(95, Number(patch.thresholdPct))) : prev.thresholdPct,
+      debounceSec: patch.debounceSec !== undefined && Number.isFinite(Number(patch.debounceSec)) ? Math.max(0, Math.min(300, Number(patch.debounceSec))) : prev.debounceSec,
+      cooldownSec: patch.cooldownSec !== undefined && Number.isFinite(Number(patch.cooldownSec)) ? Math.max(10, Math.min(3600, Number(patch.cooldownSec))) : prev.cooldownSec,
+      waitUntilIdle: patch.waitUntilIdle !== undefined ? Boolean(patch.waitUntilIdle) : prev.waitUntilIdle,
+      strategy: patch.strategy === 'candidate_order' ? 'candidate_order' : (patch.strategy === 'highest_quota' ? 'highest_quota' : prev.strategy),
       candidates: Array.isArray(patch.candidates)
         ? Array.from(new Set(patch.candidates.map(normalizeEmail).filter(Boolean)))
-        : store.autoSwitch.candidates
+        : prev.candidates
     };
+    const targetCheck = validateAutoSwitchQuotaTarget(next.poolKey, next.windowKey);
+    if (next.enabled && !targetCheck.valid) {
+      store.autoSwitchStatus = {
+        ...(store.autoSwitchStatus || {}),
+        state: 'blocked_legacy_rule',
+        blockedReason: 'legacy_rule_needs_migration',
+        blockedMeta: { poolKey: next.poolKey, windowKey: next.windowKey },
+        needsRuleMigration: true
+      };
+      debounceState.clear();
+      saveStore(store);
+      return {
+        ok: false,
+        reason: 'legacy_rule_needs_migration',
+        error: '当前规则使用了旧版监控池或未指定周期，请先从四项具体监控额度中选择一项并保存',
+        autoSwitch: store.autoSwitch,
+        autoSwitchStatus: store.autoSwitchStatus
+      };
+    }
+    const ruleChanged = prev.poolKey !== next.poolKey
+      || prev.windowKey !== next.windowKey
+      || prev.metricMode !== next.metricMode
+      || prev.thresholdPct !== next.thresholdPct
+      || JSON.stringify(prev.candidates || []) !== JSON.stringify(next.candidates || []);
     store.autoSwitch = next;
     if (!next.enabled) {
       store.autoSwitchStatus.state = 'disabled';
       store.autoSwitchStatus.blockedReason = null;
+      store.autoSwitchStatus.blockedMeta = null;
+      store.autoSwitchStatus.needsRuleMigration = !targetCheck.valid;
       debounceState.clear();
-    } else if (!prevEnabled) {
+    } else if (!prevEnabled || ruleChanged || store.autoSwitchStatus.state === 'blocked_legacy_rule') {
       store.autoSwitchStatus.state = 'watching';
       store.autoSwitchStatus.lastError = null;
       store.autoSwitchStatus.blockedReason = null;
+      store.autoSwitchStatus.blockedMeta = null;
+      store.autoSwitchStatus.needsRuleMigration = false;
+      debounceState.clear();
     }
     saveStore(store);
     return { ok: true, autoSwitch: next, autoSwitchStatus: store.autoSwitchStatus };
   }
 
-  function extractPoolMetricPct(quotaSnapshot, poolKey, windowKey = 'primary') {
-    if (!quotaSnapshot || !Array.isArray(quotaSnapshot.pools)) return null;
+  function inspectPoolMetric(quotaSnapshot, poolKey, windowKey = '5h') {
+    if (!quotaSnapshot || !Array.isArray(quotaSnapshot.pools)) {
+      return { ok: false, pct: null, remPct: null, usedPct: null, reason: 'target_pool_missing_in_snapshot', poolKey, windowKey };
+    }
     const geminiMainSet = new Set(['shared_gemini_main', 'shared_gemini_argon']);
     const pool = quotaSnapshot.pools.find(p =>
-      p.poolKey === poolKey ||
-      (geminiMainSet.has(poolKey) && geminiMainSet.has(p.poolKey))
+      p && (p.poolKey === poolKey || (geminiMainSet.has(poolKey) && geminiMainSet.has(p.poolKey)))
     );
-    if (!pool || pool.noPermission) return null;
+    if (!pool) {
+      return { ok: false, pct: null, remPct: null, usedPct: null, reason: 'target_pool_missing_in_snapshot', poolKey, windowKey };
+    }
+    if (pool.noPermission || pool.status === 'no_permission') {
+      return { ok: false, pct: null, remPct: null, usedPct: null, reason: 'target_pool_no_permission', poolKey, windowKey };
+    }
+    const buckets = Array.isArray(pool.buckets) ? pool.buckets.filter(Boolean) : [];
     let targetBucket = null;
     if (windowKey === 'primary') {
-      targetBucket = pool.primaryBucket || selectPrimaryQuotaBucket(pool.buckets || []).primaryBucket;
+      targetBucket = pool.primaryBucket || selectPrimaryQuotaBucket(buckets).primaryBucket;
+      if (!targetBucket && buckets.length === 0) {
+        if (pool.isResetPassed || pool.resetPassed) {
+          return { ok: false, pct: null, remPct: null, usedPct: null, reason: 'target_window_reset_passed', poolKey, windowKey };
+        }
+        if (pool.remainingFraction !== null && pool.remainingFraction !== undefined && Number.isFinite(Number(pool.remainingFraction))) {
+          const numFrac = Number(pool.remainingFraction);
+          const remPct = numFrac * 100;
+          const usedPct = (1 - numFrac) * 100;
+          return {
+            ok: true,
+            pct: remPct,
+            remPct,
+            usedPct,
+            displayRemPct: Math.round(remPct),
+            displayUsedPct: Math.round(usedPct),
+            reason: null,
+            poolKey,
+            windowKey
+          };
+        }
+      }
     } else {
-      targetBucket = (pool.buckets || []).find(b =>
+      targetBucket = buckets.find(b =>
         String(b.windowShort || '').toLowerCase() === windowKey ||
         String(b.windowKey || '').toLowerCase() === windowKey ||
         (windowKey === '7d' && b.windowKey === 'weekly')
       ) || null;
+      if (!targetBucket) {
+        if (buckets.length === 0 && windowKey === '5h') {
+          if (pool.isResetPassed || pool.resetPassed) {
+            return { ok: false, pct: null, remPct: null, usedPct: null, reason: 'target_window_reset_passed', poolKey, windowKey };
+          }
+          if (pool.remainingFraction !== null && pool.remainingFraction !== undefined && Number.isFinite(Number(pool.remainingFraction))) {
+            const numFrac = Number(pool.remainingFraction);
+            const remPct = numFrac * 100;
+            const usedPct = (1 - numFrac) * 100;
+            return {
+              ok: true,
+              pct: remPct,
+              remPct,
+              usedPct,
+              displayRemPct: Math.round(remPct),
+              displayUsedPct: Math.round(usedPct),
+              reason: null,
+              poolKey,
+              windowKey
+            };
+          }
+        }
+        return { ok: false, pct: null, remPct: null, usedPct: null, reason: 'target_window_unavailable', poolKey, windowKey };
+      }
     }
-    const frac = targetBucket ? targetBucket.remainingFraction : pool.remainingFraction;
-    if (frac === null || frac === undefined || !Number.isFinite(Number(frac))) return null;
-    return Number((Number(frac) * 100).toFixed(2));
+    if (targetBucket && (targetBucket.isResetPassed || targetBucket.resetPassed)) {
+      return { ok: false, pct: null, remPct: null, usedPct: null, reason: 'target_window_reset_passed', poolKey, windowKey };
+    }
+    const frac = targetBucket ? targetBucket.remainingFraction : null;
+    if (frac === null || frac === undefined || !Number.isFinite(Number(frac))) {
+      return { ok: false, pct: null, remPct: null, usedPct: null, reason: 'target_pool_missing_value', poolKey, windowKey };
+    }
+    const numFrac = Number(frac);
+    const remPct = numFrac * 100;
+    const usedPct = (1 - numFrac) * 100;
+    return {
+      ok: true,
+      pct: remPct,
+      remPct,
+      usedPct,
+      displayRemPct: Math.round(remPct),
+      displayUsedPct: Math.round(usedPct),
+      reason: null,
+      poolKey,
+      windowKey
+    };
+  }
+
+  function extractPoolMetricPct(quotaSnapshot, poolKey, windowKey = '5h') {
+    const res = inspectPoolMetric(quotaSnapshot, poolKey, windowKey);
+    return res.ok ? res.pct : null;
   }
 
   async function evaluateAutoSwitch(ctx = {}) {
@@ -3018,70 +3288,111 @@ function createAccountsManager(options = {}) {
     if (!cfg.enabled) {
       return { ok: true, action: 'noop', state: 'disabled' };
     }
+    if (st.lastResult?.restartPending && Date.now() - st.lastResult.atMs < 120000) {
+      return { ok: true, action: 'blocked', state: st.state, reason: 'client_restart_pending' };
+    }
+    if (isSwitchLockActive()) {
+      return { ok: true, action: 'blocked', state: 'switching', reason: 'switch_lock_active' };
+    }
     st.lastCheckAtMs = nowMs;
 
-    const syncState = ctx.syncState || 'unknown';
-    if (syncState !== 'fresh') {
-      st.state = 'blocked_untrusted_quota';
-      st.blockedReason = `quota_state_${syncState}`;
+    const targetCheck = validateAutoSwitchQuotaTarget(cfg.poolKey, cfg.windowKey);
+    if (!targetCheck.valid) {
+      st.state = 'blocked_legacy_rule';
+      st.blockedReason = 'legacy_rule_needs_migration';
+      st.blockedMeta = { poolKey: cfg.poolKey, windowKey: cfg.windowKey };
+      st.needsRuleMigration = true;
       debounceState.clear();
+      logAutoSwitchDiag(store, st.state, { poolKey: cfg.poolKey, windowKey: cfg.windowKey, reason: st.blockedReason, ok: false, nowMs });
       saveStore(store);
-      return { ok: true, action: 'blocked', reason: st.blockedReason, state: st.state };
+      return { ok: true, action: 'blocked', reason: st.blockedReason, state: st.state, blockedMeta: st.blockedMeta };
     }
+    st.needsRuleMigration = false;
 
     const activeEmail = normalizeEmail(ctx.activeEmail || store.activeAccountEmail || '');
     const activeSnapshot = ctx.activeSnapshot || store.accounts[activeEmail]?.quotaSnapshot || null;
     if (!activeEmail || !activeSnapshot) {
       st.state = 'blocked_missing_account';
       st.blockedReason = 'no_active_account_or_snapshot';
+      st.blockedMeta = { activeEmail: activeEmail || null };
+      logAutoSwitchDiag(store, st.state, { reason: st.blockedReason, ok: false, nowMs });
       saveStore(store);
       return { ok: true, action: 'blocked', reason: st.blockedReason, state: st.state };
     }
 
-    const remPct = extractPoolMetricPct(activeSnapshot, cfg.poolKey, cfg.windowKey);
-    if (remPct === null) {
+    const syncState = ctx.syncState || 'unknown';
+    if (syncState !== 'fresh') {
+      st.state = 'blocked_untrusted_quota';
+      st.blockedReason = `quota_state_${syncState}`;
+      st.blockedMeta = { syncState };
+      debounceState.clear();
+      logAutoSwitchDiag(store, st.state, { reason: st.blockedReason, syncState, ok: false, nowMs });
+      saveStore(store);
+      return { ok: true, action: 'blocked', reason: st.blockedReason, state: st.state };
+    }
+
+    const metric = inspectPoolMetric(activeSnapshot, cfg.poolKey, cfg.windowKey);
+    if (!metric.ok) {
       st.state = 'blocked_missing_pool';
-      st.blockedReason = 'target_pool_unavailable_or_no_permission';
+      st.blockedReason = metric.reason || 'target_pool_missing_in_snapshot';
+      st.blockedMeta = { poolKey: cfg.poolKey, windowKey: cfg.windowKey, reason: st.blockedReason };
+      logAutoSwitchDiag(store, st.state, { poolKey: cfg.poolKey, windowKey: cfg.windowKey, reason: st.blockedReason, ok: false, nowMs });
       saveStore(store);
-      return { ok: true, action: 'blocked', reason: st.blockedReason, state: st.state };
+      return { ok: true, action: 'blocked', reason: st.blockedReason, state: st.state, blockedMeta: st.blockedMeta };
     }
+    const remPct = metric.pct;
+    const usedPct = Number.isFinite(metric.usedPct) ? metric.usedPct : (100 - remPct);
 
-    const usedPct = Number((100 - remPct).toFixed(2));
-    const triggered = cfg.metricMode === 'used_pct' ? (usedPct >= cfg.thresholdPct) : (remPct <= cfg.thresholdPct);
+    const dbKey = `${activeEmail}|${cfg.poolKey}|${cfg.windowKey}`;
+    const triggered = cfg.metricMode === 'used_pct'
+      ? (usedPct + AUTO_SWITCH_FLOAT_EPS >= cfg.thresholdPct)
+      : (remPct - AUTO_SWITCH_FLOAT_EPS <= cfg.thresholdPct);
     if (!triggered) {
-      debounceState.delete(activeEmail);
+      debounceState.delete(dbKey);
       st.state = 'watching';
       st.blockedReason = null;
+      st.blockedMeta = null;
       saveStore(store);
       return { ok: true, action: 'ok_above_threshold', remainingPct: remPct, usedPct, state: 'watching' };
     }
 
     if (st.lastSwitchAtMs && (nowMs - st.lastSwitchAtMs) < cfg.cooldownSec * 1000) {
       st.state = 'cooldown';
+      st.blockedReason = null;
+      st.blockedMeta = null;
+      logAutoSwitchDiag(store, 'cooldown', { poolKey: cfg.poolKey, windowKey: cfg.windowKey, remPct, thresholdPct: cfg.thresholdPct, nowMs });
       saveStore(store);
       return { ok: true, action: 'cooldown', retryInSec: Math.ceil((st.lastSwitchAtMs + cfg.cooldownSec * 1000 - nowMs) / 1000), state: 'cooldown' };
     }
 
-    const dbKey = `${activeEmail}|${cfg.poolKey}|${cfg.windowKey}`;
     const dbEntry = debounceState.get(dbKey);
     if (!dbEntry) {
       debounceState.set(dbKey, { firstSeenMs: nowMs });
       if (cfg.debounceSec > 0) {
         st.state = 'pending_debounce';
+        st.blockedReason = null;
+        st.blockedMeta = null;
+        logAutoSwitchDiag(store, 'pending_debounce', { poolKey: cfg.poolKey, windowKey: cfg.windowKey, remPct, thresholdPct: cfg.thresholdPct, nowMs });
         saveStore(store);
-        return { ok: true, action: 'pending_debounce', state: st.state, remainingPct: remPct };
+        return { ok: true, action: 'pending_debounce', state: st.state, remainingPct: remPct, retryInSec: cfg.debounceSec };
       }
     } else if ((nowMs - dbEntry.firstSeenMs) < cfg.debounceSec * 1000) {
+      const retryInSec = Math.max(1, Math.ceil((dbEntry.firstSeenMs + cfg.debounceSec * 1000 - nowMs) / 1000));
       st.state = 'pending_debounce';
+      st.blockedReason = null;
+      st.blockedMeta = null;
+      logAutoSwitchDiag(store, 'pending_debounce', { poolKey: cfg.poolKey, windowKey: cfg.windowKey, remPct, thresholdPct: cfg.thresholdPct, nowMs });
       saveStore(store);
-      return { ok: true, action: 'pending_debounce', state: st.state, remainingPct: remPct };
+      return { ok: true, action: 'pending_debounce', state: st.state, remainingPct: remPct, retryInSec };
     }
 
     if (ctx.isGenerating && cfg.waitUntilIdle) {
       st.state = 'waiting_idle';
       st.blockedReason = 'generation_in_progress';
+      st.blockedMeta = { poolKey: cfg.poolKey, windowKey: cfg.windowKey };
+      logAutoSwitchDiag(store, 'waiting_idle', { poolKey: cfg.poolKey, windowKey: cfg.windowKey, remPct, thresholdPct: cfg.thresholdPct, reason: st.blockedReason, nowMs });
       saveStore(store);
-      return { ok: true, action: 'waiting_idle', state: 'waiting_idle' };
+      return { ok: true, action: 'waiting_idle', state: 'waiting_idle', reason: 'generation_in_progress' };
     }
 
     const candidateEmails = (cfg.candidates || [])
@@ -3093,20 +3404,25 @@ function createAccountsManager(options = {}) {
       const cRec = store.accounts[ce];
       const cAgeMs = cRec.lastQuotaUpdatedAtMs ? (nowMs - cRec.lastQuotaUpdatedAtMs) : Infinity;
       if (cRec.lastQuotaError || cAgeMs > (ctx.candidateMaxStaleMs || 5 * 60 * 1000)) continue;
-      const cRem = extractPoolMetricPct(cRec.quotaSnapshot, cfg.poolKey, cfg.windowKey);
-      if (cRem === null) continue;
-      const cUsed = Number((100 - cRem).toFixed(2));
-      const cStillLow = cfg.metricMode === 'used_pct' ? (cUsed >= cfg.thresholdPct) : (cRem <= cfg.thresholdPct);
+      const cMetric = inspectPoolMetric(cRec.quotaSnapshot, cfg.poolKey, cfg.windowKey);
+      if (!cMetric.ok) continue;
+      const cRem = cMetric.pct;
+      const cUsed = Number.isFinite(cMetric.usedPct) ? cMetric.usedPct : (100 - cRem);
+      const cStillLow = cfg.metricMode === 'used_pct'
+        ? (cUsed + AUTO_SWITCH_FLOAT_EPS >= cfg.thresholdPct)
+        : (cRem - AUTO_SWITCH_FLOAT_EPS <= cfg.thresholdPct);
       if (!cStillLow) {
-        eligible.push({ email: ce, remainingPct: cRem });
+        eligible.push({ email: ce, remainingPct: cRem, usedPct: cUsed });
       }
     }
 
     if (!eligible.length) {
-      st.state = 'all_candidates_exhausted';
-      st.blockedReason = 'all_candidates_insufficient_or_stale';
+      st.state = candidateEmails.length === 0 ? 'no_candidates' : 'all_candidates_exhausted';
+      st.blockedReason = candidateEmails.length === 0 ? 'no_candidates_configured' : 'all_candidates_insufficient_or_stale';
+      st.blockedMeta = { poolKey: cfg.poolKey, windowKey: cfg.windowKey, candidateCount: candidateEmails.length };
+      logAutoSwitchDiag(store, st.state, { poolKey: cfg.poolKey, windowKey: cfg.windowKey, remPct, thresholdPct: cfg.thresholdPct, candidateCount: candidateEmails.length, eligibleCount: 0, reason: st.blockedReason, ok: false, nowMs });
       saveStore(store);
-      return { ok: true, action: 'all_candidates_exhausted', state: 'all_candidates_exhausted' };
+      return { ok: true, action: st.state, state: st.state, reason: st.blockedReason };
     }
 
     if (cfg.strategy === 'highest_quota') {
@@ -3115,9 +3431,24 @@ function createAccountsManager(options = {}) {
     const chosen = eligible[0];
 
     st.state = 'switching';
+    st.blockedReason = null;
+    st.blockedMeta = null;
     saveStore(store);
+    const switchContext = {
+      poolKey: cfg.poolKey,
+      windowKey: cfg.windowKey,
+      metricMode: cfg.metricMode,
+      thresholdPct: cfg.thresholdPct,
+      currentRemPct: remPct,
+      currentUsedPct: usedPct,
+      displayRemPct: Math.round(remPct),
+      displayUsedPct: Math.round(usedPct),
+      targetEmailMasked: maskEmail(chosen.email),
+      noticeId: `as_${nowMs}_${Math.random().toString(36).slice(2, 8)}`
+    };
     const swRes = await (optsSwitchExecutor(ctx))(chosen.email, {
       trigger: 'auto_switch',
+      switchContext,
       nowMs,
       forceWhileBusy: !cfg.waitUntilIdle,
       restartLanguageServer: ctx.restartLanguageServer,
@@ -3131,19 +3462,57 @@ function createAccountsManager(options = {}) {
       postStore.autoSwitchStatus = {
         ...postStore.autoSwitchStatus,
         state: 'error',
+        blockedReason: null,
+        blockedMeta: null,
         lastError: swRes.error || '自动切号失败，已停止自动切换保护账号状态',
         lastResult: { ok: false, toEmail: chosen.email, atMs: nowMs, error: swRes.error }
       };
+      logAutoSwitchDiag(postStore, 'switch_failed_halted', { poolKey: cfg.poolKey, windowKey: cfg.windowKey, reason: 'switch_failed', error: swRes.error, ok: false, nowMs }, 0);
       saveStore(postStore);
       return { ok: false, action: 'switch_failed_halted', targetEmail: chosen.email, error: swRes.error };
     }
 
+    postStore.autoSwitchStatus = {
+      ...(postStore.autoSwitchStatus || {}),
+      state: 'cooldown',
+      lastSwitchAtMs: postStore.autoSwitchStatus?.lastSwitchAtMs || nowMs,
+      lastError: null,
+      blockedReason: null,
+      blockedMeta: null
+    };
+    logAutoSwitchDiag(postStore, 'switched', { poolKey: cfg.poolKey, windowKey: cfg.windowKey, nowMs }, 0);
+    saveStore(postStore);
     debounceState.clear();
-    return { ok: true, action: 'switched', fromEmail: activeEmail, toEmail: chosen.email, targetRemainingPct: chosen.remainingPct, switchResult: swRes };
+    return { ok: true, action: 'switched', fromEmail: activeEmail, toEmail: chosen.email, targetRemainingPct: chosen.remainingPct, state: 'cooldown', switchResult: swRes };
   }
 
   function optsSwitchExecutor(ctx) {
     return typeof ctx.switchFn === 'function' ? ctx.switchFn : switchActiveAccount;
+  }
+
+  function ackAutoSwitchNotice(noticeId = null) {
+    const store = loadStore();
+    if (!store.autoSwitchStatus || typeof store.autoSwitchStatus !== 'object') {
+      store.autoSwitchStatus = { state: store.autoSwitch?.enabled ? 'watching' : 'disabled', consumedNoticeIds: [] };
+    }
+    const existing = normalizeConsumedNoticeIds(store.autoSwitchStatus.consumedNoticeIds);
+    const lr = store.autoSwitchStatus.lastResult || null;
+    const explicit = typeof noticeId === 'string' ? noticeId.trim() : '';
+    const fallbackKey = resolveAutoSwitchNoticeKey(lr);
+    const targetId = explicit || fallbackKey;
+    if (!targetId) {
+      return { ok: true, consumed: false, noticeId: null, consumedNoticeIds: existing };
+    }
+    const nextList = normalizeConsumedNoticeIds([...existing, targetId]);
+    store.autoSwitchStatus.consumedNoticeIds = nextList;
+    if (lr && typeof lr === 'object') {
+      const lrKey = resolveAutoSwitchNoticeKey(lr);
+      if (lrKey === targetId || !lr.noticeId) {
+        lr.noticeConsumedAtMs = lr.noticeConsumedAtMs || Date.now();
+      }
+    }
+    saveStore(store);
+    return { ok: true, consumed: true, noticeId: targetId, consumedNoticeIds: nextList };
   }
 
   function getOverviewState() {
@@ -3159,6 +3528,46 @@ function createAccountsManager(options = {}) {
       endAtMs: s.endAtMs ?? null,
       evidence: s.evidence || 'unknown'
     }));
+    const targetCheck = validateAutoSwitchQuotaTarget(store.autoSwitch?.poolKey, store.autoSwitch?.windowKey);
+    const rawAutoSwitchStatus = store.autoSwitchStatus || {};
+    const consumedNoticeIds = normalizeConsumedNoticeIds(rawAutoSwitchStatus.consumedNoticeIds);
+    let normalizedLastResult = rawAutoSwitchStatus.lastResult || null;
+    if (normalizedLastResult && typeof normalizedLastResult === 'object') {
+      const hasExplicitNoticeId = Boolean(
+        typeof normalizedLastResult.noticeId === 'string' && normalizedLastResult.noticeId.trim()
+      );
+      const noticeKey = resolveAutoSwitchNoticeKey(normalizedLastResult);
+      const isLegacyHistorical = Boolean(
+        normalizedLastResult.trigger === 'auto_switch' &&
+        normalizedLastResult.ok === true &&
+        normalizedLastResult.verifiedEffective === true &&
+        !hasExplicitNoticeId
+      );
+      const noticeConsumed = Boolean(
+        normalizedLastResult.noticeConsumedAtMs ||
+        isLegacyHistorical ||
+        (noticeKey && consumedNoticeIds.includes(noticeKey))
+      );
+      normalizedLastResult = {
+        ...normalizedLastResult,
+        isLegacyNotice: isLegacyHistorical,
+        noticeConsumed
+      };
+    }
+    const isLegacyBlocked = !targetCheck.valid && Boolean(store.autoSwitch?.enabled)
+      && !['error', 'switching', 'restarting'].includes(rawAutoSwitchStatus.state);
+    const effectiveAutoSwitchStatus = {
+      ...rawAutoSwitchStatus,
+      consumedNoticeIds,
+      lastResult: normalizedLastResult,
+      needsRuleMigration: !targetCheck.valid,
+      validTargetKey: targetCheck.valid ? targetCheck.targetKey : '',
+      ...(isLegacyBlocked ? {
+        state: 'blocked_legacy_rule',
+        blockedReason: 'legacy_rule_needs_migration',
+        blockedMeta: { poolKey: store.autoSwitch?.poolKey || '', windowKey: store.autoSwitch?.windowKey || '' }
+      } : {})
+    };
     return {
       ok: true,
       activeAccountEmail: store.activeAccountEmail || null,
@@ -3169,7 +3578,7 @@ function createAccountsManager(options = {}) {
       diagnosticsPath: path.join(stateDir, 'oauth_diagnostics.jsonl'),
       lastDiagnostics: (store.lastDiagnostics || []).slice(-10),
       autoSwitch: store.autoSwitch,
-      autoSwitchStatus: store.autoSwitchStatus,
+      autoSwitchStatus: effectiveAutoSwitchStatus,
       keepalive: store.keepalive,
       keepaliveState: store.keepaliveState,
       quotaIntervals: (store.quotaIntervals || []).slice().reverse(),
@@ -3183,6 +3592,7 @@ function createAccountsManager(options = {}) {
     loadStore,
     saveStore,
     getOverviewState,
+    ackAutoSwitchNotice,
     detectCurrentActiveAccount,
     importFromCurrentClient,
     listAntigravityToolsAccounts,
@@ -3193,6 +3603,7 @@ function createAccountsManager(options = {}) {
     refreshAccountQuota,
     syncActiveHostQuotaSnapshot,
     switchActiveAccount,
+    inspectPoolMetric,
     updateAutoSwitchConfig,
     evaluateAutoSwitch,
     updateKeepaliveConfig,
@@ -3525,6 +3936,8 @@ async function dispatchAccountsAction(mgr, payload = {}) {
       return { ...mgr.updateAutoSwitchConfig(payload.config || {}), overview: mgr.getOverviewState() };
     case 'evaluate_auto_switch':
       return { ...(await mgr.evaluateAutoSwitch(payload.context || {})), overview: mgr.getOverviewState() };
+    case 'ack_auto_switch_notice':
+      return { ...mgr.ackAutoSwitchNotice(payload.noticeId || null), overview: mgr.getOverviewState() };
     case 'update_keepalive':
       return { ...mgr.updateKeepaliveConfig(payload.config || {}), overview: mgr.getOverviewState() };
     case 'stop_keepalive':
@@ -3540,6 +3953,8 @@ module.exports = {
   resolveAllAntigravityOAuthConfigs,
   SOURCE_ATTRIBUTION_CAPABILITIES,
   ELV52_PROTOCOL_EVIDENCE,
+  AUTO_SWITCH_QUOTA_TARGETS,
+  validateAutoSwitchQuotaTarget,
   DEFAULT_AUTO_SWITCH_CONFIG,
   DEFAULT_KEEPALIVE_CONFIG,
   DEFAULT_SWITCH_VERIFY_TIMEOUT_MS,
@@ -3548,6 +3963,7 @@ module.exports = {
   normalizeEmail,
   buildAccountScopeKey,
   maskEmail,
+  deriveTrustedAutoSwitchQuotaContext,
   redactAccountDiagnosticEntry,
   appendAccountDiagnostic,
   deriveAccountSessionsFromStore,
@@ -3561,5 +3977,10 @@ module.exports = {
   createDefaultSystemCredentialStore,
   createAccountsManager,
   getSharedAccountsManager,
-  dispatchAccountsAction
+  dispatchAccountsAction,
+  fetchAccountQuotaViaCloudCode,
+  fetchJsonWithProxy,
+  CLOUDCODE_DAILY_URL,
+  CLOUDCODE_PROD_URL,
+  ANTIGRAVITY_OAUTH_SCOPES
 };

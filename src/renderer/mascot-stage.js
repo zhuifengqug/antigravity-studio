@@ -329,6 +329,7 @@
       '.ags-mascot-stage[data-align="center"] { left:50%; transform-origin:bottom center; }',
       '.ags-mascot-stage[data-align="left"] { left:16px; transform-origin:bottom left; }',
       '.ags-mascot-hit { position:absolute; bottom:0; left:50%; transform:translateX(-50%); pointer-events:auto; cursor:pointer; z-index:1; }',
+      '.ags-mascot-hit:focus, .ags-mascot-hit:focus-visible { outline:none !important; box-shadow:none !important; }',
       '.ags-mascot-canvas { display:block; pointer-events:none; image-rendering:pixelated; image-rendering:crisp-edges; }',
       '.ags-mascot-stage[data-state="sleeping"] .ags-mascot-canvas { opacity:0.82; }',
       '.ags-mascot-stage[data-obscured="true"] { opacity:0.28; }',
@@ -350,6 +351,7 @@
 
     var hitEl = document.createElement('div');
     hitEl.className = 'ags-mascot-hit';
+    hitEl.setAttribute('tabindex', '-1');
 
     var canvas = document.createElement('canvas');
     canvas.className = 'ags-mascot-canvas';
@@ -660,6 +662,10 @@
         scheduleNextTick();
       }, ms);
     }
+
+    hitEl.addEventListener('mousedown', function (ev) {
+      if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
+    });
 
     hitEl.addEventListener('click', function (ev) {
       ev.stopPropagation();

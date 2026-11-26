@@ -10,21 +10,135 @@
     return Number.isFinite(num) && num >= 0 ? num : null;
   }
 
-  function getModelPoolKey(raw) {
-    if (!raw) return 'unknown';
-    const text = typeof raw === 'object'
-      ? [raw.modelId, raw.model, raw.label, raw.modelDisplayName, raw.modelOrAlias?.model, raw.poolKey].filter(Boolean).join(' ')
-      : String(raw);
-    const s = String(text || '').toLowerCase().trim();
-    if (!s) return 'unknown';
-    if (s.includes('neon') || s.includes('gemini-4-neon')) {
-      return 'gemini-4-neon';
+  const MODEL_USAGE_ID_FALLBACK_LABELS = {
+    'gemini-flash-worker-agy': 'Gemini 4 Hydrogen (Orchestrator)',
+    'model_placeholder_m669': 'Gemini 4 Hydrogen (Orchestrator)',
+    'placeholder-m669': 'Gemini 4 Hydrogen (Orchestrator)',
+    'm669': 'Gemini 4 Hydrogen (Orchestrator)',
+    'model_placeholder_m667': 'Orchestrator (Carbon)',
+    'placeholder-m667': 'Orchestrator (Carbon)',
+    'm667': 'Orchestrator (Carbon)',
+    'model_placeholder_m681': 'Orchestrator (Argon)',
+    'placeholder-m681': 'Orchestrator (Argon)',
+    'm681': 'Orchestrator (Argon)',
+    'model_placeholder_m668': 'Orchestrator (Argon)',
+    'placeholder-m668': 'Orchestrator (Argon)',
+    'm668': 'Orchestrator (Argon)',
+    'model_placeholder_m670': 'Gemini 4 Carbon',
+    'placeholder-m670': 'Gemini 4 Carbon',
+    'm670': 'Gemini 4 Carbon',
+    'gemini-4-hydrogen-sonar': 'Gemini 4 Hydrogen',
+    'model_placeholder_m578': 'Gemini 4 Hydrogen',
+    'm578': 'Gemini 4 Hydrogen',
+    'gemini-4-hydrogen-tiered-high': 'Gemini 4 Hydrogen (High)',
+    'model_placeholder_m530': 'Gemini 4 Hydrogen (High)',
+    'm530': 'Gemini 4 Hydrogen (High)',
+    'gemini-4-hydrogen-tiered-xhigh': 'Gemini 4 Hydrogen (XHigh)',
+    'model_placeholder_m531': 'Gemini 4 Hydrogen (XHigh)',
+    'm531': 'Gemini 4 Hydrogen (XHigh)',
+    'model_placeholder_m525': 'Gemini 4 Hydrogen (High)',
+    'm525': 'Gemini 4 Hydrogen (High)',
+    'model_placeholder_m526': 'Gemini 4 Hydrogen (Medium)',
+    'm526': 'Gemini 4 Hydrogen (Medium)',
+    'model_placeholder_m527': 'Gemini 4 Hydrogen (Low)',
+    'm527': 'Gemini 4 Hydrogen (Low)',
+    'model_placeholder_m528': 'Gemini 4 Hydrogen (XHigh)',
+    'm528': 'Gemini 4 Hydrogen (XHigh)',
+    'model_placeholder_m532': 'Gemini 4 Neon (High)',
+    'placeholder-m532': 'Gemini 4 Neon (High)',
+    'm532': 'Gemini 4 Neon (High)',
+    'model_placeholder_m533': 'Gemini 4 Neon (Medium)',
+    'placeholder-m533': 'Gemini 4 Neon (Medium)',
+    'm533': 'Gemini 4 Neon (Medium)',
+    'model_placeholder_m534': 'Gemini 4 Neon (Low)',
+    'placeholder-m534': 'Gemini 4 Neon (Low)',
+    'm534': 'Gemini 4 Neon (Low)',
+    'model_placeholder_m535': 'Gemini 4 Neon (XHigh)',
+    'placeholder-m535': 'Gemini 4 Neon (XHigh)',
+    'm535': 'Gemini 4 Neon (XHigh)',
+    'model_placeholder_m537': 'Orchestrator (Neon)',
+    'placeholder-m537': 'Orchestrator (Neon)',
+    'm537': 'Orchestrator (Neon)',
+    'model_placeholder_m417': 'Gemini 4 Argon (High)',
+    'm417': 'Gemini 4 Argon (High)',
+    'model_placeholder_m418': 'Gemini 4 Argon (Medium)',
+    'm418': 'Gemini 4 Argon (Medium)',
+    'model_placeholder_m419': 'Gemini 4 Argon (Low)',
+    'm419': 'Gemini 4 Argon (Low)',
+    'model_placeholder_m427': 'Gemini 4 Carbon (High)',
+    'm427': 'Gemini 4 Carbon (High)',
+    'model_placeholder_m437': 'Gemini 4 Carbon (Medium)',
+    'm437': 'Gemini 4 Carbon (Medium)',
+    'model_placeholder_m438': 'Gemini 4 Carbon (Low)',
+    'm438': 'Gemini 4 Carbon (Low)',
+    'gemini-3.8-flash-tiered': 'Gemini 3.8 Flash',
+    'model_placeholder_m322': 'Gemini 3.8 Flash',
+    'm322': 'Gemini 3.8 Flash',
+    'model_placeholder_m318': 'Gemini 3.8 Flash (High)',
+    'm318': 'Gemini 3.8 Flash (High)',
+    'model_placeholder_m319': 'Gemini 3.8 Flash (Medium)',
+    'm319': 'Gemini 3.8 Flash (Medium)',
+    'model_placeholder_m320': 'Gemini 3.8 Flash (Low)',
+    'm320': 'Gemini 3.8 Flash (Low)',
+    'model_placeholder_m400': 'Claude Opus 5.5 (Low)',
+    'm400': 'Claude Opus 5.5 (Low)',
+    'model_placeholder_m401': 'Claude Opus 5.5 (Medium)',
+    'm401': 'Claude Opus 5.5 (Medium)',
+    'model_placeholder_m402': 'Claude Opus 5.5 (High)',
+    'm402': 'Claude Opus 5.5 (High)',
+    'model_placeholder_m403': 'Claude Sonnet 5.5 (Low)',
+    'm403': 'Claude Sonnet 5.5 (Low)',
+    'model_placeholder_m404': 'Claude Sonnet 5.5 (Medium)',
+    'm404': 'Claude Sonnet 5.5 (Medium)',
+    'model_placeholder_m405': 'Claude Sonnet 5.5 (High)',
+    'm405': 'Claude Sonnet 5.5 (High)',
+    'model_placeholder_m198': 'Gemini 3.5 Flash-Lite',
+    'm198': 'Gemini 3.5 Flash-Lite',
+    'gemini-3.1-flash-lite': 'Gemini 3.1 Flash-Lite',
+    'model_placeholder_m50': 'Gemini 3.1 Flash-Lite',
+    'm50': 'Gemini 3.1 Flash-Lite',
+    'gemini-3-flash': 'Gemini 3 Flash',
+    'model_placeholder_m18': 'Gemini 3 Flash',
+    'm18': 'Gemini 3 Flash'
+  };
+
+  function buildLookupKeysForModel(val) {
+    const clean = String(val || '').trim().toLowerCase();
+    if (!clean) return [];
+    const stripped = clean.replace(/^model_/, '');
+    const keys = [clean, stripped];
+    const mPh = stripped.match(/placeholder[_-]?(m\d+)$/);
+    if (mPh) keys.push(`model_placeholder_${mPh[1]}`, `placeholder-${mPh[1]}`, mPh[1]);
+    return Array.from(new Set(keys));
+  }
+
+  function getModelPoolKey(raw, extraHint = '') {
+    if (!raw && !extraHint) return 'unknown';
+    const rawParts = (raw && typeof raw === 'object')
+      ? [raw.modelExactId, raw.modelId, raw.model, raw.label, raw.modelDisplayName, raw.modelLabel, raw.responseModel, raw.modelOrAlias?.model, raw.poolKey, extraHint]
+      : [raw, extraHint];
+    const tokens = rawParts.filter(v => typeof v === 'string' && v.trim()).map(v => v.trim());
+    if (!tokens.length) return 'unknown';
+    const expanded = [...tokens];
+    for (const tok of tokens) {
+      for (const lk of buildLookupKeysForModel(tok)) {
+        const mapped = MODEL_USAGE_ID_FALLBACK_LABELS[lk];
+        if (mapped) {
+          expanded.push(mapped);
+          break;
+        }
+      }
     }
+    const s = expanded.join(' ').toLowerCase().trim();
+    if (!s) return 'unknown';
     if (s.includes('carbon') || s.includes('gemini-4-carbon') || s.includes('m670')) {
       return 'gemini-4-carbon';
     }
     if (s.includes('argon') || s.includes('gemini-4-argon') || s.includes('m668') || /\bgemini-pro-orchestrator(?:-(?:argon|g1(?:-pro)?))?(?![a-z0-9-])/.test(s)) {
       return 'gemini-4-argon';
+    }
+    if (s.includes('neon') || s.includes('gemini-4-neon')) {
+      return 'gemini-4-neon';
     }
     if (s.includes('hydrogen') || s.includes('gemini-4-hydrogen')) {
       return 'gemini-4-hydrogen';
@@ -42,10 +156,9 @@
     return s.replace(/[^a-z0-9_-]/g, '') || 'unknown';
   }
 
-  function getSharedQuotaGroupKey(raw) {
-    const pk = getModelPoolKey(raw);
-    if (pk === 'gemini-4-neon') return 'shared_gemini_argon';
-    if (pk === 'gemini-4-hydrogen' || pk === 'gemini-3.8-flash') return 'shared_gemini_main';
+  function getSharedQuotaGroupKey(raw, extraHint = '') {
+    const pk = getModelPoolKey(raw, extraHint);
+    if (pk === 'gemini-4-neon' || pk === 'gemini-4-hydrogen' || pk === 'gemini-3.8-flash') return 'shared_gemini_main';
     if (pk === 'claude-opus-5-5' || pk === 'claude-sonnet-5-5' || pk === 'gpt-oss-120b') return 'shared_3p_pool';
     if (pk === 'gemini-4-argon') return 'shared_gemini_argon';
     if (pk === 'gemini-4-carbon') return 'shared_gemini_carbon';
@@ -887,30 +1000,369 @@
         outputPerMillion: 10.00,
         cacheReadPerMillion: 0.10
       }
+    ],
+    'gpt-oss-120b': [
+      {
+        inputPerMillion: 0.60,
+        outputPerMillion: 2.40,
+        cacheReadPerMillion: 0.15
+      }
     ]
   };
+
+  let DYNAMIC_PRICING_TABLE = Object.create(null);
+  let CUSTOM_PRICING_TABLE = Object.create(null);
+  let DYNAMIC_PRICING_META = {
+    updatedAt: null,
+    fetchedAtMs: 0,
+    sources: [],
+    modelCount: 0,
+    customCount: 0
+  };
+
+  function roundPricingNum(val) {
+    const n = Number(val);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return Number(n.toFixed(6));
+  }
+
+  function normalizePricingRuleList(rawRules) {
+    const list = Array.isArray(rawRules) ? rawRules : (rawRules && typeof rawRules === 'object' ? [rawRules] : []);
+    const out = [];
+    for (const r of list) {
+      if (!r || typeof r !== 'object') continue;
+      const inp = roundPricingNum(r.inputPerMillion ?? r.input);
+      const outp = roundPricingNum(r.outputPerMillion ?? r.output);
+      if (inp === null || outp === null) continue;
+      const rawCache = r.cacheReadPerMillion ?? r.cacheRead ?? r.cache_read;
+      const cacheRead = rawCache != null ? roundPricingNum(rawCache) : 0;
+      const rule = {
+        inputPerMillion: inp,
+        outputPerMillion: outp,
+        cacheReadPerMillion: cacheRead !== null ? cacheRead : 0
+      };
+      if (rawCache == null) rule._cacheMissing = true;
+      if (Number.isFinite(Number(r.minPromptTokens)) && Number(r.minPromptTokens) > 0) {
+        rule.minPromptTokens = Number(r.minPromptTokens);
+      }
+      if (Number.isFinite(Number(r.maxPromptTokens)) && Number(r.maxPromptTokens) > 0) {
+        rule.maxPromptTokens = Number(r.maxPromptTokens);
+      }
+      if (typeof r.effectiveFrom === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.effectiveFrom)) {
+        rule.effectiveFrom = r.effectiveFrom;
+      }
+      if (typeof r.effectiveTo === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.effectiveTo)) {
+        rule.effectiveTo = r.effectiveTo;
+      }
+      out.push(rule);
+    }
+    return out;
+  }
+
+  function sanitizeDynamicCatalogKey(rawKey) {
+    if (!rawKey || typeof rawKey !== 'string') return '';
+    let s = rawKey.trim().toLowerCase();
+    s = s.replace(/\s*\((?:low|medium|high|xhigh|minimal|thinking|extended|preview)\)\s*$/i, '').trim();
+    s = s.replace(/^(?:models|google|gemini|vertex_ai|vertex|google-vertex|anthropic|openai|xai|deepseek|mistral|alibaba|qwen|zhipu|moonshotai)\//i, '');
+    s = s.replace(/^model_/, '');
+    s = s.replace(/[\s_]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    if (!s || s.length > 120 || s.startsWith('placeholder-') || s.includes(':')) return '';
+    return s;
+  }
+
+  function parseModelsDevPricingCatalog(rawJson) {
+    const models = Object.create(null);
+    if (!rawJson || typeof rawJson !== 'object') return models;
+    const providerOrder = ['google', 'anthropic', 'openai', 'xai', 'deepseek', 'mistral', 'qwen', 'alibaba', 'moonshotai', 'zhipu', 'google-vertex'];
+    for (const provKey of providerOrder) {
+      const prov = rawJson[provKey];
+      const provModels = prov && typeof prov === 'object' ? prov.models : null;
+      if (!provModels || typeof provModels !== 'object') continue;
+      for (const [mId, item] of Object.entries(provModels)) {
+        if (!item || typeof item !== 'object' || !item.cost || typeof item.cost !== 'object') continue;
+        const key = sanitizeDynamicCatalogKey(item.id || mId);
+        if (!key) continue;
+        const baseIn = roundPricingNum(item.cost.input);
+        const baseOut = roundPricingNum(item.cost.output);
+        if (baseIn === null || baseOut === null) continue;
+        const hasCache = item.cost.cache_read != null && roundPricingNum(item.cost.cache_read) !== null;
+        const baseCache = hasCache ? roundPricingNum(item.cost.cache_read) : 0;
+        const rules = [];
+        const over200 = item.cost.context_over_200k;
+        if (over200 && typeof over200 === 'object' && roundPricingNum(over200.input) !== null && roundPricingNum(over200.output) !== null) {
+          rules.push({
+            maxPromptTokens: 200000,
+            inputPerMillion: baseIn,
+            outputPerMillion: baseOut,
+            cacheReadPerMillion: baseCache,
+            ...(hasCache ? {} : { _cacheMissing: true })
+          });
+          const hiCache = over200.cache_read != null ? roundPricingNum(over200.cache_read) : baseCache;
+          rules.push({
+            minPromptTokens: 200001,
+            inputPerMillion: roundPricingNum(over200.input),
+            outputPerMillion: roundPricingNum(over200.output),
+            cacheReadPerMillion: hiCache !== null ? hiCache : 0
+          });
+        } else {
+          rules.push({
+            inputPerMillion: baseIn,
+            outputPerMillion: baseOut,
+            cacheReadPerMillion: baseCache,
+            ...(hasCache ? {} : { _cacheMissing: true })
+          });
+        }
+        if (!models[key]) {
+          models[key] = rules;
+        } else if (models[key][0]?._cacheMissing && hasCache) {
+          models[key] = rules;
+        }
+      }
+    }
+    return models;
+  }
+
+  function parseLiteLlmPricingCatalog(rawJson) {
+    const models = Object.create(null);
+    if (!rawJson || typeof rawJson !== 'object') return models;
+    const providerRank = (prov, rawKey) => {
+      const p = String(prov || '').toLowerCase();
+      if (p === 'gemini' || rawKey.startsWith('gemini/')) return 1;
+      if (p === 'anthropic' || rawKey.startsWith('anthropic/')) return 2;
+      if (p === 'openai' || rawKey.startsWith('openai/')) return 3;
+      if (p === 'xai' || p === 'deepseek' || p === 'mistral') return 4;
+      if (p === 'vertex_ai-language-models' || p === 'vertex_ai' || rawKey.startsWith('vertex_ai/')) return 5;
+      return 99;
+    };
+    const chosenRank = Object.create(null);
+    for (const [rawKey, item] of Object.entries(rawJson)) {
+      if (!item || typeof item !== 'object' || rawKey === 'sample_spec') continue;
+      if (item.mode && item.mode !== 'chat' && item.mode !== 'completion' && item.mode !== 'responses') continue;
+      if (/(?:^ft:|:batch|:flex|:priority|\/batch$|\/flex$)/i.test(rawKey)) continue;
+      const rank = providerRank(item.litellm_provider, rawKey);
+      if (rank >= 99) continue;
+      const key = sanitizeDynamicCatalogKey(rawKey);
+      if (!key) continue;
+      const inpTok = Number(item.input_cost_per_token);
+      const outTok = Number(item.output_cost_per_token);
+      if (!Number.isFinite(inpTok) || inpTok < 0 || !Number.isFinite(outTok) || outTok < 0) continue;
+      const inpM = roundPricingNum(inpTok * 1e6);
+      const outM = roundPricingNum(outTok * 1e6);
+      const rawCacheTok = item.cache_read_input_token_cost;
+      const hasCache = rawCacheTok != null && Number.isFinite(Number(rawCacheTok)) && Number(rawCacheTok) >= 0;
+      const cacheM = hasCache ? roundPricingNum(Number(rawCacheTok) * 1e6) : 0;
+
+      const hiInTok = Number(item.input_cost_per_token_above_200k_tokens);
+      const hiOutTok = Number(item.output_cost_per_token_above_200k_tokens);
+      const hasOver200 = Number.isFinite(hiInTok) && hiInTok >= 0 && Number.isFinite(hiOutTok) && hiOutTok >= 0;
+      const rules = [];
+      if (hasOver200) {
+        const hiCacheTok = Number(item.cache_read_input_token_cost_above_200k_tokens);
+        const hiCacheM = (Number.isFinite(hiCacheTok) && hiCacheTok >= 0) ? roundPricingNum(hiCacheTok * 1e6) : cacheM;
+        rules.push({
+          maxPromptTokens: 200000,
+          inputPerMillion: inpM,
+          outputPerMillion: outM,
+          cacheReadPerMillion: cacheM,
+          ...(hasCache ? {} : { _cacheMissing: true })
+        });
+        rules.push({
+          minPromptTokens: 200001,
+          inputPerMillion: roundPricingNum(hiInTok * 1e6),
+          outputPerMillion: roundPricingNum(hiOutTok * 1e6),
+          cacheReadPerMillion: hiCacheM
+        });
+      } else {
+        rules.push({
+          inputPerMillion: inpM,
+          outputPerMillion: outM,
+          cacheReadPerMillion: cacheM,
+          ...(hasCache ? {} : { _cacheMissing: true })
+        });
+      }
+      const prevRank = chosenRank[key];
+      const shouldReplace = prevRank === undefined
+        || rank < prevRank
+        || (rank === prevRank && models[key]?.[0]?._cacheMissing && hasCache)
+        || (rank === prevRank && rules.length > (models[key]?.length || 0));
+      if (shouldReplace) {
+        chosenRank[key] = rank;
+        models[key] = rules;
+      }
+    }
+    return models;
+  }
+
+  function mergePricingCatalogs(...catalogs) {
+    const merged = Object.create(null);
+    for (const cat of catalogs) {
+      if (!cat || typeof cat !== 'object') continue;
+      const map = (cat.models && typeof cat.models === 'object') ? cat.models : cat;
+      for (const [rawKey, rawRules] of Object.entries(map)) {
+        const key = sanitizeDynamicCatalogKey(rawKey);
+        if (!key) continue;
+        const rules = normalizePricingRuleList(rawRules);
+        if (!rules.length) continue;
+        if (!merged[key]) {
+          merged[key] = rules;
+        } else {
+          const existing = merged[key];
+          if (existing[0]?._cacheMissing && !rules[0]?._cacheMissing) {
+            merged[key] = existing.map((er, idx) => {
+              const fb = rules[idx] || rules[0];
+              if (!er._cacheMissing || !fb) return er;
+              const copy = { ...er, cacheReadPerMillion: fb.cacheReadPerMillion };
+              delete copy._cacheMissing;
+              return copy;
+            });
+          } else if (existing.length === 1 && rules.length > 1 && existing[0].inputPerMillion === rules[0].inputPerMillion) {
+            merged[key] = rules;
+          }
+        }
+      }
+    }
+    const clean = Object.create(null);
+    for (const [k, list] of Object.entries(merged)) {
+      clean[k] = list.map((r) => {
+        const { _cacheMissing, ...rest } = r;
+        return rest;
+      });
+    }
+    return clean;
+  }
+
+  function setDynamicPricingCatalog(catalog) {
+    const next = Object.create(null);
+    let count = 0;
+    const rawModels = catalog && typeof catalog === 'object'
+      ? (catalog.models && typeof catalog.models === 'object' ? catalog.models : (!Array.isArray(catalog) && !catalog.updatedAt && !catalog.sources ? catalog : {}))
+      : {};
+    for (const [rawKey, rawRules] of Object.entries(rawModels)) {
+      const key = sanitizeDynamicCatalogKey(rawKey);
+      if (!key) continue;
+      const rules = normalizePricingRuleList(rawRules).map(({ _cacheMissing, ...rest }) => rest);
+      if (!rules.length) continue;
+      next[key] = rules;
+      count++;
+    }
+    DYNAMIC_PRICING_TABLE = next;
+    DYNAMIC_PRICING_META = {
+      updatedAt: catalog?.updatedAt || null,
+      fetchedAtMs: Number(catalog?.fetchedAtMs) || 0,
+      sources: Array.isArray(catalog?.sources) ? catalog.sources.filter(Boolean).map(String) : [],
+      modelCount: count,
+      customCount: Object.keys(CUSTOM_PRICING_TABLE).length
+    };
+    if (typeof clearDailyCostCache === 'function') clearDailyCostCache();
+    return { ...DYNAMIC_PRICING_META };
+  }
+
+  function setCustomPricingCatalog(customMap) {
+    const next = Object.create(null);
+    let count = 0;
+    const rawModels = customMap && typeof customMap === 'object'
+      ? (customMap.models && typeof customMap.models === 'object' ? customMap.models : customMap)
+      : {};
+    for (const [rawKey, rawRules] of Object.entries(rawModels)) {
+      const key = sanitizeDynamicCatalogKey(rawKey);
+      if (!key) continue;
+      const rules = normalizePricingRuleList(rawRules).map(({ _cacheMissing, ...rest }) => rest);
+      if (!rules.length) continue;
+      next[key] = rules;
+      count++;
+    }
+    CUSTOM_PRICING_TABLE = next;
+    DYNAMIC_PRICING_META.customCount = count;
+    if (typeof clearDailyCostCache === 'function') clearDailyCostCache();
+    return count;
+  }
+
+  function getDynamicPricingCatalog() {
+    const models = {};
+    for (const [k, v] of Object.entries(DYNAMIC_PRICING_TABLE)) {
+      models[k] = v.map(r => ({ ...r }));
+    }
+    const customModels = {};
+    for (const [k, v] of Object.entries(CUSTOM_PRICING_TABLE)) {
+      customModels[k] = v.map(r => ({ ...r }));
+    }
+    return {
+      ...DYNAMIC_PRICING_META,
+      models,
+      customModels
+    };
+  }
+
+  function lookupDynamicModelKey(raw) {
+    const hasCustom = Object.keys(CUSTOM_PRICING_TABLE).length > 0;
+    const hasDynamic = Object.keys(DYNAMIC_PRICING_TABLE).length > 0;
+    if (!hasCustom && !hasDynamic) return null;
+    const base = sanitizeDynamicCatalogKey(raw);
+    if (!base) return null;
+    const candidates = [base];
+    const pushUnique = (v) => { if (v && !candidates.includes(v)) candidates.push(v); };
+    if (base.includes('.')) pushUnique(base.replace(/\./g, '-'));
+    if (/(?:^|-)(\d+)-(\d+)(?=-|$)/.test(base)) pushUnique(base.replace(/(\d+)-(\d+)/g, '$1.$2'));
+    for (const c of [...candidates]) {
+      pushUnique(c.replace(/-(?:low|medium|high|xhigh|minimal|thinking)$/i, ''));
+      pushUnique(c.replace(/-\d{8}$/, ''));
+      pushUnique(c.replace(/-(?:latest|preview)$/i, ''));
+    }
+    for (const cand of candidates) {
+      if (CUSTOM_PRICING_TABLE[cand]) return cand;
+    }
+    for (const cand of candidates) {
+      if (DYNAMIC_PRICING_TABLE[cand]) return cand;
+    }
+    return null;
+  }
+
+  function getEffectivePricingRules(modelKey) {
+    if (!modelKey) return null;
+    return CUSTOM_PRICING_TABLE[modelKey] || GEMINI_PRICING_TABLE[modelKey] || DYNAMIC_PRICING_TABLE[modelKey] || null;
+  }
 
   function extractModelString(req) {
     if (!req) return '';
     if (typeof req === 'string') return req;
     const cm = req.chatModel;
-    return cm?.modelDisplayName || cm?.responseModel || cm?.model || req.modelDisplayName || req.responseModel || req.model || req.chatModel || req.modelId || '';
+    const lbl = cm?.modelDisplayName || req.modelLabel || req.modelDisplayName || '';
+    const exactId = req.modelExactId || cm?.modelId || req.modelId || '';
+    const mRaw = cm?.responseModel || cm?.model || req.responseModel || req.model || req.chatModel || '';
+    if (typeof lbl === 'string' && lbl.trim() && !/^model_placeholder_/i.test(lbl.trim()) && !/^placeholder[-_]/i.test(lbl.trim())) {
+      return lbl.trim();
+    }
+    if (
+      typeof mRaw === 'string' &&
+      mRaw.trim().toLowerCase() === 'gemini-pro-orchestrator' &&
+      typeof exactId === 'string' &&
+      exactId.trim()
+    ) {
+      return exactId.trim();
+    }
+    return mRaw || exactId || '';
   }
 
   function normalizeModelId(raw) {
     if (!raw || typeof raw !== 'string') return null;
     const str = raw.trim().toLowerCase();
-    if (str.includes('3.8-flash') || str.includes('3.8 flash') || str.includes('flash-n')) return 'gemini-3.8-flash';
-    if (str.includes('4-neon') || str.includes('4 neon') || str.includes('neon')) return 'gemini-4-neon';
-    if (str.includes('4-hydrogen') || str.includes('4 hydrogen') || str.includes('hydrogen')) return 'gemini-4-hydrogen';
-    if (str.includes('4-carbon') || str.includes('4 carbon') || str.includes('carbon') || str.includes('m670')) return 'gemini-4-carbon';
-    if (str.includes('4-argon') || str.includes('4 argon') || str.includes('argon') || /\bgemini-pro-orchestrator(?:-(?:argon|g1(?:-pro)?))?$/.test(str) || str.includes('m668')) return 'gemini-4-argon';
+    const customHit = Object.keys(CUSTOM_PRICING_TABLE).length > 0 ? (() => {
+      const cleaned = sanitizeDynamicCatalogKey(raw);
+      return cleaned && CUSTOM_PRICING_TABLE[cleaned] ? cleaned : null;
+    })() : null;
+    if (customHit) return customHit;
+    if (str.includes('3.8-flash') || str.includes('3.8 flash') || str.includes('flash-n') || /(?:^|[^a-z0-9])(?:(?:model_)?placeholder[_-]?)?m(?:318|319|320|322)(?=$|[^a-z0-9])/.test(str)) return 'gemini-3.8-flash';
+    if (str.includes('4-hydrogen') || str.includes('4 hydrogen') || str.includes('hydrogen') || str.includes('worker-agy') || /(?:^|[^a-z0-9])(?:(?:model_)?placeholder[_-]?)?m(?:525|526|527|528|530|531|578|669)(?=$|[^a-z0-9])/.test(str)) return 'gemini-4-hydrogen';
+    if (str.includes('4-neon') || str.includes('4 neon') || /\bneon\b/.test(str) || /(?:^|[^a-z0-9])(?:(?:model_)?placeholder[_-]?)?m(?:532|533|534|535|537)(?=$|[^a-z0-9])/.test(str)) return 'gemini-4-neon';
+    if (str.includes('4-carbon') || str.includes('4 carbon') || str.includes('carbon') || /(?:^|[^a-z0-9])(?:(?:model_)?placeholder[_-]?)?m(?:427|437|438|667|670)(?=$|[^a-z0-9])/.test(str)) return 'gemini-4-carbon';
+    if (str.includes('4-argon') || str.includes('4 argon') || str.includes('argon') || /\bgemini-pro-orchestrator(?:-(?:argon|g1(?:-pro)?))?$/.test(str) || /(?:^|[^a-z0-9])(?:(?:model_)?placeholder[_-]?)?m(?:417|418|419|668|681)(?=$|[^a-z0-9])/.test(str)) return 'gemini-4-argon';
     if (str.includes('3.1-pro') || str.includes('3.1 pro')) return 'gemini-3.1-pro-preview';
     if (str.includes('3.5-flash-lite') || str.includes('3.5 flash-lite') || str.includes('flash-lite')) return 'gemini-3.5-flash-lite';
     if (str.includes('2.5-pro') || str.includes('2.5 pro')) return 'gemini-2.5-pro';
-    if (/(?:opus[-_ ]5[._-]5(?![0-9]|\.[0-9]|[-_](?!20\d{6}(?![0-9]))[0-9])|5[._-]5(?![0-9]|\.[0-9]|[-_](?!20\d{6}(?![0-9]))[0-9])[-_ ]opus)/.test(str)) return 'claude-opus-5-5';
-    if (/(?:sonnet[-_ ]5[._-]5(?![0-9]|\.[0-9]|[-_](?!20\d{6}(?![0-9]))[0-9])|5[._-]5(?![0-9]|\.[0-9]|[-_](?!20\d{6}(?![0-9]))[0-9])[-_ ]sonnet)/.test(str)) return 'claude-sonnet-5-5';
-    return null;
+    if (/(?:opus[-_ ]5[._-]5(?![0-9]|\.[0-9]|[-_](?!20\d{6}(?![0-9]))[0-9])|5[._-]5(?![0-9]|\.[0-9]|[-_](?!20\d{6}(?![0-9]))[0-9])[-_ ]opus)/.test(str) || /(?:^|[^a-z0-9])(?:(?:model_)?placeholder[_-]?)?m(?:400|401|402)(?=$|[^a-z0-9])/.test(str)) return 'claude-opus-5-5';
+    if (/(?:sonnet[-_ ]5[._-]5(?![0-9]|\.[0-9]|[-_](?!20\d{6}(?![0-9]))[0-9])|5[._-]5(?![0-9]|\.[0-9]|[-_](?!20\d{6}(?![0-9]))[0-9])[-_ ]sonnet)/.test(str) || /(?:^|[^a-z0-9])(?:(?:model_)?placeholder[_-]?)?m(?:403|404|405)(?=$|[^a-z0-9])/.test(str)) return 'claude-sonnet-5-5';
+    if (str.includes('gpt-oss') || str.includes('gpt_oss') || /\bgpt[\s_-]*oss(?:[\s_-]*120b)?\b/.test(str)) return 'gpt-oss-120b';
+    return lookupDynamicModelKey(raw);
   }
 
   function resolveStableModelId(input, cascadeModelConfigs = []) {
@@ -1139,6 +1591,58 @@
       isMapped: hasReliableMapping,
       isRoutedModelVerified: Boolean((rawRespModel && !/^model_placeholder_/i.test(rawRespModel)) || hasReliableMapping),
       mappingSource
+    };
+  }
+
+  function resolveRequestedModelDisplay(rawRequested, cascadeModelConfigs = [], availableModels = null) {
+    let rawStr = '';
+    if (typeof rawRequested === 'string') {
+      rawStr = rawRequested.trim();
+    } else if (rawRequested && typeof rawRequested === 'object') {
+      rawStr = String(
+        rawRequested.model
+        || rawRequested.alias
+        || rawRequested.modelOrAlias?.model
+        || rawRequested.modelOrAlias?.alias
+        || rawRequested.choice?.value
+        || rawRequested.modelId
+        || ''
+      ).trim();
+    }
+    if (!rawStr || /^unknown$/i.test(rawStr) || rawStr === 'unattributed') {
+      return { text: null, rawId: null, stableId: null, effort: null, isPlaceholder: false, isResolved: false };
+    }
+    const phInfo = resolvePlaceholderModelInfo(rawStr, cascadeModelConfigs, availableModels);
+    const low = rawStr.toLowerCase();
+    const strippedLow = low.replace(/^model_/, '');
+    const fbLabel = MODEL_USAGE_ID_FALLBACK_LABELS[low] || MODEL_USAGE_ID_FALLBACK_LABELS[strippedLow] || null;
+    const effortText = phInfo.effort ? formatEffortLabel(phInfo.effort, 'en') : '';
+    const baseDisplay = phInfo.displayName || '';
+    let resolvedLabel = '';
+    if (baseDisplay) {
+      resolvedLabel = effortText && !baseDisplay.toLowerCase().includes(effortText.toLowerCase())
+        ? `${baseDisplay} ${effortText}`
+        : baseDisplay;
+    } else if (fbLabel) {
+      resolvedLabel = fbLabel.replace(/\s*\((High|Medium|Low|XHigh|Max|Extra High|Minimal)\)$/i, ' $1');
+    } else if (phInfo.isPlaceholder && phInfo.stableModelId && !/^model_placeholder_/i.test(phInfo.stableModelId)) {
+      resolvedLabel = phInfo.stableModelId;
+    } else if (!phInfo.isPlaceholder && /^MODEL_/i.test(rawStr)) {
+      resolvedLabel = normalizeModelId(rawStr) || rawStr;
+    } else {
+      resolvedLabel = rawStr;
+    }
+    const stableId = (phInfo.stableModelId && !/^model_placeholder_/i.test(phInfo.stableModelId))
+      ? phInfo.stableModelId
+      : (normalizeModelId(resolvedLabel) || normalizeModelId(rawStr) || null);
+    const isResolved = Boolean(!phInfo.isPlaceholder || phInfo.isMapped || fbLabel);
+    return {
+      text: resolvedLabel || rawStr,
+      rawId: rawStr,
+      stableId,
+      effort: phInfo.effort || null,
+      isPlaceholder: phInfo.isPlaceholder,
+      isResolved
     };
   }
 
@@ -1393,7 +1897,8 @@
     if (!req) return { costUSD: null, isPriced: false, reason: '缺失请求数据' };
     const rawModel = extractModelString(req);
     const modelKey = normalizeModelId(rawModel);
-    if (!modelKey || !GEMINI_PRICING_TABLE[modelKey]) {
+    const tierRules = getEffectivePricingRules(modelKey);
+    if (!modelKey || !tierRules || !tierRules.length) {
       return { costUSD: null, isPriced: false, modelKey: null, rawModel, reason: !rawModel ? '缺模型名称' : '未知模型或无官方公开费率' };
     }
     const input = Number(req.inputTokens ?? req.input_tokens ?? req.input ?? 0);
@@ -1421,7 +1926,6 @@
       }
       return d;
     })();
-    const tierRules = GEMINI_PRICING_TABLE[modelKey];
     let matchedTier = null;
 
     for (const rule of tierRules) {
@@ -1820,40 +2324,73 @@
     }
 
     let tierKey = 'unknown';
+    let tierSpecKey = 'unknown';
     let tierDisplayName = '未知';
     let officialPrice = null;
     let priceRange = null;
     const rawTeamsTier = typeof planInfo.teamsTier === 'string' ? planInfo.teamsTier.trim() : '';
 
+    let multiplier = null;
+    if (Number.isFinite(Number(userTier.multiplier)) && Number(userTier.multiplier) > 0) {
+      multiplier = Number(userTier.multiplier);
+    } else if (Number.isFinite(Number(planInfo.multiplier)) && Number(planInfo.multiplier) > 0) {
+      multiplier = Number(planInfo.multiplier);
+    } else if (Number.isFinite(Number(planStatus.quotaMultiplier)) && Number(planStatus.quotaMultiplier) > 0) {
+      multiplier = Number(planStatus.quotaMultiplier);
+    } else if (Number.isFinite(Number(userTier.tierMultiplier)) && Number(userTier.tierMultiplier) > 0) {
+      multiplier = Number(userTier.tierMultiplier);
+    }
+
     if (/ultra/i.test(rawTierName) || /ultra/i.test(userTier.id || '') || /pro_ultimate|teams_tier_ultra/i.test(rawTeamsTier)) {
       tierKey = 'ultra';
+      let detectedMultiplierStr = null;
+      const combinedMeta = `${rawTierName} ${userTier.id || ''} ${rawTeamsTier}`;
+      const multStrMatch = combinedMeta.match(/(?:ultra)?[_\-\s]*(\d+x)\b/i);
+      if (multStrMatch) {
+        detectedMultiplierStr = multStrMatch[1].toLowerCase();
+        if (!multiplier) multiplier = parseInt(detectedMultiplierStr, 10);
+      } else if (multiplier) {
+        detectedMultiplierStr = `${multiplier}x`;
+      }
+
       const subTierMatch = rawTierName.match(/ultra\s*([0-9a-zA-Z\-_]+)/i);
-      if (subTierMatch && !['plan', 'tier'].includes(subTierMatch[1].toLowerCase())) {
-        tierDisplayName = `Google AI Ultra (${subTierMatch[1]})`;
+      if (detectedMultiplierStr) {
+        tierDisplayName = `Google AI Ultra ${detectedMultiplierStr}`;
+        tierSpecKey = multiplier === 5 ? 'ultra_5x' : (multiplier === 20 ? 'ultra_20x' : 'ultra');
+        officialPrice = multiplier === 5 ? 99.99 : (multiplier === 20 ? 199.99 : null);
+        priceRange = officialPrice !== null ? `$${officialPrice}/月 · 公开参考` : `Google AI Ultra ${detectedMultiplierStr}`;
+      } else if (subTierMatch && !['plan', 'tier'].includes(subTierMatch[1].toLowerCase())) {
+        tierDisplayName = `Google AI Ultra ${subTierMatch[1]}`;
+        tierSpecKey = 'ultra';
         officialPrice = null;
-        priceRange = '子档定制费率未知';
+        priceRange = '$99.99–$199.99/月 · 待选择档位';
       } else {
-        tierDisplayName = 'Google AI Ultra（子档未知）';
+        tierDisplayName = 'Google AI Ultra';
+        tierSpecKey = 'ultra';
         officialPrice = null;
-        priceRange = '参考区间 $99.99 ~ $249.99/月（子档未知）';
+        priceRange = '$99.99–$199.99/月 · 待选择档位';
       }
     } else if (/pro/i.test(rawTierName) || /pro/i.test(userTier.id || '') || /^teams_tier_pro$/i.test(rawTeamsTier)) {
       tierKey = 'pro';
+      tierSpecKey = 'pro';
       tierDisplayName = 'Google AI Pro';
       officialPrice = 19.99;
       priceRange = '$19.99/月（公开参考）';
     } else if (/plus/i.test(rawTierName) || /plus/i.test(userTier.id || '') || /^teams_tier_plus$/i.test(rawTeamsTier)) {
       tierKey = 'plus';
+      tierSpecKey = 'plus';
       tierDisplayName = 'Google AI Plus';
       officialPrice = 4.99;
       priceRange = '$4.99/月（公开参考）';
     } else if (/free/i.test(rawTierName) || /free/i.test(userTier.id || '') || /^teams_tier_free$/i.test(rawTeamsTier)) {
       tierKey = 'free';
+      tierSpecKey = 'free';
       tierDisplayName = 'Free';
       officialPrice = 0;
       priceRange = '$0/月（公开参考）';
     } else {
       tierKey = 'custom';
+      tierSpecKey = 'custom';
       tierDisplayName = rawTierName || rawTeamsTier || '未知套餐';
       officialPrice = null;
       priceRange = '费率未知';
@@ -1862,7 +2399,9 @@
     return {
       status: 'identified',
       tierKey,
+      tierSpecKey,
       tierName: tierDisplayName,
+      multiplier,
       tierId: userTier.id || null,
       teamsTier: planInfo.teamsTier || null,
       planName: planInfo.planName || tierDisplayName,
@@ -1898,7 +2437,7 @@
     const hasBreakdown = (input + cache + output) > 0;
 
     const normKey = normalizeModelId(modelKey) || 'gemini-3.8-flash';
-    const tierRules = GEMINI_PRICING_TABLE[normKey] || GEMINI_PRICING_TABLE['gemini-3.8-flash'];
+    const tierRules = getEffectivePricingRules(normKey) || GEMINI_PRICING_TABLE['gemini-3.8-flash'];
     const reqDate = options.pricingDate ? String(options.pricingDate).slice(0, 10) : '2026-11-08';
     let matchedTier = tierRules[0];
     for (const rule of tierRules) {
@@ -1970,13 +2509,15 @@
     const modelNameMap = {
       'gemini-3.8-flash': 'Gemini 3.8 Flash Standard',
       'gemini-4-hydrogen': 'Gemini 4 Hydrogen',
+      'gemini-4-neon': 'Gemini 4 Neon',
       'gemini-4-carbon': 'Gemini 4 Carbon',
       'gemini-4-argon': 'Gemini 4 Argon',
       'gemini-3.1-pro-preview': 'Gemini 3.1 Pro Preview',
       'gemini-3.5-flash-lite': 'Gemini 3.5 Flash-Lite',
       'gemini-2.5-pro': 'Gemini 2.5 Pro',
       'claude-opus-5-5': 'Claude Opus 5.5',
-      'claude-sonnet-5-5': 'Claude Sonnet 5.5'
+      'claude-sonnet-5-5': 'Claude Sonnet 5.5',
+      'gpt-oss-120b': 'GPT-OSS 120B'
     };
 
     return {
@@ -2275,6 +2816,278 @@
     return Number(((num * fromRate) / toRate).toFixed(2));
   }
 
+  const SUBSCRIPTION_TIER_SPECS = {
+    free: {
+      key: 'free',
+      tierKey: 'free',
+      name: 'Free',
+      nameZh: '免费版',
+      nameTw: '免費版',
+      nameEn: 'Free',
+      officialPriceUSD: 0,
+      multiplier: null,
+      windowDescZh: '每周基础刷新',
+      windowDescTw: '每週基礎重新整理',
+      windowDescEn: 'Weekly baseline refresh',
+      storage: '15 GB',
+      promptMonthly: null,
+      flowPoolMonthly: null,
+      flowOfficialZh: 'Flow 50/天',
+      flowOfficialTw: 'Flow 50/天',
+      flowOfficialEn: 'Flow 50/day',
+      cloudCreditsZh: null,
+      cloudCreditsTw: null,
+      cloudCreditsEn: null
+    },
+    plus: {
+      key: 'plus',
+      tierKey: 'plus',
+      name: 'Google AI Plus',
+      nameZh: 'Google AI Plus',
+      nameTw: 'Google AI Plus',
+      nameEn: 'Google AI Plus',
+      officialPriceUSD: 4.99,
+      multiplier: null,
+      windowDescZh: '基础提升窗口',
+      windowDescTw: '基礎提升視窗',
+      windowDescEn: 'Enhanced tier window',
+      storage: '400 GB / 2 TB',
+      promptMonthly: null,
+      flowPoolMonthly: null,
+      flowOfficialZh: 'Flow 50/天 + 200/月',
+      flowOfficialTw: 'Flow 50/天 + 200/月',
+      flowOfficialEn: 'Flow 50/day + 200/mo',
+      cloudCreditsZh: null,
+      cloudCreditsTw: null,
+      cloudCreditsEn: null
+    },
+    pro: {
+      key: 'pro',
+      tierKey: 'pro',
+      name: 'Google AI Pro',
+      nameZh: 'Google AI Pro',
+      nameTw: 'Google AI Pro',
+      nameEn: 'Google AI Pro',
+      officialPriceUSD: 19.99,
+      multiplier: 1,
+      windowDescZh: '1x · 5h+7d 窗口',
+      windowDescTw: '1x · 5h+7d 視窗',
+      windowDescEn: '1x · 5h+7d window',
+      storage: '5 TB',
+      promptMonthly: 50000,
+      flowPoolMonthly: 150000,
+      flowOfficialZh: '官方 +1,000/月',
+      flowOfficialTw: '官方 +1,000/月',
+      flowOfficialEn: 'Official +1,000/mo',
+      cloudCreditsZh: '$10/月 Cloud Credits',
+      cloudCreditsTw: '$10/月 Cloud Credits',
+      cloudCreditsEn: '$10/mo Cloud Credits'
+    },
+    ultra_5x: {
+      key: 'ultra_5x',
+      tierKey: 'ultra',
+      name: 'Google AI Ultra 5x',
+      nameZh: 'Google AI Ultra 5x',
+      nameTw: 'Google AI Ultra 5x',
+      nameEn: 'Google AI Ultra 5x',
+      officialPriceUSD: 99.99,
+      multiplier: 5,
+      windowDescZh: '5x Pro 窗口',
+      windowDescTw: '5x Pro 視窗',
+      windowDescEn: '5x Pro window',
+      storage: '20 TB',
+      promptMonthly: 250000,
+      flowPoolMonthly: 750000,
+      flowOfficialZh: '官方 +10,000/月',
+      flowOfficialTw: '官方 +10,000/月',
+      flowOfficialEn: 'Official +10,000/mo',
+      cloudCreditsZh: '$40/月 Cloud Credits',
+      cloudCreditsTw: '$40/月 Cloud Credits',
+      cloudCreditsEn: '$40/mo Cloud Credits'
+    },
+    ultra_20x: {
+      key: 'ultra_20x',
+      tierKey: 'ultra',
+      name: 'Google AI Ultra 20x',
+      nameZh: 'Google AI Ultra 20x',
+      nameTw: 'Google AI Ultra 20x',
+      nameEn: 'Google AI Ultra 20x',
+      officialPriceUSD: 199.99,
+      multiplier: 20,
+      windowDescZh: '20x Pro 窗口',
+      windowDescTw: '20x Pro 視窗',
+      windowDescEn: '20x Pro window',
+      storage: '30 TB',
+      promptMonthly: 1000000,
+      flowPoolMonthly: 3000000,
+      flowOfficialZh: '官方 +25,000/月',
+      flowOfficialTw: '官方 +25,000/月',
+      flowOfficialEn: 'Official +25,000/mo',
+      cloudCreditsZh: '$100/月 Cloud Credits',
+      cloudCreditsTw: '$100/月 Cloud Credits',
+      cloudCreditsEn: '$100/mo Cloud Credits'
+    },
+    ultra: {
+      key: 'ultra',
+      tierKey: 'ultra',
+      name: 'Google AI Ultra',
+      nameZh: 'Google AI Ultra',
+      nameTw: 'Google AI Ultra',
+      nameEn: 'Google AI Ultra',
+      officialPriceUSD: null,
+      priceRangeUSD: [99.99, 199.99],
+      priceRangeTextZh: '$99.99–$199.99/月',
+      priceRangeTextTw: '$99.99–$199.99/月',
+      priceRangeTextEn: '$99.99–$199.99/mo',
+      multiplier: null,
+      windowDescZh: '5x–20x Pro 窗口',
+      windowDescTw: '5x–20x Pro 視窗',
+      windowDescEn: '5x–20x Pro window',
+      storage: '20–30 TB',
+      promptMonthly: null,
+      flowPoolMonthly: null,
+      flowOfficialZh: '官方 +10,000–25,000/月',
+      flowOfficialTw: '官方 +10,000–25,000/月',
+      flowOfficialEn: 'Official +10,000–25,000/mo',
+      cloudCreditsZh: '$40–$100/月 Cloud Credits',
+      cloudCreditsTw: '$40–$100/月 Cloud Credits',
+      cloudCreditsEn: '$40–$100/mo Cloud Credits'
+    }
+  };
+
+  const SUBSCRIPTION_TIER_REGION_PRICES = {
+    US: { currency: 'USD', symbol: '$', plus: 4.99, pro: 19.99, ultra_5x: 99.99, ultra_20x: 199.99 },
+    JP: { currency: 'JPY', symbol: '¥', plus: 750, pro: 2900, ultra_5x: 14500, ultra_20x: 32000 },
+    KR: { currency: 'KRW', symbol: '₩', plus: 7000, pro: 29000, ultra_5x: 119000, ultra_20x: 300000 },
+    TW: { currency: 'TWD', symbol: 'NT$', plus: 160, pro: 650, ultra_5x: 3250, ultra_20x: 6500 },
+    HK: { currency: 'HKD', symbol: 'HK$', plus: 38, pro: 158, ultra_5x: 799, ultra_20x: 1588 },
+    EU: { currency: 'EUR', symbol: '€', plus: 5.49, pro: 21.99, ultra_5x: 99.99, ultra_20x: 219.99 },
+    GB: { currency: 'GBP', symbol: '£', plus: 4.99, pro: 18.99, ultra_5x: 94.99, ultra_20x: 189.99 },
+    AU: { currency: 'AUD', symbol: 'AU$', plus: 7.99, pro: 32.99, ultra_5x: 164.99, ultra_20x: 329.99 },
+    SG: { currency: 'SGD', symbol: 'S$', plus: 6.99, pro: 28.99, ultra_5x: 139.99, ultra_20x: 279.99 },
+    CA: { currency: 'CAD', symbol: 'CA$', plus: 6.99, pro: 26.99, ultra_5x: 139.99, ultra_20x: 279.99 },
+    IN: { currency: 'INR', symbol: '₹', plus: 499, pro: 1950, ultra_5x: 6500, ultra_20x: 19500 },
+    TR: { currency: 'TRY', symbol: '₺', plus: 199.99, pro: 869.99, ultra_5x: 4749.99, ultra_20x: 8999.99 },
+    BR: { currency: 'BRL', symbol: 'R$', plus: 24.90, pro: 96.90, ultra_5x: 499.90, ultra_20x: 999.90 },
+    EG: { currency: 'EGP', symbol: 'EGP ', plus: 239.99, pro: 939.99, ultra_5x: 4399.99, ultra_20x: 8799.99 }
+  };
+
+  function resolvePlanSpecKey(tierKey = null, multiplier = null, override = null) {
+    const ov = typeof override === 'string' ? override.trim().toLowerCase() : '';
+    if (ov === 'free' || ov === 'teams_tier_free') return 'free';
+    if (ov === 'plus' || ov === 'teams_tier_plus') return 'plus';
+    if (ov === 'pro' || ov === 'teams_tier_pro') return 'pro';
+    if (ov === 'ultra_5x' || ov === 'ultra 5x' || ov === 'ultra-5x' || ov === '5x') return 'ultra_5x';
+    if (ov === 'ultra_20x' || ov === 'ultra 20x' || ov === 'ultra-20x' || ov === '20x') return 'ultra_20x';
+    if (ov === 'ultra' || ov === 'google ai ultra') return 'ultra';
+    const tk = typeof tierKey === 'string' ? tierKey.trim().toLowerCase() : '';
+    const mult = Number(multiplier);
+    if (tk === 'free') return 'free';
+    if (tk === 'plus') return 'plus';
+    if (tk === 'pro') return 'pro';
+    if (tk === 'ultra_5x' || tk === 'ultra 5x' || tk === 'ultra-5x') return 'ultra_5x';
+    if (tk === 'ultra_20x' || tk === 'ultra 20x' || tk === 'ultra-20x') return 'ultra_20x';
+    if (tk === 'ultra') {
+      if (mult === 5) return 'ultra_5x';
+      if (mult === 20) return 'ultra_20x';
+      return 'ultra';
+    }
+    return 'unknown';
+  }
+
+  function getPlanTierSpec(specKey) {
+    return SUBSCRIPTION_TIER_SPECS[specKey] || null;
+  }
+
+  function getRegionPlanReferencePrice(regionOrPreset, specKey = 'pro') {
+    const preset = (typeof regionOrPreset === 'string')
+      ? findRegionPreset(regionOrPreset)
+      : (regionOrPreset && typeof regionOrPreset === 'object' ? regionOrPreset : null);
+    const sk = (specKey && SUBSCRIPTION_TIER_SPECS[specKey]) ? specKey : 'pro';
+    if (sk === 'free') {
+      return {
+        available: true,
+        isRange: false,
+        monthlyPrice: 0,
+        currency: preset?.currency || 'USD',
+        symbol: preset?.symbol || '$',
+        source: 'preset_region'
+      };
+    }
+    if (sk === 'ultra') {
+      return {
+        available: false,
+        isRange: true,
+        monthlyPrice: null,
+        minUsd: 99.99,
+        maxUsd: 199.99,
+        currency: preset?.currency || 'USD',
+        symbol: preset?.symbol || '$',
+        source: 'unknown'
+      };
+    }
+    if (!preset) {
+      const spec = SUBSCRIPTION_TIER_SPECS[sk];
+      return {
+        available: spec && spec.officialPriceUSD !== null && spec.officialPriceUSD !== undefined,
+        isRange: false,
+        monthlyPrice: spec?.officialPriceUSD ?? null,
+        currency: 'USD',
+        symbol: '$',
+        source: 'official_reference'
+      };
+    }
+    const matrixRow = SUBSCRIPTION_TIER_REGION_PRICES[preset.id];
+    if (matrixRow && matrixRow[sk] !== undefined) {
+      return {
+        available: true,
+        isRange: false,
+        monthlyPrice: Number(matrixRow[sk]),
+        currency: matrixRow.currency,
+        symbol: matrixRow.symbol || preset.symbol || (CURRENCY_SYMBOLS[matrixRow.currency] || '$'),
+        source: 'preset_region'
+      };
+    }
+    if (sk === 'pro' && Number.isFinite(Number(preset.monthlyPrice))) {
+      return {
+        available: true,
+        isRange: false,
+        monthlyPrice: Number(preset.monthlyPrice),
+        currency: preset.currency,
+        symbol: preset.symbol || (CURRENCY_SYMBOLS[preset.currency] || '$'),
+        source: 'preset_region'
+      };
+    }
+    const spec = SUBSCRIPTION_TIER_SPECS[sk];
+    if (spec && Number.isFinite(Number(spec.officialPriceUSD))) {
+      const usdRef = Number(spec.officialPriceUSD);
+      const converted = preset.currency === 'USD'
+        ? usdRef
+        : convertCurrency(usdRef, 'USD', preset.currency, preset.id);
+      if (converted !== null && Number.isFinite(converted)) {
+        const rounded = (preset.currency === 'JPY' || preset.currency === 'KRW' || preset.currency === 'VND' || preset.currency === 'IDR' || preset.currency === 'CLP' || preset.currency === 'COP' || preset.currency === 'HUF' || preset.currency === 'TWD' || preset.currency === 'INR' || preset.currency === 'NGN')
+          ? Math.round(converted)
+          : Number(converted.toFixed(2));
+        return {
+          available: true,
+          isRange: false,
+          monthlyPrice: rounded,
+          currency: preset.currency,
+          symbol: preset.symbol || (CURRENCY_SYMBOLS[preset.currency] || '$'),
+          source: 'preset_converted'
+        };
+      }
+    }
+    return {
+      available: false,
+      isRange: false,
+      monthlyPrice: null,
+      currency: preset.currency || 'USD',
+      symbol: preset.symbol || '$',
+      source: 'unknown'
+    };
+  }
+
   function resolveEffectivePlanStatus(livePlanStatus, customSettings, options = {}) {
     const rawLive = livePlanStatus && typeof livePlanStatus === 'object' ? livePlanStatus : null;
     const rawCustom = customSettings && typeof customSettings === 'object' ? customSettings : null;
@@ -2295,32 +3108,104 @@
     let teamsTier = null;
     let planName = '未知';
     let tierSource = 'unknown';
+    let multiplier = rawLive?.multiplier || cachedLive?.multiplier || null;
 
-    if (rawLive && rawLive.status === 'identified' && rawLive.tierKey !== 'unknown') {
+    const rawTierOverride = effectiveCustom?.planTierOverride || effectiveCustom?.tierOverride || effectiveCustom?.planTier || null;
+    const normTierOverride = (typeof rawTierOverride === 'string' && rawTierOverride.trim() && rawTierOverride.trim().toLowerCase() !== 'auto')
+      ? rawTierOverride.trim()
+      : null;
+
+    const sanitizeTierDisplayName = (rawName) => String(rawName || '')
+      .replace(/\s*[（(]([^）)]+)[）)]/g, (_, inner) => (/^\s*\d+x\s*$/i.test(inner) ? ` ${inner.trim().toLowerCase()}` : ''))
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (normTierOverride) {
+      status = (rawLive && rawLive.status === 'identified') ? 'identified' : 'custom';
+      tierSource = 'custom';
+      tierId = rawLive?.tierId || cachedLive?.tierId || null;
+      teamsTier = rawLive?.teamsTier || cachedLive?.teamsTier || null;
+      const lowerOverride = normTierOverride.toLowerCase();
+
+      if (lowerOverride === 'free' || lowerOverride === 'teams_tier_free') {
+        tierKey = 'free';
+        tierName = 'Free';
+        planName = 'Free';
+        multiplier = null;
+      } else if (lowerOverride === 'pro' || lowerOverride === 'teams_tier_pro') {
+        tierKey = 'pro';
+        tierName = 'Google AI Pro';
+        planName = 'Google AI Pro';
+        multiplier = 1;
+      } else if (lowerOverride === 'plus' || lowerOverride === 'teams_tier_plus') {
+        tierKey = 'plus';
+        tierName = 'Google AI Plus';
+        planName = 'Google AI Plus';
+        multiplier = null;
+      } else if (lowerOverride === 'ultra_5x' || lowerOverride === 'ultra 5x' || lowerOverride === 'ultra-5x' || lowerOverride === '5x') {
+        tierKey = 'ultra';
+        tierName = 'Google AI Ultra 5x';
+        planName = 'Google AI Ultra 5x';
+        multiplier = 5;
+      } else if (lowerOverride === 'ultra_20x' || lowerOverride === 'ultra 20x' || lowerOverride === 'ultra-20x' || lowerOverride === '20x') {
+        tierKey = 'ultra';
+        tierName = 'Google AI Ultra 20x';
+        planName = 'Google AI Ultra 20x';
+        multiplier = 20;
+      } else if (lowerOverride === 'ultra' || lowerOverride === 'google ai ultra') {
+        tierKey = 'ultra';
+        tierName = 'Google AI Ultra';
+        planName = 'Google AI Ultra';
+        multiplier = null;
+      } else {
+        const multMatch = normTierOverride.match(/(\d+x)/i);
+        if (/ultra/i.test(normTierOverride)) {
+          tierKey = 'ultra';
+          if (multMatch) {
+            multiplier = parseInt(multMatch[1], 10);
+            tierName = `Google AI Ultra ${multMatch[1].toLowerCase()}`;
+          } else {
+            tierName = sanitizeTierDisplayName(normTierOverride);
+          }
+        } else {
+          tierKey = 'custom';
+          tierName = normTierOverride;
+        }
+        planName = tierName;
+      }
+    } else if (rawLive && rawLive.status === 'identified' && rawLive.tierKey !== 'unknown') {
       status = 'identified';
       tierKey = rawLive.tierKey;
-      tierName = rawLive.tierName;
+      tierName = sanitizeTierDisplayName(rawLive.tierName) || rawLive.tierName;
       tierId = rawLive.tierId;
       teamsTier = rawLive.teamsTier || null;
-      planName = rawLive.planName || rawLive.tierName;
+      planName = rawLive.planName || tierName;
       tierSource = 'live';
+      multiplier = rawLive.multiplier || multiplier;
     } else if (effectiveCustom && effectiveCustom.tierName) {
       status = 'custom';
       tierKey = effectiveCustom.tierKey || 'custom';
-      tierName = effectiveCustom.tierName;
+      tierName = sanitizeTierDisplayName(effectiveCustom.tierName);
       tierId = effectiveCustom.tierId || rawLive?.tierId || cachedLive?.tierId || null;
       teamsTier = effectiveCustom.teamsTier || rawLive?.teamsTier || cachedLive?.teamsTier || null;
-      planName = effectiveCustom.tierName;
+      planName = tierName;
       tierSource = 'custom';
     } else if (cachedLive && cachedLive.status === 'identified' && cachedLive.tierKey !== 'unknown') {
       status = 'identified';
       tierKey = cachedLive.tierKey;
-      tierName = cachedLive.tierName;
+      tierName = sanitizeTierDisplayName(cachedLive.tierName) || cachedLive.tierName;
       tierId = cachedLive.tierId;
       teamsTier = cachedLive.teamsTier || null;
-      planName = cachedLive.planName || cachedLive.tierName;
+      planName = cachedLive.planName || tierName;
       tierSource = 'cached_live';
+      multiplier = cachedLive.multiplier || multiplier;
     }
+    const tierSpecKey = resolvePlanSpecKey(tierKey, multiplier, normTierOverride || tierName);
+    const tierSpec = getPlanTierSpec(tierSpecKey);
+    const liveTierSpecKey = (rawLive && rawLive.status === 'identified' && rawLive.tierKey !== 'unknown')
+      ? resolvePlanSpecKey(rawLive.tierKey, rawLive.multiplier, rawLive.tierName)
+      : ((cachedLive && cachedLive.status === 'identified' && cachedLive.tierKey !== 'unknown')
+        ? resolvePlanSpecKey(cachedLive.tierKey, cachedLive.multiplier, cachedLive.tierName)
+        : 'unknown');
 
     let country = '未知';
     let countrySource = 'unknown';
@@ -2388,7 +3273,7 @@
     }
 
     let actualPricePaid = null;
-    let officialPriceMonthly = rawLive?.officialPriceMonthly ?? cachedLive?.officialPriceMonthly ?? null;
+    let officialPriceMonthly = tierSpec?.officialPriceUSD ?? rawLive?.officialPriceMonthly ?? cachedLive?.officialPriceMonthly ?? null;
     const matchedRegionPreset = findRegionPreset(region);
     let rawCur = (effectiveCustom?.subscriptionCurrency || effectiveCustom?.currency) ? String(effectiveCustom.subscriptionCurrency || effectiveCustom.currency).trim().toUpperCase() : '';
     if (rawCur === 'NTD') rawCur = 'TWD';
@@ -2432,7 +3317,7 @@
 
     const isLivePaidValid = rawLive && rawLive.priceSource !== 'custom' && rawLive.priceSource !== 'preset_region' && rawLive.actualPricePaid !== null && rawLive.actualPricePaid !== undefined && Number.isFinite(Number(rawLive.actualPricePaid)) && Number(rawLive.actualPricePaid) >= 0;
 
-    if (isLivePaidValid) {
+    if (isLivePaidValid && !normTierOverride) {
       priceMode = 'live';
       actualPricePaid = Number(rawLive.actualPricePaid);
       isPriceEstimated = false;
@@ -2468,32 +3353,94 @@
       }
     } else {
       priceMode = 'preset';
-      const isUltraTier = tierKey === 'ultra';
-      if (matchedRegionPreset && !isUltraTier) {
-        actualPricePaid = Number(matchedRegionPreset.monthlyPrice);
-        isPriceEstimated = true;
-        priceSource = 'preset_region';
+      const effLookupSpecKey = (tierSpecKey === 'unknown' || tierSpecKey === 'custom') ? 'pro' : tierSpecKey;
+      const isUnsplitUltra = effLookupSpecKey === 'ultra';
+      if (effLookupSpecKey === 'free') {
+        actualPricePaid = 0;
+        officialPriceMonthly = 0;
+        isPriceEstimated = false;
+        priceSource = matchedRegionPreset ? 'preset_region' : 'official_reference';
+        billingCycle = effectiveCustom?.billingCycle || '免费版';
+        priceRangeNote = `${acquisitionSourceName} · ${curSymbol}0 · ${billingCycle}`;
+      } else if (isUnsplitUltra) {
+        actualPricePaid = null;
+        officialPriceMonthly = null;
+        isPriceEstimated = false;
+        priceSource = 'unknown';
         billingCycle = effectiveCustom?.billingCycle || '月付';
-        priceRangeNote = `${acquisitionSourceName} · 地区参考价 ${curSymbol}${actualPricePaid} · ${billingCycle}`;
+        priceRangeNote = `${acquisitionSourceName} · $99.99–$199.99/月 · 待选择档位`;
+      } else if (matchedRegionPreset && effLookupSpecKey !== 'unknown') {
+        const refObj = getRegionPlanReferencePrice(matchedRegionPreset, effLookupSpecKey);
+        if (refObj.available && refObj.monthlyPrice !== null) {
+          actualPricePaid = Number(refObj.monthlyPrice);
+          isPriceEstimated = true;
+          priceSource = 'preset_region';
+          billingCycle = effectiveCustom?.billingCycle || '月付';
+          priceRangeNote = `${acquisitionSourceName} · 地区参考价 ${curSymbol}${actualPricePaid} · ${billingCycle}`;
+        } else {
+          actualPricePaid = null;
+          isPriceEstimated = false;
+          priceSource = 'unknown';
+          billingCycle = effectiveCustom?.billingCycle || '月付';
+          priceRangeNote = `${acquisitionSourceName} · 待设置订阅国家与价格`;
+        }
       } else if (officialPriceMonthly !== null) {
         actualPricePaid = null;
+        isPriceEstimated = true;
         priceSource = 'official_reference';
-        billingCycle = '月付 · 公开参考';
-        priceRangeNote = `${acquisitionSourceName} · 公开参考价 $${officialPriceMonthly}/月`;
+        billingCycle = '月付';
+        priceRangeNote = `${acquisitionSourceName} · 官方参考价 $${officialPriceMonthly}/月`;
       } else {
         actualPricePaid = null;
         isPriceEstimated = false;
         priceSource = 'unknown';
-        billingCycle = isUltraTier ? (effectiveCustom?.billingCycle || '月付') : '未知';
-        priceRangeNote = isUltraTier
-          ? `${acquisitionSourceName} · Google AI Ultra 待设置实付月费`
-          : `${acquisitionSourceName} · 待设置订阅国家与价格`;
+        billingCycle = '未知';
+        priceRangeNote = `${acquisitionSourceName} · 待设置订阅国家与价格`;
       }
     }
 
     const customNote = effectiveCustom?.customNote ? String(effectiveCustom.customNote).trim() : null;
     const promptCredits = rawLive?.promptCredits || cachedLive?.promptCredits || null;
     const flowCredits = rawLive?.flowCredits || cachedLive?.flowCredits || null;
+    const hasHostLiveCredits = Boolean(
+      (promptCredits && (promptCredits.available != null || promptCredits.monthly != null)) ||
+      (flowCredits && (flowCredits.available != null || flowCredits.monthly != null))
+    );
+    const isManualTierOverride = Boolean(normTierOverride);
+    const isDifferentFromHostTier = Boolean(
+      isManualTierOverride && (!liveTierSpecKey || liveTierSpecKey === 'unknown' || liveTierSpecKey !== tierSpecKey)
+    );
+    const creditDisplayBasis = (isDifferentFromHostTier || (!hasHostLiveCredits && tierSpec))
+      ? (tierSpecKey === 'pro' ? 'official_baseline' : 'plan_estimate')
+      : 'host_live';
+    const effectivePromptCredits = creditDisplayBasis === 'host_live'
+      ? {
+        available: promptCredits?.available ?? null,
+        monthly: promptCredits?.monthly ?? tierSpec?.promptMonthly ?? null,
+        basis: 'host_live',
+        hostLive: promptCredits
+      }
+      : {
+        available: null,
+        monthly: tierSpec?.promptMonthly ?? null,
+        basis: creditDisplayBasis,
+        hostLive: hasHostLiveCredits ? promptCredits : null
+      };
+    const effectiveFlowCredits = creditDisplayBasis === 'host_live'
+      ? {
+        available: flowCredits?.available ?? null,
+        monthly: flowCredits?.monthly ?? tierSpec?.flowPoolMonthly ?? null,
+        officialText: tierSpec?.flowOfficialZh || null,
+        basis: 'host_live',
+        hostLive: flowCredits
+      }
+      : {
+        available: null,
+        monthly: tierSpec?.flowPoolMonthly ?? null,
+        officialText: tierSpec?.flowOfficialZh || null,
+        basis: creditDisplayBasis,
+        hostLive: hasHostLiveCredits ? flowCredits : null
+      };
 
     const rateRegion = (matchedRegionPreset && matchedRegionPreset.currency === currency) ? region : null;
     const effectiveRate = (matchedRegionPreset && matchedRegionPreset.currency === currency)
@@ -2510,10 +3457,14 @@
     return {
       status,
       tierKey,
+      tierSpecKey,
       tierName,
       tierId,
       teamsTier,
       planName,
+      planTierOverride: normTierOverride || 'auto',
+      multiplier: multiplier || tierSpec?.multiplier || null,
+      planSpec: tierSpec || null,
       email: currentEmail,
       accountRegion: country,
       country,
@@ -2548,6 +3499,9 @@
       customNote,
       promptCredits,
       flowCredits,
+      creditDisplayBasis,
+      effectivePromptCredits,
+      effectiveFlowCredits,
       sources: {
         tier: tierSource,
         country: countrySource,
@@ -2556,9 +3510,9 @@
         price: priceSource,
         acquisition: effectiveCustom?.acquisitionSource ? 'custom' : 'default'
       },
-      hasCustomSettings: Boolean(effectiveCustom && (effectiveCustom.country || effectiveCustom.region || effectiveCustom.subscriptionRegion || effectiveCustom.currency || effectiveCustom.actualPricePaid !== undefined || effectiveCustom.customNote || effectiveCustom.acquisitionSource)),
+      hasCustomSettings: Boolean(effectiveCustom && (normTierOverride || effectiveCustom.country || effectiveCustom.region || effectiveCustom.subscriptionRegion || effectiveCustom.currency || effectiveCustom.actualPricePaid !== undefined || effectiveCustom.customNote || effectiveCustom.acquisitionSource)),
       pricingTableVerifiedDate: '2026-11-09',
-      updatedAt: rawLive?.updatedAt || new Date().toISOString()
+      updatedAt: effectiveCustom?.updatedAt || rawLive?.updatedAt || new Date().toISOString()
     };
   }
 
@@ -3725,12 +4679,12 @@
       const joinedHints = [g.groupId, title, desc, ...explicitModelNames].filter(Boolean).join(' ').toLowerCase();
       if (joinedHints.includes('3p') || joinedHints.includes('claude') || joinedHints.includes('gpt-oss')) {
         sharedKey = 'shared_3p_pool';
+      } else if (joinedHints.includes('hydrogen') || joinedHints.includes('neon') || joinedHints.includes('flash')) {
+        sharedKey = 'shared_gemini_main';
       } else if (joinedHints.includes('argon')) {
         sharedKey = 'shared_gemini_argon';
       } else if (joinedHints.includes('carbon')) {
         sharedKey = 'shared_gemini_carbon';
-      } else if (joinedHints.includes('hydrogen') || joinedHints.includes('flash')) {
-        sharedKey = 'shared_gemini_main';
       } else {
         sharedKey = `group_${g.groupId || normalizeModelLookupName(title) || idx}`;
       }
@@ -3748,7 +4702,7 @@
 
     const productMap = new Map();
     const fallbackGroupNames = {
-      shared_gemini_main: 'Gemini 4 Hydrogen / Gemini 3.8 Flash',
+      shared_gemini_main: 'Gemini 4 Neon / Hydrogen / Gemini 3.8 Flash',
       shared_3p_pool: 'Claude Opus/Sonnet 5.5 / GPT-OSS 120B (第三方共享池)',
       shared_gemini_argon: 'Gemini 4 Argon / Orchestrator',
       shared_gemini_carbon: 'Gemini 4 Carbon'
@@ -4653,6 +5607,7 @@
 
   const UNATTRIBUTED_MODEL_KEY = '__unattributed__';
   const MODEL_PRODUCT_DISPLAY_NAMES = {
+    'gemini-4-neon': 'Gemini 4 Neon',
     'gemini-4-hydrogen': 'Gemini 4 Hydrogen',
     'gemini-4-argon': 'Gemini 4 Argon',
     'gemini-4-carbon': 'Gemini 4 Carbon',
@@ -4666,6 +5621,7 @@
     'gpt-oss-120b': 'GPT-OSS 120B'
   };
   const MODEL_FIXED_COLORS_DARK = {
+    'gemini-4-neon': '#fb923c',
     'gemini-4-hydrogen': '#a78bfa',
     'gemini-4-argon': '#6366f1',
     'gemini-3.8-flash': '#38bdf8',
@@ -4680,6 +5636,7 @@
     [UNATTRIBUTED_MODEL_KEY]: 'rgba(161, 161, 170, 0.28)'
   };
   const MODEL_FIXED_COLORS_LIGHT = {
+    'gemini-4-neon': '#ea580c',
     'gemini-4-hydrogen': '#7c3aed',
     'gemini-4-argon': '#4f46e5',
     'gemini-3.8-flash': '#0284c7',
@@ -4695,98 +5652,12 @@
   };
   const MODEL_FALLBACK_PALETTE_DARK = ['#a78bfa', '#38bdf8', '#6366f1', '#2dd4bf', '#f59e0b', '#e879f9', '#10b981', '#f472b6'];
   const MODEL_FALLBACK_PALETTE_LIGHT = ['#7c3aed', '#0284c7', '#4f46e5', '#0d9488', '#d97706', '#c026d3', '#059669', '#db2777'];
-  const MODEL_USAGE_ID_FALLBACK_LABELS = {
-    'gemini-flash-worker-agy': 'Gemini 4 Hydrogen (Orchestrator)',
-    'model_placeholder_m669': 'Gemini 4 Hydrogen (Orchestrator)',
-    'placeholder-m669': 'Gemini 4 Hydrogen (Orchestrator)',
-    'm669': 'Gemini 4 Hydrogen (Orchestrator)',
-    'model_placeholder_m667': 'Orchestrator (Carbon)',
-    'placeholder-m667': 'Orchestrator (Carbon)',
-    'm667': 'Orchestrator (Carbon)',
-    'model_placeholder_m681': 'Orchestrator (Argon)',
-    'placeholder-m681': 'Orchestrator (Argon)',
-    'm681': 'Orchestrator (Argon)',
-    'model_placeholder_m668': 'Orchestrator (Argon)',
-    'placeholder-m668': 'Orchestrator (Argon)',
-    'm668': 'Orchestrator (Argon)',
-    'model_placeholder_m670': 'Gemini 4 Carbon',
-    'placeholder-m670': 'Gemini 4 Carbon',
-    'm670': 'Gemini 4 Carbon',
-    'gemini-4-hydrogen-sonar': 'Gemini 4 Hydrogen',
-    'model_placeholder_m578': 'Gemini 4 Hydrogen',
-    'm578': 'Gemini 4 Hydrogen',
-    'gemini-4-hydrogen-tiered-high': 'Gemini 4 Hydrogen (High)',
-    'model_placeholder_m530': 'Gemini 4 Hydrogen (High)',
-    'm530': 'Gemini 4 Hydrogen (High)',
-    'gemini-4-hydrogen-tiered-xhigh': 'Gemini 4 Hydrogen (XHigh)',
-    'model_placeholder_m531': 'Gemini 4 Hydrogen (XHigh)',
-    'm531': 'Gemini 4 Hydrogen (XHigh)',
-    'model_placeholder_m525': 'Gemini 4 Hydrogen (High)',
-    'm525': 'Gemini 4 Hydrogen (High)',
-    'model_placeholder_m526': 'Gemini 4 Hydrogen (Medium)',
-    'm526': 'Gemini 4 Hydrogen (Medium)',
-    'model_placeholder_m527': 'Gemini 4 Hydrogen (Low)',
-    'm527': 'Gemini 4 Hydrogen (Low)',
-    'model_placeholder_m528': 'Gemini 4 Hydrogen (XHigh)',
-    'm528': 'Gemini 4 Hydrogen (XHigh)',
-    'model_placeholder_m417': 'Gemini 4 Argon (High)',
-    'm417': 'Gemini 4 Argon (High)',
-    'model_placeholder_m418': 'Gemini 4 Argon (Medium)',
-    'm418': 'Gemini 4 Argon (Medium)',
-    'model_placeholder_m419': 'Gemini 4 Argon (Low)',
-    'm419': 'Gemini 4 Argon (Low)',
-    'model_placeholder_m427': 'Gemini 4 Carbon (High)',
-    'm427': 'Gemini 4 Carbon (High)',
-    'model_placeholder_m437': 'Gemini 4 Carbon (Medium)',
-    'm437': 'Gemini 4 Carbon (Medium)',
-    'model_placeholder_m438': 'Gemini 4 Carbon (Low)',
-    'm438': 'Gemini 4 Carbon (Low)',
-    'gemini-3.8-flash-tiered': 'Gemini 3.8 Flash',
-    'model_placeholder_m322': 'Gemini 3.8 Flash',
-    'm322': 'Gemini 3.8 Flash',
-    'model_placeholder_m318': 'Gemini 3.8 Flash (High)',
-    'm318': 'Gemini 3.8 Flash (High)',
-    'model_placeholder_m319': 'Gemini 3.8 Flash (Medium)',
-    'm319': 'Gemini 3.8 Flash (Medium)',
-    'model_placeholder_m320': 'Gemini 3.8 Flash (Low)',
-    'm320': 'Gemini 3.8 Flash (Low)',
-    'model_placeholder_m400': 'Claude Opus 5.5 (Low)',
-    'm400': 'Claude Opus 5.5 (Low)',
-    'model_placeholder_m401': 'Claude Opus 5.5 (Medium)',
-    'm401': 'Claude Opus 5.5 (Medium)',
-    'model_placeholder_m402': 'Claude Opus 5.5 (High)',
-    'm402': 'Claude Opus 5.5 (High)',
-    'model_placeholder_m403': 'Claude Sonnet 5.5 (Low)',
-    'm403': 'Claude Sonnet 5.5 (Low)',
-    'model_placeholder_m404': 'Claude Sonnet 5.5 (Medium)',
-    'm404': 'Claude Sonnet 5.5 (Medium)',
-    'model_placeholder_m405': 'Claude Sonnet 5.5 (High)',
-    'm405': 'Claude Sonnet 5.5 (High)',
-    'model_placeholder_m198': 'Gemini 3.5 Flash-Lite',
-    'm198': 'Gemini 3.5 Flash-Lite',
-    'gemini-3.1-flash-lite': 'Gemini 3.1 Flash-Lite',
-    'model_placeholder_m50': 'Gemini 3.1 Flash-Lite',
-    'm50': 'Gemini 3.1 Flash-Lite',
-    'gemini-3-flash': 'Gemini 3 Flash',
-    'model_placeholder_m18': 'Gemini 3 Flash',
-    'm18': 'Gemini 3 Flash'
-  };
 
   function isOpaqueModelToken(raw) {
     const s = String(raw || '').trim();
     if (!s) return true;
     if (/^(?:model_placeholder_|placeholder[-_]|model_)/i.test(s)) return true;
     return !/[A-Z\s()]/.test(s);
-  }
-
-  function buildLookupKeysForModel(val) {
-    const clean = String(val || '').trim().toLowerCase();
-    if (!clean) return [];
-    const stripped = clean.replace(/^model_/, '');
-    const keys = [clean, stripped];
-    const mPh = stripped.match(/placeholder[_-]?(m\d+)$/);
-    if (mPh) keys.push(`model_placeholder_${mPh[1]}`, `placeholder-${mPh[1]}`, mPh[1]);
-    return Array.from(new Set(keys));
   }
 
   function lookupModelDisplayLabel(call, cascadeModelConfigs = [], availableModelDetails = null) {
@@ -4883,7 +5754,7 @@
 
     if (
       probeLower.includes('orchestrator') ||
-      /\b(?:model_placeholder_|placeholder[-_])?m(?:667|668|681)\b/.test(probeLower)
+      /\b(?:model_placeholder_|placeholder[-_])?m(?:667|668|681|537)\b/.test(probeLower)
     ) {
       let tier = null;
       let tierLabel = null;
@@ -4894,6 +5765,9 @@
       } else if (lblLower.includes('argon') || probeLower.includes('argon') || /\b(?:model_placeholder_|placeholder[-_])?m(?:668|681)\b/.test(probeLower)) {
         tier = 'argon';
         tierLabel = 'Orchestrator (Argon)';
+      } else if (lblLower.includes('neon') || probeLower.includes('neon') || /\b(?:model_placeholder_|placeholder[-_])?m537\b/.test(probeLower)) {
+        tier = 'neon';
+        tierLabel = 'Orchestrator (Neon)';
       }
       return {
         modelKey: 'orchestrator',
@@ -4984,6 +5858,7 @@
       return baseKey.includes('sonnet') ? fixedTable['claude-sonnet-5-5'] : fixedTable['claude-opus-5-5'];
     }
     if (baseKey.includes('gpt')) return fixedTable['gpt-oss-120b'];
+    if (baseKey.includes('neon')) return fixedTable['gemini-4-neon'];
     if (baseKey.includes('flash')) return fixedTable['gemini-3.8-flash'];
     if (baseKey.includes('argon')) return fixedTable['gemini-4-argon'];
     if (baseKey.includes('carbon')) return fixedTable['gemini-4-carbon'];
@@ -6717,6 +7592,7 @@
     buildModelQuotaSnapshot,
     splitModelDisplayAndEffort,
     resolvePlaceholderModelInfo,
+    resolveRequestedModelDisplay,
     formatApproxTokensShort,
     inferQuotaWindowDurationMs,
     QUOTA_CAL_TTL_MS,
@@ -6729,8 +7605,20 @@
     analyzeSteps,
     parseDurationSec,
     GEMINI_PRICING_TABLE,
+    setDynamicPricingCatalog,
+    setCustomPricingCatalog,
+    getDynamicPricingCatalog,
+    parseModelsDevPricingCatalog,
+    parseLiteLlmPricingCatalog,
+    mergePricingCatalogs,
+    getEffectivePricingRules,
     SUBSCRIPTION_ACQUISITION_PRESETS,
+    SUBSCRIPTION_TIER_SPECS,
+    SUBSCRIPTION_TIER_REGION_PRICES,
     SUBSCRIPTION_REGIONS_PRESET,
+    resolvePlanSpecKey,
+    getPlanTierSpec,
+    getRegionPlanReferencePrice,
     findRegionPreset,
     convertToCNY,
     convertCurrency,

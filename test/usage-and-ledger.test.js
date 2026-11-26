@@ -14,9 +14,11 @@ const {
   normalizeQuotaForUi,
   normalizeAccountsOverviewForUi,
   shapeCollectResultForUi,
+  injectI18nIntoSubframe,
 } = require('../src/backend/studio-main');
 const meterCore = require('../src/backend/meter-core');
 const meterCollector = require('../src/backend/meter-collector');
+const meterStorage = require('../src/backend/meter-storage');
 const { ConfigStore } = require('../src/shared/config-store');
 
 test('computeHistoryOverview parses real pricing_ledger_v1 and token_usage_archive_v2 schema accurately', async () => {
@@ -279,7 +281,7 @@ test('meter-core pricing catalog normalization & quota formatting', () => {
   }, nowMs);
   assert.equal(enriched.usageEvents.length, 2);
   assert.equal(enriched.usageEvents[1].poolKey, 'gemini-4-neon');
-  assert.equal(enriched.usageEvents[1].sharedGroupKey, 'shared_gemini_argon');
+  assert.equal(enriched.usageEvents[1].sharedGroupKey, 'shared_gemini_main');
 
   const estSnapRes = meterCore.applyQuotaTokenEstimates({
     pools: [{
@@ -364,4 +366,222 @@ test('meter-core pricing catalog normalization & quota formatting', () => {
   assert.ok(lightweightShaped.context.breakdown.system > 10000);
   assert.ok(lightweightShaped.context.breakdown.tools > 8000);
   assert.ok(lightweightShaped.context.breakdown.user > 500000);
+});
+
+test('v2.2.0 P0.2 meter-core model mappings, pricing, Ultra 5x/20x & planTierOverride', () => {
+  // 1. gemini-4-neon maps to shared_gemini_main (PR #52)
+  assert.equal(meterCore.getSharedQuotaGroupKey('gemini-4-neon'), 'shared_gemini_main');
+  assert.equal(meterCore.getSharedQuotaGroupKey('model_placeholder_m532'), 'shared_gemini_main');
+  assert.equal(meterCore.getSharedQuotaGroupKey('model_placeholder_m537'), 'shared_gemini_main');
+  assert.equal(meterCore.getSharedQuotaGroupKey('gemini-4-hydrogen'), 'shared_gemini_main');
+  assert.equal(meterCore.getSharedQuotaGroupKey('gemini-3.8-flash'), 'shared_gemini_main');
+
+  // 2. Placeholder & orchestrator mappings
+  assert.equal(meterCore.getModelPoolKey('model_placeholder_m532'), 'gemini-4-neon');
+  assert.equal(meterCore.getModelPoolKey('model_placeholder_m533'), 'gemini-4-neon');
+  assert.equal(meterCore.getModelPoolKey('model_placeholder_m534'), 'gemini-4-neon');
+  assert.equal(meterCore.getModelPoolKey('model_placeholder_m535'), 'gemini-4-neon');
+  assert.equal(meterCore.getModelPoolKey('model_placeholder_m537'), 'gemini-4-neon');
+  assert.equal(meterCore.getModelPoolKey('model_placeholder_m667'), 'gemini-4-carbon');
+  assert.equal(meterCore.getModelPoolKey('model_placeholder_m681'), 'gemini-4-argon');
+  assert.equal(meterCore.getModelPoolKey('gemini-pro-orchestrator'), 'gemini-4-argon');
+  assert.equal(meterCore.lookupModelDisplayLabel({ modelId: 'model_placeholder_m537' }), 'Orchestrator (Neon)');
+  assert.equal(meterCore.lookupModelDisplayLabel({ modelId: 'model_placeholder_m667' }), 'Orchestrator (Carbon)');
+  assert.equal(meterCore.lookupModelDisplayLabel({ modelId: 'model_placeholder_m681' }), 'Orchestrator (Argon)');
+  assert.equal(meterCore.resolveModelUsageBucket({ modelId: 'model_placeholder_m537' }).variantLabel, 'Orchestrator (Neon)');
+
+  // 3. Built-in pricing for gpt-oss-120b, claude-opus-5-5, claude-sonnet-5-5, and preserved gemini-4-neon
+  const gptCost = meterCore.calculateRequestApiCost({
+    model: 'GPT-OSS 120B (Medium)',
+    inputTokens: 1000000,
+    cacheTokens: 200000,
+    outputTokens: 500000,
+  });
+  assert.equal(gptCost.isPriced, true);
+  assert.equal(gptCost.modelKey, 'gpt-oss-120b');
+  assert.ok(Math.abs(gptCost.costUSD - (0.60 + 0.03 + 1.20)) < 1e-6);
+
+  const opusCost = meterCore.calculateRequestApiCost({
+    model: 'claude-opus-5-5',
+    inputTokens: 1000000,
+    cacheTokens: 1000000,
+    outputTokens: 1000000,
+  });
+  assert.equal(opusCost.isPriced, true);
+  assert.equal(opusCost.modelKey, 'claude-opus-5-5');
+  assert.ok(Math.abs(opusCost.costUSD - 24.20) < 1e-6);
+
+  const sonnetCost = meterCore.calculateRequestApiCost({
+    model: 'claude-sonnet-5-5',
+    inputTokens: 1000000,
+    cacheTokens: 1000000,
+    outputTokens: 1000000,
+  });
+  assert.equal(sonnetCost.isPriced, true);
+  assert.equal(sonnetCost.modelKey, 'claude-sonnet-5-5');
+  assert.ok(Math.abs(sonnetCost.costUSD - 12.10) < 1e-6);
+
+  const neonCost = meterCore.calculateRequestApiCost({
+    model: 'gemini-4-neon',
+    inputTokens: 1000000,
+    cacheTokens: 1000000,
+    outputTokens: 1000000,
+  });
+  assert.equal(neonCost.isPriced, true);
+  assert.equal(neonCost.modelKey, 'gemini-4-neon');
+  assert.ok(Math.abs(neonCost.costUSD - 18.15) < 1e-6);
+
+  // 4. Ultra 5x/20x sub-tiers & manual planTierOverride
+  const parsedUltra20 = meterCore.parseUserPlanStatus({
+    userStatus: {
+      email: 'ultra@example.com',
+      userTier: { id: 'g1-ultra-tier', name: 'Google AI Ultra 20x' },
+    },
+  });
+  assert.equal(parsedUltra20.tierSpecKey, 'ultra_20x');
+  assert.equal(parsedUltra20.multiplier, 20);
+  assert.equal(parsedUltra20.officialPriceMonthly, 199.99);
+
+  const effUltra5 = meterCore.resolveEffectivePlanStatus(
+    { status: 'identified', tierKey: 'pro', tierName: 'Google AI Pro', email: 'u@example.com' },
+    { planTierOverride: 'ultra_5x', region: 'US' }
+  );
+  assert.equal(effUltra5.tierKey, 'ultra');
+  assert.equal(effUltra5.tierSpecKey, 'ultra_5x');
+  assert.equal(effUltra5.planTierOverride, 'ultra_5x');
+  assert.equal(effUltra5.officialPriceMonthly, 99.99);
+  assert.equal(effUltra5.actualPricePaid, 99.99);
+});
+
+test('v2.2.0 P1.1/P1.3 storage async lock, SSH skip, ledger backup pruning, idle throttle, pricing sync & subframe i18n', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-studio-p1-'));
+  try {
+    // 1. Non-blocking withFileLockAsync
+    const lockTarget = path.join(root, 'lock-test.json');
+    let seq = [];
+    await Promise.all([
+      meterStorage.withFileLockAsync(lockTarget, async () => {
+        seq.push('a-start');
+        await new Promise((r) => setTimeout(r, 20));
+        seq.push('a-end');
+      }),
+      meterStorage.withFileLockAsync(lockTarget, async () => {
+        seq.push('b-start');
+        seq.push('b-end');
+      }),
+    ]);
+    assert.deepEqual(seq, ['a-start', 'a-end', 'b-start', 'b-end']);
+
+    // 2. scanFiles skips ssh:// and vscode-remote://
+    const remoteScan = await meterCollector.scanFiles([
+      { uri: 'ssh://host/repo/app.js' },
+      { uri: 'vscode-remote://ssh-remote+box/home/user/test.py' },
+    ], { isRemote: true });
+    assert.equal(remoteScan.length, 2);
+    assert.equal(remoteScan[0].remoteSkipped, true);
+    assert.equal(remoteScan[1].remoteSkipped, true);
+    assert.equal(remoteScan[0].status, 'unknown');
+
+    // 3. .bak-pre-elv89-* backup pruning
+    const ledgerPath = path.join(root, 'pricing_ledger_v1.json');
+    fs.writeFileSync(ledgerPath, JSON.stringify({ version: '1.0.0', calls: {} }));
+    for (let i = 1; i <= 5; i++) {
+      fs.writeFileSync(`${ledgerPath}.bak-pre-elv89-${1700000000000 + i}`, '{}');
+    }
+    const pruneRes = meterCollector.pruneLedgerRepairBackups(ledgerPath, { keep: 3 });
+    assert.equal(pruneRes.totalBefore, 5);
+    assert.equal(pruneRes.keptCount, 3);
+    assert.equal(pruneRes.removedCount, 2);
+    assert.equal(meterCollector.listLedgerRepairBackups(ledgerPath).length, 3);
+
+    // 4. Idle history refresh throttle
+    assert.equal(meterCollector.shouldSkipTokenHistoryRefresh({
+      force: false,
+      knownRevision: 'rev-1',
+      revision: 'rev-1',
+      knownAccountKey: 'a@example.com',
+      accountKey: 'a@example.com',
+    }), true);
+    assert.equal(meterCollector.shouldSkipTokenHistoryRefresh({
+      force: false,
+      knownRevision: 'rev-1',
+      revision: 'rev-1',
+      knownAccountKey: 'a@example.com',
+      accountKey: 'b@example.com',
+    }), false);
+    assert.equal(meterCollector.shouldSkipTokenHistoryRefresh({
+      force: true,
+      knownRevision: 'rev-1',
+      revision: 'rev-1',
+      knownAccountKey: 'a@example.com',
+      accountKey: 'a@example.com',
+    }), false);
+
+    // 5. Dynamic pricing sync from models.dev / LiteLLM feeds + ledger reprice
+    const agDir = path.join(root, 'ag');
+    const stateDir = path.join(root, 'state');
+    fs.mkdirSync(agDir, { recursive: true });
+    fs.writeFileSync(path.join(agDir, 'pricing_ledger_v1.json'), JSON.stringify({
+      version: '1.0.0',
+      calls: {
+        'dyn#1': {
+          callId: 'dyn#1',
+          model: 'deepseek-r9-custom',
+          inputTokens: 1000000,
+          cacheTokens: 0,
+          outputTokens: 1000000,
+          isPriced: false,
+          costUSD: 0,
+        },
+      },
+    }));
+    const syncRes = await meterCollector.syncPricingCatalogAsync({
+      force: true,
+      stateDir,
+      agDir,
+      fetcher: async (u) => {
+        if (String(u).includes('models.dev')) {
+          return { deepseek: { models: { 'deepseek-r9-custom': { id: 'deepseek-r9-custom', cost: { input: 1.0, output: 2.0, cache_read: 0.1 } } } } };
+        }
+        return {};
+      },
+    });
+    assert.equal(syncRes.ok, true);
+    assert.ok(syncRes.sources.includes('models.dev'));
+    assert.equal(syncRes.repricedCount, 1);
+    const updatedCost = meterCore.calculateRequestApiCost({
+      model: 'deepseek-r9-custom',
+      inputTokens: 1000000,
+      cacheTokens: 0,
+      outputTokens: 1000000,
+    });
+    assert.equal(updatedCost.isPriced, true);
+    assert.equal(updatedCost.costUSD, 3);
+    meterCore.setDynamicPricingCatalog({});
+
+    // 6. P1.3 injectI18nIntoSubframe injects plugin:// frames and skips http:// frames
+    const executed = [];
+    const store = new ConfigStore(stateDir);
+    const mockPluginFrame = {
+      url: 'plugin://swarm-panel/index.html',
+      isDestroyed: () => false,
+      executeJavaScript: async (code) => {
+        executed.push(code);
+        return false;
+      },
+    };
+    const okSub = await injectI18nIntoSubframe(mockPluginFrame, store);
+    assert.equal(okSub, true);
+    assert.ok(executed.some((c) => c.includes('initPreloadI18n')));
+    assert.ok(executed.some((c) => c.includes('applyPayload')));
+
+    const nonPluginFrame = {
+      url: 'http://127.0.0.1:8080/',
+      isDestroyed: () => false,
+      executeJavaScript: async () => { throw new Error('should not execute'); },
+    };
+    assert.equal(await injectI18nIntoSubframe(nonPluginFrame, store), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

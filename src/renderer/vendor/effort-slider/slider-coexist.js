@@ -35,13 +35,15 @@
     return null;
   }
 
-  const isMenu = (doc) => Boolean(qs(doc, '[data-testid="model-selector-panel"], .ces-menu-section, [data-ces-effort-row="true"], [role="dialog"] [data-ces-settings]'));
+  const isMenu = (doc) => !!qs(doc, '[data-testid="model-selector-panel"], .ces-menu-section, [data-ces-effort-row="true"], [role="dialog"] [data-ces-settings]');
 
+  const HC_A = 'data-hover-card-popup';
+  const SB_SEL = 'aside,[data-testid="sidebar-split"]>div:first-child,[data-testid="conversation-row-sidebar"],[data-testid="project-header"],[data-hover-card-popup]';
   const IGNORED_CHAT_SEL =
-    '[data-testid="autoscroll-viewport"],[data-testid="planner-response-text"],[data-testid="agent-response"],[data-markdown-root],[data-testid="user-message-bubble"],aside,[data-op-thought="1"],.ag-prism-thought-overlay,.ag-cs-crab,.ag-cs-conv-aura-host,#ag-pulse-status-bar,#ag-prism-pulse-bar,[data-ag-prism-pulse-bar="true"],.ag-cs-panel-row-glyph,.ces-ag-section,.ces-set,[data-ag-owned="1"],[data-testid="orchestrator-effort-bar"],.ag-cs-smooth-caret,.ag-anim-icon,[data-agy-hans-ui],#agy-theme-switcher,#agy-theme-menu,#antigravity-quota-widget,#antigravity-translation-audit';
+    '#ag-studio-root,[data-ag-studio-ignore],[data-testid="autoscroll-viewport"],[data-testid="planner-response-text"],[data-testid="agent-response"],[data-markdown-root],[data-testid="user-message-bubble"],' + SB_SEL + ',[data-op-thought="1"],.ag-prism-thought-overlay,.ag-cs-crab,.ag-cs-conv-aura-host,#ag-pulse-status-bar,#ag-prism-pulse-bar,[data-ag-prism-pulse-bar="true"],.ag-cs-panel-row-glyph,.ces-ag-section,.ces-set,[data-ag-owned="1"],[data-testid="orchestrator-effort-bar"],.ag-cs-smooth-caret,.ag-anim-icon,[data-agy-hans-ui],#agy-theme-switcher,#agy-theme-menu,#antigravity-quota-widget,#antigravity-translation-audit';
 
   const EFF_MAP = Object.create(null);
-  for (const g of 'xhigh:xhigh|extra|超高|极高|特高|超高思考;high:high|高|高思考|高推理|高强度;medium:medium|med|中|中等|中思考|中等思考|中推理;low:low|低|低思考|低推理;minimal:minimal|极低|最小|最低;max:max|最高|最大;off:off|关闭|关;auto:auto|自动;adaptive:adaptive|自适应|自適應;thinking:thinking|深度思考|思考中|思考'.split(';')) {
+  for (const g of 'xhigh:xhigh|extra|extra high|超高|极高|極高|特高|很高|超高思考;high:high|高|高思考|高推理|高强度|高強度;medium:medium|med|中|中等|中思考|中等思考|中推理;low:low|低|低思考|低推理;minimal:minimal|极低|極低|最小|最低|极简|極簡;max:max|最高|最大|极限|極限;off:off|关闭|關閉|关|關|无|無|不推理|none|disabled;auto:auto|自动|自動;adaptive:adaptive|自适应|自適應;thinking:thinking|深度思考|思考中|思考'.split(';')) {
     const [k, vs] = g.split(':');
     for (const v of vs.split('|')) EFF_MAP[v] = k;
   }
@@ -53,7 +55,7 @@
   }
 
   function parseLocalizedModelLabel(raw) {
-    const s = String(raw || '').trim().replace(/^(?:Select model|选择模型)\s*[:：]\s*/i, '').trim();
+    const s = String(raw || '').trim().replace(/^(?:Select model|Current|选择模型|選擇模型)\s*[:：]\s*/i, '').trim();
     if (!s) return null;
     const m = /^(.*?)\s*[\(\uff08]([^()\uff08\uff09]+)[\)\uff09]\s*$/.exec(s);
     const eff = m ? normalizeEffortToken(m[2]) : '';
@@ -65,12 +67,12 @@
   function markOwnedNoTr(doc) {
     const fn = resLib(doc?.defaultView)?.markNoTranslate;
     for (const el of qa(doc, '.ces-ag-section,.ces-set,[data-testid="orchestrator-effort-bar"]')) {
-      sa(el, 'data-ag-studio-ignore', 'true');
-      sa(el, 'data-ag-no-i18n', 'true');
       if (fn) {
         fn(el);
         for (const ch of qa(el, 'div,span')) if (String(ch.className || '').includes('ces-ag-effort-')) fn(ch);
       }
+      sa(el, 'data-ag-studio-ignore', 'true');
+      sa(el, 'data-ag-no-i18n', 'true');
     }
   }
 
@@ -97,11 +99,12 @@
   }
 
   function isIgnTarget(node) {
-    if (!node) return false;
-    const el = node.nodeType === 1 ? node : node.parentElement;
-    if (!el) return false;
+    const el = node?.nodeType === 1 ? node : node?.parentElement;
+    if (!el || el.tagName === 'BODY' || el.tagName === 'HTML') return false;
     if (el.classList?.contains?.('ag-prism-thought-chunk') || el.classList?.contains?.('ag-prism-thought-overlay')) return true;
-    return typeof el.closest === 'function' ? Boolean(el.closest(IGNORED_CHAT_SEL)) : false;
+    const h = (n, k) => !!n?.hasAttribute?.(k), f = el.firstElementChild;
+    if (h(el, HC_A) || h(f, HC_A) || h(f?.firstElementChild, HC_A) || (h(el, 'data-base-ui-portal') && !!qs(el, '[data-hover-card-popup]'))) return true;
+    return !!el.closest?.(IGNORED_CHAT_SEL);
   }
 
   function isIgnRec(rec) {
@@ -152,7 +155,7 @@
         const batch = q;
         q = [];
         const open = isMenu(doc), closed = wasOpen && !open;
-        if (!Boolean(fSync || closed) && !touchesModel(batch)) {
+        if (!(fSync || closed) && !touchesModel(batch)) {
           wasOpen = open;
           stats.skippedIrrelevant += 1;
           return;
@@ -214,7 +217,7 @@
           q = [];
           return inner.disconnect();
         },
-        takeRecords: () => (typeof inner.takeRecords === 'function' ? inner.takeRecords() : []),
+        takeRecords: () => (inner.takeRecords ? inner.takeRecords() : []),
       };
       return wrap;
     };
@@ -231,7 +234,7 @@
       if (!w) return false;
       if (w.__agCodexEffortSliderInstance && !w.__agCodexEffortSliderInstance.__prismOwned) return true;
       const st = d?.getElementById?.(SLIDER_STYLE_ID);
-      return Boolean(st && st.getAttribute(PRISM_OWNER_ATTR) !== '1' && !inst);
+      return !!(st && st.getAttribute(PRISM_OWNER_ATTR) !== '1' && !inst);
     }
 
     const HIDE_CSS_TEXT =
@@ -289,31 +292,26 @@
       }
     }
 
+    const getMO = (w) => w.MutationObserver || (typeof MutationObserver === 'function' ? MutationObserver : null);
     function mountMemGuard() {
-      const w = gW(), d = gD();
-      if (!w || !d || !d.body) return false;
-      const lib = resLib(w);
-      if (!lib || typeof lib.installEffortMemoryGuard !== 'function') return false;
-      const BaseMO = w.MutationObserver || (typeof MutationObserver === 'function' ? MutationObserver : null);
+      const w = gW(), d = gD(), lib = w && d?.body ? resLib(w) : null;
+      if (!lib?.installEffortMemoryGuard) return false;
       stopMemGuard();
       memGuard = lib.installEffortMemoryGuard({
         document: d,
         window: w,
-        MutationObserver: mkThrottledMO(BaseMO, d, perfStats) || undefined,
+        MutationObserver: mkThrottledMO(getMO(w), d, perfStats) || undefined,
       });
-      return Boolean(memGuard);
+      return !!memGuard;
     }
 
     function mountBuiltIn() {
-      const w = gW(), d = gD();
-      if (!w || !d || !d.body) return false;
-      const lib = resLib(w);
-      if (!lib || typeof lib.installCodexEffortSlider !== 'function') return false;
-      const BaseMO = w.MutationObserver || (typeof MutationObserver === 'function' ? MutationObserver : null);
+      const w = gW(), d = gD(), lib = w && d?.body ? resLib(w) : null;
+      if (!lib?.installCodexEffortSlider) return false;
       const next = lib.installCodexEffortSlider({
         document: d,
         window: w,
-        MutationObserver: mkThrottledMO(BaseMO, d, perfStats) || undefined,
+        MutationObserver: mkThrottledMO(getMO(w), d, perfStats) || undefined,
         skipGenericMenuObserver: true,
         rememberEffort,
       });
@@ -379,9 +377,9 @@
       return {
         mode,
         rememberEffort,
-        mountedPrism: Boolean(inst),
-        memoryGuardActive: Boolean(memGuard),
-        yieldedToExternal: Boolean(yielded || (mode === 'auto' && hasExtInst())),
+        mountedPrism: !!inst,
+        memoryGuardActive: !!memGuard,
+        yieldedToExternal: !!(yielded || (mode === 'auto' && hasExtInst())),
         hasExternal: hasExtInst(),
         throttleMs: THROTTLE_MS,
         perfStats: { ...perfStats },

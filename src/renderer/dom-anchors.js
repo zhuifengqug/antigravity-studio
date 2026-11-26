@@ -6,6 +6,7 @@
 
   var SUBAGENT_SEL = '[data-testid="subagent-tab-conversation"]';
   var CONV_VIEW_SEL = '[data-testid="conversation-view"]';
+  var TILING_PANE_SEL = '[data-tiling-pane]';
   var INPUT_BOX_SEL = '[data-testid="agent-input-box"]';
   var COMPOSER_CARD_SEL = '[data-testid="agent-input-box"] .surface-composer-card, .surface-composer-card';
   var RUNNING_SEL = [
@@ -15,7 +16,12 @@
     '[data-testid="agent-loading"]',
     '[data-testid="thinking-collapsible-trigger"][data-op-thought-state="streaming"]'
   ].join(', ');
-  var DECISION_SEL = '[data-testid="interaction-takeover-card"], [data-testid="side-question-panel"]';
+  var DECISION_SEL = [
+    '[data-testid="interaction-takeover-card"]',
+    '[data-testid="side-question-panel"]',
+    '[data-testid="decision-card-blocking-ring"]',
+    '[data-testid="agent-inline-card-slot"]'
+  ].join(', ');
   var ERROR_SEL = '[data-testid="agent-error"], [role="alert"][data-error="true"]';
 
   function isOwnNode(el) {
@@ -33,14 +39,153 @@
     if (el.style && (el.style.display === 'none' || el.style.visibility === 'hidden')) return false;
     var cls = typeof el.className === 'string' ? el.className : '';
     if (cls && /(?:^|\s)(?:hidden|sr-only)(?:\s|$)/.test(cls)) return false;
+    if (el.closest && el.closest('[hidden], .hidden, [aria-hidden="true"]')) return false;
     if (typeof el.getClientRects === 'function') {
       try {
         var rects = el.getClientRects();
         if (!rects || rects.length === 0) return false;
-        return rects[0].width > 1 || rects[0].height > 1;
+        var r = rects[0];
+        if (r.width === 0 || r.height === 0) return false;
+        return r.width > 1 || r.height > 1;
       } catch (_e) {}
     }
     return el.offsetParent !== null;
+  }
+
+  var activePaneEl = null;
+  var boundPaneDocs = typeof WeakSet === 'function' ? new WeakSet() : null;
+  var lastBoundPaneDoc = null;
+  var paneListeners = [];
+
+  function isSubagentOnlyPane(el) {
+    if (!el) return false;
+    if (el.matches && el.matches(SUBAGENT_SEL)) return true;
+    if (el.closest && el.closest(SUBAGENT_SEL)) return true;
+    if (el.querySelector && el.querySelector(SUBAGENT_SEL) && !el.querySelector(CONV_VIEW_SEL)) return true;
+    return false;
+  }
+
+  function resolvePaneFromTarget(target) {
+    if (!target || typeof target.closest !== 'function' || isOwnNode(target)) return null;
+    if (target.closest(SUBAGENT_SEL)) return null;
+    var pane = target.closest(TILING_PANE_SEL);
+    if (pane && !isOwnNode(pane) && !isSubagentOnlyPane(pane)) return pane;
+    var cv = target.closest(CONV_VIEW_SEL);
+    if (cv && !isOwnNode(cv) && !(cv.closest && cv.closest(SUBAGENT_SEL))) {
+      var outerPane = cv.closest && cv.closest(TILING_PANE_SEL);
+      if (outerPane && !isOwnNode(outerPane) && !isSubagentOnlyPane(outerPane)) return outerPane;
+      return cv;
+    }
+    return null;
+  }
+
+  function handlePaneFocusEvent(ev) {
+    try {
+      var target = ev && ev.target;
+      var nextPane = resolvePaneFromTarget(target);
+      if (!nextPane) return;
+      if (nextPane !== activePaneEl) {
+        activePaneEl = nextPane;
+        for (var i = 0; i < paneListeners.length; i++) {
+          try { paneListeners[i]('pane'); } catch (_e) {}
+        }
+      }
+    } catch (_e) {}
+  }
+
+  function ensurePaneTracking() {
+    if (typeof document === 'undefined' || !document || typeof document.addEventListener !== 'function') return;
+    if (boundPaneDocs) {
+      if (boundPaneDocs.has(document)) return;
+      boundPaneDocs.add(document);
+    } else {
+      if (lastBoundPaneDoc === document) return;
+      lastBoundPaneDoc = document;
+    }
+    try {
+      document.addEventListener('pointerdown', handlePaneFocusEvent, { capture: true, passive: true });
+    } catch (_e) {
+      try { document.addEventListener('pointerdown', handlePaneFocusEvent, true); } catch (_e2) {}
+    }
+    try {
+      document.addEventListener('focusin', handlePaneFocusEvent, { capture: true, passive: true });
+    } catch (_e3) {
+      try { document.addEventListener('focusin', handlePaneFocusEvent, true); } catch (_e4) {}
+    }
+  }
+
+  function isPaneUsable(pane) {
+    if (!pane || pane.isConnected === false || isOwnNode(pane) || isSubagentOnlyPane(pane)) return false;
+    return isVisible(pane);
+  }
+
+  function listVisibleMainPanes() {
+    if (typeof document === 'undefined' || typeof document.querySelectorAll !== 'function') {
+      return { tilingCount: 0, viewCount: 0, panes: [] };
+    }
+    var tiling = document.querySelectorAll(TILING_PANE_SEL) || [];
+    var visTiling = [];
+    for (var i = 0; i < tiling.length; i++) {
+      if (isPaneUsable(tiling[i])) visTiling.push(tiling[i]);
+    }
+    var views = document.querySelectorAll(CONV_VIEW_SEL) || [];
+    var visViews = [];
+    for (var j = 0; j < views.length; j++) {
+      var v = views[j];
+      if (!v || v.isConnected === false || isOwnNode(v) || (v.closest && v.closest(SUBAGENT_SEL))) continue;
+      if (v.closest && v.closest('.agy-home')) continue;
+      if (v.querySelector && v.querySelector('.agy-home')) continue;
+      if (isVisible(v)) visViews.push(v);
+    }
+    return {
+      tilingCount: visTiling.length,
+      viewCount: visViews.length,
+      panes: visTiling.length ? visTiling : visViews
+    };
+  }
+
+  function paneMatchesList(pane, panes) {
+    if (!pane || !panes || !panes.length) return false;
+    for (var i = 0; i < panes.length; i++) {
+      var p = panes[i];
+      if (p === pane || (p.contains && p.contains(pane))) return true;
+    }
+    return false;
+  }
+
+  function getActivePaneScope() {
+    ensurePaneTracking();
+    if (typeof document === 'undefined' || !document) return null;
+    var info = listVisibleMainPanes();
+    if (info.panes.length <= 1) {
+      if (activePaneEl && activePaneEl.isConnected === false) activePaneEl = null;
+      return null;
+    }
+    if (activePaneEl && isPaneUsable(activePaneEl) && paneMatchesList(activePaneEl, info.panes)) {
+      return activePaneEl;
+    }
+    activePaneEl = null;
+    var actEl = document.activeElement;
+    if (actEl && actEl !== document.body && actEl !== document.documentElement) {
+      var fromActive = resolvePaneFromTarget(actEl);
+      if (fromActive && isPaneUsable(fromActive) && paneMatchesList(fromActive, info.panes)) {
+        activePaneEl = fromActive;
+        return activePaneEl;
+      }
+    }
+    return null;
+  }
+
+  function queryAllInScope(scope, sel) {
+    var root = scope || (typeof document !== 'undefined' ? document : null);
+    if (!root || typeof root.querySelectorAll !== 'function') return [];
+    var list = root.querySelectorAll(sel) || [];
+    if (typeof document !== 'undefined' && root !== document && root.matches && root.matches(sel)) {
+      var out = [root];
+      for (var i = 0; i < list.length; i++) out.push(list[i]);
+      return out;
+    }
+    return list;
   }
 
   function getCurrentFiber(el) {
@@ -114,11 +259,17 @@
     return '';
   }
 
-  function readReduxConvoId() {
+  function queryOneInScope(scope, sel) {
+    var root = scope || (typeof document !== 'undefined' ? document : null);
+    if (!root) return null;
+    if (typeof document !== 'undefined' && root !== document && root.matches && root.matches(sel)) return root;
+    return typeof root.querySelector === 'function' ? root.querySelector(sel) : null;
+  }
+
+  function readReduxConvoId(scopeRoot) {
     if (typeof document === 'undefined') return '';
-    var anchors = document.querySelectorAll(
-      CONV_VIEW_SEL + ', ' + INPUT_BOX_SEL + ', #root, [data-testid="conversation-row-sidebar"], [data-testid="home-greeting"]'
-    );
+    var sel = CONV_VIEW_SEL + ', ' + INPUT_BOX_SEL + ', #root, [data-testid="home-greeting"]';
+    var anchors = scopeRoot ? queryAllInScope(scopeRoot, sel) : (typeof document.querySelectorAll === 'function' ? document.querySelectorAll(sel) : []);
     var visible = [];
     var hidden = [];
     for (var i = 0; i < anchors.length; i++) {
@@ -132,12 +283,21 @@
       var hit = readFiberCascadeId(ordered[j], 300);
       if (hit) return hit;
     }
+    if (scopeRoot && typeof document.querySelectorAll === 'function') {
+      var rootNodes = document.querySelectorAll('#root');
+      for (var r = 0; r < rootNodes.length; r++) {
+        if (!rootNodes[r] || isOwnNode(rootNodes[r])) continue;
+        var rootHit = readFiberCascadeId(rootNodes[r], 300);
+        if (rootHit) return rootHit;
+      }
+    }
     return '';
   }
 
-  function findFormalConvView() {
+  function findFormalConvView(scopeRoot) {
     if (typeof document === 'undefined') return null;
-    var views = document.querySelectorAll(CONV_VIEW_SEL);
+    var scope = scopeRoot !== undefined ? scopeRoot : getActivePaneScope();
+    var views = queryAllInScope(scope || document, CONV_VIEW_SEL);
     var visibleCandidates = [];
     var hiddenCandidates = [];
     for (var i = 0; i < views.length; i++) {
@@ -164,6 +324,27 @@
   function extractConversationId() {
     if (typeof window === 'undefined' || typeof document === 'undefined') return null;
     try {
+      var activeScope = getActivePaneScope();
+      if (activeScope) {
+        var scopedCv = findFormalConvView(activeScope);
+        if (scopedCv) {
+          var sAttrId = scopedCv.getAttribute && scopedCv.getAttribute('data-cascade-id');
+          if (sAttrId && sAttrId !== 'conversation' && UUID_RE.test(sAttrId)) {
+            return sAttrId.match(UUID_RE)[1];
+          }
+          var sFibId = readFiberCascadeId(scopedCv, 260);
+          if (sFibId) return sFibId;
+        }
+        if (detectHomeState(activeScope).isHome) return null;
+        var scopedComp = findComposerTarget(activeScope);
+        if (scopedComp && scopedComp.inputBox && !scopedComp.isHome) {
+          var sInpFib = readFiberCascadeId(scopedComp.inputBox, 260);
+          if (sInpFib) return sInpFib;
+        }
+        var sReduxId = readReduxConvoId(activeScope);
+        if (sReduxId && UUID_RE.test(sReduxId)) return sReduxId.match(UUID_RE)[1];
+      }
+
       var urlCandidates = [
         window.location && window.location.pathname,
         window.location && window.location.hash,
@@ -175,7 +356,7 @@
         var rm = s.match(ROUTE_UUID_RE);
         if (rm && rm[1]) return rm[1];
       }
-      var cv = findFormalConvView();
+      var cv = findFormalConvView(null);
       if (cv) {
         var attrId = cv.getAttribute && cv.getAttribute('data-cascade-id');
         if (attrId && attrId !== 'conversation' && UUID_RE.test(attrId)) {
@@ -184,7 +365,7 @@
         var fibId = readFiberCascadeId(cv, 260);
         if (fibId) return fibId;
       }
-      var comp = findComposerTarget();
+      var comp = findComposerTarget(null);
       if (comp && comp.inputBox && !comp.isHome) {
         var inpFib = readFiberCascadeId(comp.inputBox, 260);
         if (inpFib) return inpFib;
@@ -194,36 +375,26 @@
         var um = s2.match(UUID_RE);
         if (um && um[1]) return um[1];
       }
-      if (!detectHomeState().isHome) {
-        var reduxId = readReduxConvoId();
+      if (!detectHomeState(null).isHome) {
+        var reduxId = readReduxConvoId(null);
         if (reduxId && UUID_RE.test(reduxId)) return reduxId.match(UUID_RE)[1];
-
-        var activeRows = document.querySelectorAll(
-          '[data-testid="conversation-row-sidebar"][aria-current="page"], [data-testid="conversation-row-sidebar"][data-active="true"], [data-testid="conversation-row-sidebar"][data-selected="true"]'
-        );
-        for (var r = 0; r < activeRows.length; r++) {
-          var row = activeRows[r];
-          if (!row || isOwnNode(row)) continue;
-          var rAttr = row.getAttribute && row.getAttribute('data-cascade-id');
-          if (rAttr && UUID_RE.test(rAttr)) return rAttr.match(UUID_RE)[1];
-          var rFib = readFiberCascadeId(row, 40);
-          if (rFib) return rFib;
-        }
       }
     } catch (_e) {}
     return null;
   }
 
-  function detectHomeState() {
+  function detectHomeState(scopeRoot) {
     if (typeof document === 'undefined') return { isHome: false, homeRoot: null, greetingEl: null };
-    var homeRoot = document.querySelector('.agy-home');
-    var greetingEl = document.querySelector('[data-testid="home-greeting"]');
-    var formalCv = findFormalConvView();
+    var scope = scopeRoot !== undefined ? scopeRoot : getActivePaneScope();
+    var root = scope || document;
+    var homeRoot = queryOneInScope(root, '.agy-home');
+    var greetingEl = queryOneInScope(root, '[data-testid="home-greeting"]');
+    var formalCv = findFormalConvView(scope);
     var hasMessages = Boolean(
-      document.querySelector('[data-testid="agent-response"], [data-testid="user-message"], [data-testid="planner-response-text"]')
+      queryOneInScope(root, '[data-testid="agent-response"], [data-testid="user-message"], [data-testid="planner-response-text"]')
     );
     var urlPath = (typeof window !== 'undefined' && window.location && window.location.pathname) || '';
-    var hasConvUrl = ROUTE_UUID_RE.test(urlPath);
+    var hasConvUrl = !scope && ROUTE_UUID_RE.test(urlPath);
     var isHome = Boolean((homeRoot || greetingEl) && !formalCv && !hasMessages && !hasConvUrl);
     return {
       isHome: isHome,
@@ -234,16 +405,33 @@
 
   var cachedComposer = null;
 
-  function findComposerTarget() {
+  function isWithinScope(el, scope) {
+    if (!scope) return true;
+    if (!el) return false;
+    if (el === scope) return true;
+    return Boolean(scope.contains && scope.contains(el));
+  }
+
+  function findComposerTarget(scopeRoot) {
     if (typeof document === 'undefined') return null;
 
-    if (cachedComposer && cachedComposer.card && cachedComposer.card.isConnected && isVisible(cachedComposer.card)) {
+    var scope = scopeRoot !== undefined ? scopeRoot : getActivePaneScope();
+    if (
+      cachedComposer &&
+      cachedComposer.doc === document &&
+      cachedComposer.card &&
+      cachedComposer.card.isConnected &&
+      isVisible(cachedComposer.card) &&
+      isWithinScope(cachedComposer.card, scope)
+    ) {
       return cachedComposer;
     }
     cachedComposer = null;
 
-    // 1. Primary Antigravity 2.34 .surface-composer-card inside [data-testid="agent-input-box"]
-    var cards = document.querySelectorAll(COMPOSER_CARD_SEL);
+    var queryRoot = scope || document;
+
+    // 1. Primary Antigravity 2.34+ .surface-composer-card inside [data-testid="agent-input-box"]
+    var cards = queryAllInScope(queryRoot, COMPOSER_CARD_SEL);
     var chosenCard = null;
     for (var i = 0; i < cards.length; i++) {
       var c = cards[i];
@@ -255,39 +443,41 @@
     }
 
     if (chosenCard) {
-      var ib = chosenCard.closest(INPUT_BOX_SEL) || chosenCard;
-      var ed = ib.querySelector('[contenteditable="true"], textarea');
+      var ib = (chosenCard.closest && chosenCard.closest(INPUT_BOX_SEL)) || chosenCard;
+      var ed = ib.querySelector ? ib.querySelector('[contenteditable="true"], textarea') : null;
       cachedComposer = {
+        doc: document,
         card: chosenCard,
         inputBox: ib,
         editable: ed || null,
-        isHome: Boolean(chosenCard.closest('.agy-home')),
+        isHome: Boolean(chosenCard.closest && chosenCard.closest('.agy-home')),
         isSubagent: false
       };
       return cachedComposer;
     }
 
     // 2. Fallback: [data-testid="agent-input-box"]
-    var boxes = document.querySelectorAll(INPUT_BOX_SEL);
+    var boxes = queryAllInScope(queryRoot, INPUT_BOX_SEL);
     for (var j = 0; j < boxes.length; j++) {
       var box = boxes[j];
       if (isOwnNode(box)) continue;
       if (box.closest && box.closest(SUBAGENT_SEL)) continue;
       if (!isVisible(box)) continue;
-      var ed2 = box.querySelector('[contenteditable="true"], textarea');
-      var card2 = box.querySelector('.surface-composer-card') || (ed2 && ed2.closest('form')) || box;
+      var ed2 = box.querySelector ? box.querySelector('[contenteditable="true"], textarea') : null;
+      var card2 = (box.querySelector && box.querySelector('.surface-composer-card')) || (ed2 && ed2.closest && ed2.closest('form')) || box;
       cachedComposer = {
+        doc: document,
         card: card2,
         inputBox: box,
         editable: ed2 || null,
-        isHome: Boolean(box.closest('.agy-home')),
+        isHome: Boolean(box.closest && box.closest('.agy-home')),
         isSubagent: false
       };
       return cachedComposer;
     }
 
     // 3. Generic fallback: visible contenteditable/textarea composer
-    var inputs = document.querySelectorAll('[contenteditable="true"][role="textbox"], [contenteditable="true"], textarea');
+    var inputs = queryAllInScope(queryRoot, '[contenteditable="true"][role="textbox"], [contenteditable="true"], textarea');
     for (var k = 0; k < inputs.length; k++) {
       var inp = inputs[k];
       if (isOwnNode(inp)) continue;
@@ -296,13 +486,14 @@
       if (!isVisible(inp)) continue;
       var rect = inp.getBoundingClientRect ? inp.getBoundingClientRect() : null;
       if (rect && rect.width > 180 && rect.height >= 20) {
-        var outer = inp.closest('.surface-composer-card, [data-testid="agent-input-box"], form') || inp.parentElement;
+        var outer = (inp.closest && inp.closest('.surface-composer-card, [data-testid="agent-input-box"], form')) || inp.parentElement;
         if (!outer) continue;
         cachedComposer = {
+          doc: document,
           card: outer,
           inputBox: outer,
           editable: inp,
-          isHome: Boolean(outer.closest('.agy-home')),
+          isHome: Boolean(outer.closest && outer.closest('.agy-home')),
           isSubagent: false
         };
         return cachedComposer;
@@ -461,7 +652,7 @@
   }
 
   function detectMascotObstruction(stageEl, anchorEl) {
-    if (!stageEl || typeof document === 'undefined') return false;
+    if (!stageEl || typeof document === 'undefined' || typeof document.querySelectorAll !== 'function') return false;
     var hitEl = (stageEl.querySelector && stageEl.querySelector('.ags-mascot-hit')) || stageEl;
     if (!hitEl || typeof hitEl.getBoundingClientRect !== 'function') return false;
     var hitRect;
@@ -472,13 +663,48 @@
     }
     if (!hitRect || hitRect.width <= 1 || hitRect.height <= 1) return false;
 
-    var overlaySel = '[data-testid="queued-messages-card"], [data-testid="interaction-takeover-card"], [data-testid="side-question-panel"], [data-testid="model-selector-panel"]';
-    var overlays = document.querySelectorAll(overlaySel);
+    var overlaySel = [
+      '[data-testid="queued-messages-card"]',
+      '[data-testid="queued-messages-status"]',
+      '[data-testid="interaction-takeover-card"]',
+      '[data-testid="side-question-panel"]',
+      '[data-testid="decision-card-blocking-ring"]',
+      '[data-testid="agent-inline-card-slot"]',
+      '[data-testid="model-selector-panel"]'
+    ].join(', ');
+    var overlays = document.querySelectorAll(overlaySel) || [];
     for (var i = 0; i < overlays.length; i++) {
       var el = overlays[i];
       if (!el || isOwnNode(el) || !isVisible(el)) continue;
       var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
       if (r && rectsOverlap(hitRect, r)) return true;
+    }
+
+    var shelves = document.querySelectorAll('[data-testid="bottom-sticky-shelves"]') || [];
+    for (var sh = 0; sh < shelves.length; sh++) {
+      var shelf = shelves[sh];
+      if (!shelf || isOwnNode(shelf) || !isVisible(shelf)) continue;
+      var shelfItems = shelf.querySelectorAll
+        ? shelf.querySelectorAll('button, [role="button"], a, [data-testid], [class*="card"], [role="status"], [role="alert"]')
+        : null;
+      if (shelfItems && shelfItems.length > 0) {
+        for (var si = 0; si < shelfItems.length; si++) {
+          var item = shelfItems[si];
+          if (!item || isOwnNode(item) || !isVisible(item)) continue;
+          var ir = item.getBoundingClientRect ? item.getBoundingClientRect() : null;
+          if (ir && rectsOverlap(hitRect, ir)) return true;
+        }
+      } else if (shelf.children && shelf.children.length > 0) {
+        for (var sc = 0; sc < shelf.children.length; sc++) {
+          var child = shelf.children[sc];
+          if (!child || isOwnNode(child) || !isVisible(child)) continue;
+          var cr = child.getBoundingClientRect ? child.getBoundingClientRect() : null;
+          if (cr && rectsOverlap(hitRect, cr)) return true;
+        }
+      } else {
+        var sr = shelf.getBoundingClientRect ? shelf.getBoundingClientRect() : null;
+        if (sr && rectsOverlap(hitRect, sr)) return true;
+      }
     }
 
     var prevSib = anchorEl && anchorEl.previousElementSibling;
@@ -631,11 +857,13 @@
       };
     }
 
-    var homeInfo = detectHomeState();
+    var scope = getActivePaneScope();
+    var queryRoot = scope || document;
+    var homeInfo = detectHomeState(scope);
     var cid = homeInfo.isHome ? null : extractConversationId();
 
     var isGenerating = false;
-    var runNodes = document.querySelectorAll(RUNNING_SEL);
+    var runNodes = queryAllInScope(queryRoot, RUNNING_SEL);
     for (var i = 0; i < runNodes.length; i++) {
       var rn = runNodes[i];
       if (rn.closest && rn.closest(SUBAGENT_SEL)) continue;
@@ -643,11 +871,11 @@
     }
 
     var isThinking = false;
-    var thinkNodes = document.querySelectorAll('[data-testid="thinking-collapsible-trigger"]');
+    var thinkNodes = queryAllInScope(queryRoot, '[data-testid="thinking-collapsible-trigger"]');
     for (var j = 0; j < thinkNodes.length; j++) {
       var tn = thinkNodes[j];
       if (tn.closest && tn.closest(SUBAGENT_SEL)) continue;
-      if (tn.getAttribute('data-op-thought-state') === 'streaming') {
+      if (tn.getAttribute && tn.getAttribute('data-op-thought-state') === 'streaming') {
         isThinking = true;
         break;
       }
@@ -662,13 +890,14 @@
 
     var isToolWorking = false;
     if (isGenerating) {
-      var toolNodes = document.querySelectorAll(
+      var toolNodes = queryAllInScope(
+        queryRoot,
         '[data-testid="tool-group-collapsible"], [data-testid="running-items-panel"], [data-testid="background-task-command"]'
       );
       for (var k = 0; k < toolNodes.length; k++) {
         var tool = toolNodes[k];
         if (tool.closest && tool.closest(SUBAGENT_SEL)) continue;
-        if (tool.getAttribute('data-testid') === 'running-items-panel') {
+        if (tool.getAttribute && tool.getAttribute('data-testid') === 'running-items-panel') {
           if (String(tool.className || '').indexOf('grid-rows-[1fr]') !== -1 && isVisible(tool)) {
             isToolWorking = true;
             break;
@@ -681,13 +910,13 @@
     }
 
     var hasSubagent = false;
-    var subNodes = document.querySelectorAll(SUBAGENT_SEL + ', [data-testid="subagent-node"]');
+    var subNodes = queryAllInScope(queryRoot, SUBAGENT_SEL + ', [data-testid="subagent-node"]');
     for (var s = 0; s < subNodes.length; s++) {
       if (isVisible(subNodes[s])) { hasSubagent = true; break; }
     }
 
     var awaitingDecision = false;
-    var decNodes = document.querySelectorAll(DECISION_SEL);
+    var decNodes = queryAllInScope(queryRoot, DECISION_SEL);
     for (var d = 0; d < decNodes.length; d++) {
       var dn = decNodes[d];
       if (dn.closest && dn.closest(SUBAGENT_SEL)) continue;
@@ -695,14 +924,14 @@
     }
 
     var hasError = false;
-    var errNodes = document.querySelectorAll(ERROR_SEL);
+    var errNodes = queryAllInScope(queryRoot, ERROR_SEL);
     for (var e = 0; e < errNodes.length; e++) {
       var en = errNodes[e];
       if (en.closest && en.closest(SUBAGENT_SEL)) continue;
       if (isVisible(en)) { hasError = true; break; }
     }
 
-    var modelTrigs = document.querySelectorAll('[data-testid="model-selector-trigger"]');
+    var modelTrigs = queryAllInScope(queryRoot, '[data-testid="model-selector-trigger"]');
     var modelTrig = null;
     for (var mt = 0; mt < modelTrigs.length; mt++) {
       if (isVisible(modelTrigs[mt]) && !isOwnNode(modelTrigs[mt])) {
@@ -711,8 +940,10 @@
       }
     }
     if (!modelTrig && modelTrigs.length) modelTrig = modelTrigs[0];
-    var modelLabel = modelTrig ? String(modelTrig.textContent || modelTrig.getAttribute('aria-label') || '').trim() : '';
-    var modelPanel = document.querySelector('[data-testid="model-selector-panel"]');
+    var modelLabel = modelTrig ? String(modelTrig.textContent || (modelTrig.getAttribute && modelTrig.getAttribute('aria-label')) || '').trim() : '';
+    var modelPanel = typeof document.querySelector === 'function'
+      ? document.querySelector('[data-testid="model-selector-panel"]')
+      : null;
     var isModelMenuOpen = Boolean(modelPanel && isVisible(modelPanel));
 
     return {
@@ -780,12 +1011,13 @@
     if (typeof window === 'undefined' || typeof document === 'undefined') {
       return function () {};
     }
+    ensurePaneTracking();
     var timer = 0;
     var disposed = false;
 
     function trigger(reason) {
       if (disposed) return;
-      var delay = (reason === 'route' || reason === 'pushState' || reason === 'replaceState') ? 32 : 160;
+      var delay = (reason === 'route' || reason === 'pushState' || reason === 'replaceState' || reason === 'pane') ? 32 : 160;
       if (timer) {
         if (delay > 32) return;
         clearTimeout(timer);
@@ -797,6 +1029,8 @@
         }
       }, delay);
     }
+
+    paneListeners.push(trigger);
 
     var obs = null;
     if (typeof MutationObserver === 'function') {
@@ -831,14 +1065,16 @@
           childList: true,
           subtree: true,
           attributes: true,
-          attributeFilter: ['data-cascade-id', 'data-op-thought-state', 'hidden', 'aria-expanded']
+          attributeFilter: ['data-cascade-id', 'data-op-thought-state', 'hidden', 'aria-expanded', 'disabled', 'aria-disabled', 'data-disabled']
         });
       }
     }
 
     var onPop = function () { trigger('route'); };
-    window.addEventListener('popstate', onPop);
-    window.addEventListener('hashchange', onPop);
+    if (typeof window.addEventListener === 'function') {
+      window.addEventListener('popstate', onPop);
+      window.addEventListener('hashchange', onPop);
+    }
 
     var origPush = window.history && window.history.pushState;
     var origReplace = window.history && window.history.replaceState;
@@ -859,14 +1095,20 @@
 
     return function dispose() {
       disposed = true;
+      var idx = paneListeners.indexOf(trigger);
+      if (idx >= 0) paneListeners.splice(idx, 1);
       if (obs) try { obs.disconnect(); } catch (_e) {}
       if (timer) clearTimeout(timer);
-      window.removeEventListener('popstate', onPop);
-      window.removeEventListener('hashchange', onPop);
+      if (typeof window.removeEventListener === 'function') {
+        window.removeEventListener('popstate', onPop);
+        window.removeEventListener('hashchange', onPop);
+      }
       if (origPush && window.history) window.history.pushState = origPush;
       if (origReplace && window.history) window.history.replaceState = origReplace;
     };
   }
+
+  ensurePaneTracking();
 
   var api = {
     extractConversationId: extractConversationId,
@@ -884,7 +1126,9 @@
     parkHomeCardSlot: parkHomeCardSlot,
     sniffDomTurnState: sniffDomTurnState,
     fuseTurnState: fuseTurnState,
-    watchAnchors: watchAnchors
+    watchAnchors: watchAnchors,
+    getActivePaneScope: getActivePaneScope,
+    ensurePaneTracking: ensurePaneTracking
   };
 
   if (typeof module !== 'undefined' && module.exports) {

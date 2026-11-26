@@ -3,10 +3,11 @@
 /**
  * Antigravity Studio i18n Dictionary Builder
  * Merges:
- *   1) REF_I18N (Antigravity-Chinese-Localization v2.34.0 dictionary.js + localize.js native menus/dialogs)
- *   2) REF_ACV  (antigravity-context-viewer i18n/zh-CN.json)
- *   3) REF_PRISM (obsidian-prism vendor/host-i18n/zh-CN.json)
- *   4) Built-in Antigravity Studio & v2.34.0 curated entries & regex rules
+ *   1) REF_I18N (Antigravity-Chinese-Localization v2.35.2 dictionary.js + localize.js native menus/dialogs)
+ *   2) REF_YIHENG (yiheng8023/antigravity-chinese selective swarm.json & clean v2.35.2 phrases)
+ *   3) REF_ACV  (antigravity-context-viewer i18n/zh-CN.json)
+ *   4) REF_PRISM (obsidian-prism vendor/host-i18n/zh-CN.json)
+ *   5) Built-in Antigravity Studio & v2.35.2 curated entries & regex rules
  *
  * Outputs:
  *   - src/i18n/dict.zh-CN.json  ({ exact: {...}, regex: [{ pattern, flags, replace }] })
@@ -22,9 +23,10 @@ const OUT_CN = path.join(ROOT, 'src', 'i18n', 'dict.zh-CN.json');
 const OUT_TW = path.join(ROOT, 'src', 'i18n', 'dict.zh-TW.json');
 
 const DEFAULT_REFS = {
-  refI18n: process.env.REF_I18N || 'C:\\Users\\gjs27\\.gemini\\antigravity\\brain\\ea1dcc05-9f2b-4229-b691-c34bbe950222\\scratch\\refs\\Antigravity-Chinese-Localization',
-  refAcv: process.env.REF_ACV || 'C:\\Users\\gjs27\\.gemini\\antigravity\\brain\\ea1dcc05-9f2b-4229-b691-c34bbe950222\\scratch\\refs\\antigravity-context-viewer',
-  refPrism: process.env.REF_PRISM || 'C:\\Users\\gjs27\\.gemini\\antigravity\\brain\\ea1dcc05-9f2b-4229-b691-c34bbe950222\\scratch\\refs\\obsidian-prism',
+  refI18n: process.env.REF_I18N || '',
+  refYiheng: process.env.REF_YIHENG || '',
+  refAcv: process.env.REF_ACV || '',
+  refPrism: process.env.REF_PRISM || '',
 };
 
 function parseCliArgs(argv) {
@@ -32,6 +34,7 @@ function parseCliArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--ref-i18n' && argv[i + 1]) opts.refI18n = argv[++i];
+    else if (a === '--ref-yiheng' && argv[i + 1]) opts.refYiheng = argv[++i];
     else if (a === '--ref-acv' && argv[i + 1]) opts.refAcv = argv[++i];
     else if (a === '--ref-prism' && argv[i + 1]) opts.refPrism = argv[++i];
   }
@@ -149,7 +152,7 @@ const CURATED_EXACT_CN = {
   'Reset Zoom': '重置缩放',
   'Toggle Full Screen': '切换全屏',
   'Toggle Fullscreen': '切换全屏',
-  'Toggle Developer Tools': '切换开发者工具',
+  'Toggle Developer Tools': '开发者工具',
   'Force Reload': '强制重新加载',
   'Reload': '重新加载',
   'Minimize': '最小化',
@@ -159,11 +162,11 @@ const CURATED_EXACT_CN = {
   'Open Antigravity': '打开 Antigravity',
   'Show Antigravity': '显示 Antigravity',
   'Hide Antigravity': '隐藏 Antigravity',
-  'No agents running': '没有智能体在运行',
+  'No agents running': '没有运行中的智能体',
   'Checking for Updates...': '正在检查更新...',
   'Downloading Update...': '正在下载更新...',
   'Restart to Update': '重启以应用更新',
-  'No updates available': '当前已是最新版本，暂无可用更新。',
+  'No updates available': '当前已是最新版本',
   'Select Download Folder': '选择下载文件夹',
   'Choose an SSH config file': '选择 SSH 配置文件',
   'Choose another SSH config file': '选择其他 SSH 配置文件',
@@ -176,12 +179,12 @@ const CURATED_EXACT_CN = {
   'Microphone access': '麦克风访问权限',
   "Don't Allow": '不允许',
   'Touch your security key': '请轻触你的安全密钥',
-  'Choose a Passkey': '选择通行密钥',
+  'Choose a Passkey': '选择通行密钥 (Passkey)',
   'Passkeys': '通行密钥',
   'Connect a device': '连接设备',
   'Connection info': '连接信息',
   'Connection info…': '连接信息…',
-  'Your connection to this site is not secure': '您与此网站的连接不安全',
+  'Your connection to this site is not secure': '你与该网站的连接不安全',
   'Connection is secure': '连接安全',
   'Certificate is valid': '证书有效',
   'Certificate details': '证书详情',
@@ -435,8 +438,166 @@ const CURATED_REGEX_CN = [
   { pattern: "^Opening\\s+(.+?)'s\\s+conversation\\s+needs\\s+the\\s+app\\.$", flags: '', replace: '打开 $1 的对话需要在客户端内操作。' },
   { pattern: '^(.+?)\\s+runs\\s+on\\s+(.+?);\\s+open\\s+it\\s+there\\.$', flags: '', replace: '$1 运行在 $2 上，请在对应设备打开。' },
   { pattern: '^Now\\s+·\\s+(\\d+)\\s+\\/\\s+(\\d+)$', flags: '', replace: '现在 · $1 / $2' },
+  { pattern: '^(\\d+)\\s+stuck$', flags: 'i', replace: '$1 项卡住' },
+  { pattern: '^(\\d+)\\s+needs?\\s+you$', flags: 'i', replace: '$1 项需要你处理' },
+  { pattern: '^(\\d+)\\s+in\\s+review$', flags: 'i', replace: '$1 项审核中' },
+  { pattern: '^(\\d+)\\s+active$', flags: 'i', replace: '$1 项活跃' },
+  { pattern: '^(\\d+)\\s+posts?\\s+since\\s+the\\s+view\\s+was\\s+updated$', flags: 'i', replace: '自视图上次更新以来新增了 $1 条动态' },
+  { pattern: '^last\\s+seen\\s+(\\d+)m\\s+ago$', flags: 'i', replace: '最近活跃于 $1 分钟前' },
+  { pattern: '^last\\s+seen\\s+(\\d+)h\\s+ago$', flags: 'i', replace: '最近活跃于 $1 小时前' },
+  { pattern: '^last\\s+seen\\s+(\\d+)d\\s+ago$', flags: 'i', replace: '最近活跃于 $1 天前' },
+  { pattern: '^GIF\\s+ready\\s+\\((.+)\\)\\s+—\\s+right-click\\s+image\\s+to\\s+save\\.$', flags: '', replace: 'GIF 已就绪（$1）— 右键图片即可保存。' },
+  { pattern: '^Coordinator\\s+·\\s+(\\d+)\\s+of\\s+(\\d+)\\s+done\\s+·\\s+Needs\\s+you$', flags: '', replace: '协调器 · 已完成 $1 / $2 · 需要你处理' },
+  { pattern: '^Coordinator\\s+·\\s+(\\d+)\\s+of\\s+(\\d+)\\s+done$', flags: '', replace: '协调器 · 已完成 $1 / $2' },
+  { pattern: '^(\\d+)\\s+of\\s+(\\d+)$', flags: 'i', replace: '$1 / $2' },
 
-  // Native menu / window / dialog patterns
+  // v2.35.0 Inbox / Plugin Permissions / Dictation / Move Conversation / Viewers / Onboarding / Forms
+  { pattern: '^Resolved "(.+)"$', flags: '', replace: '已解决“$1”' },
+  { pattern: '^Allowed in (.+)$', flags: '', replace: '已在 $1 中允许' },
+  { pattern: '^Revoke all:\\s*(.+)$', flags: '', replace: '全部撤销：$1' },
+  { pattern: '^Revoke:\\s*(.+)$', flags: '', replace: '撤销：$1' },
+  { pattern: '^All (\\d+) will be revoked\\. The plugin will ask before doing this again\\.$', flags: '', replace: '全部 $1 项将被撤销。下次执行此操作前插件将重新询问。' },
+  { pattern: '^Added ([^.\\r\\n]{1,80})\\.$', flags: '', replace: '已添加 $1。' },
+  { pattern: '^Removed ([^.\\r\\n]{1,80})\\.$', flags: '', replace: '已移除 $1。' },
+  { pattern: '^Error signing in to MCP server:\\s*(.+)$', flags: '', replace: '登录 MCP 服务器出错：$1' },
+  { pattern: '^Error starting sign-in:\\s*(.+)$', flags: '', replace: '启动登录失败：$1' },
+  { pattern: '^No matching languages for "(.+)"$', flags: '', replace: '未找到匹配“$1”的语言' },
+  { pattern: '^Move this conversation to "(.+)"\\?$', flags: '', replace: '确定将此对话移动到“$1”吗？' },
+  { pattern: '^Remove this conversation from its workspace\\?$', flags: 'i', replace: '确定将此对话从所属工作区中移除吗？' },
+  { pattern: '^Remove this conversation from its project\\?$', flags: 'i', replace: '确定将此对话从所属项目中移除吗？' },
+  { pattern: '^(.+?) \\(Not running\\)$', flags: '', replace: '$1（未运行）' },
+  { pattern: '^(.+?) \\(Sidecar disabled\\)$', flags: '', replace: '$1（Sidecar 已禁用）' },
+  { pattern: '^(\\d+) waiting on you$', flags: '', replace: '$1 项正在等待你处理' },
+  { pattern: '^Sorry, this account is ineligible to use (.+)$', flags: '', replace: '抱歉，此账户无权使用 $1' },
+  { pattern: '^Further action is required to use (.+)$', flags: '', replace: '需要完成进一步操作才能使用 $1' },
+  ...Object.entries({
+    access: '访问', execute: '执行', run: '运行', read: '读取',
+    write: '写入', edit: '编辑', modify: '修改', delete: '删除',
+    use: '使用', download: '下载',
+  }).flatMap(([verb, verbCn]) => [
+    { pattern: `^Waiting for approval to ${verb}:\\s*(.+)$`, flags: 'i', replace: `正在等待批准${verbCn}：$1` },
+    { pattern: `^Waiting for approval to ${verb}$`, flags: 'i', replace: `正在等待批准${verbCn}` },
+    { pattern: `^Requesting permission to ${verb}\\s+(.+)$`, flags: 'i', replace: `正在请求${verbCn}权限：$1` },
+  ]),
+  { pattern: '^Wants to run:\\s*(.+)$', flags: '', replace: '请求运行：$1' },
+  { pattern: '^Minimum length is (\\d+)$', flags: '', replace: '最少需要 $1 个字符' },
+  { pattern: '^Maximum length is (\\d+)$', flags: '', replace: '最多允许 $1 个字符' },
+  { pattern: '^Minimum value is (-?\\d+(?:\\.\\d+)?)$', flags: '', replace: '最小值为 $1' },
+  { pattern: '^Maximum value is (-?\\d+(?:\\.\\d+)?)$', flags: '', replace: '最大值为 $1' },
+  { pattern: '^Select at least (\\d+) items?$', flags: '', replace: '请至少选择 $1 项' },
+  { pattern: '^Select at most (\\d+) items?$', flags: '', replace: '最多选择 $1 项' },
+  { pattern: '^Input must match (.+)$', flags: '', replace: '输入内容必须匹配 $1' },
+  { pattern: '^Dismissed:\\s*(.+)$', flags: '', replace: '已关闭：$1' },
+  { pattern: '^Dismiss:\\s*(.+)$', flags: '', replace: '关闭：$1' },
+  { pattern: '^Forked from (.+)$', flags: '', replace: '分叉自 $1' },
+  { pattern: '^Open URL in system browser:\\s*(.+)$', flags: '', replace: '在系统浏览器中打开链接：$1' },
+  ...Object.entries({
+    save: '保存', create: '创建', enable: '启用', run: '运行',
+    continue: '继续', submit: '提交', activate: '激活', start: '启动',
+  }).map(([act, actCn]) => ({
+    pattern: `^Required to ${act}:\\s*(.+)$`, flags: 'i', replace: `执行“${actCn}”所需的条件：$1`,
+  })),
+  { pattern: '^Required to ([^:\\r\\n]{1,40}):\\s*(.+)$', flags: '', replace: '执行“$1”所需的条件：$2' },
+  { pattern: '^Self \\(([^)\\r\\n]{1,40})\\)$', flags: '', replace: '自身（$1）' },
+
+  // PR #74 9-action permissions + PR #77 AI Credits / Quota / Overages + PR #79 Hydrogen / Leaving
+  ...Object.entries({
+    'read access to this path': '读取此路径',
+    'write access to this path': '写入此路径',
+    'reading this url': '读取此 URL',
+    'executing actions on this url': '在此 URL 上执行操作',
+    'browser downloads from this site': '浏览器从此站点下载文件',
+    'running this command': '运行此命令',
+    'running this command outside the sandbox': '在沙盒外运行此命令',
+    'using this mcp tool': '使用此 MCP 工具',
+    'a one-time administrator (uac) elevation': '一次性管理员 (UAC) 提权',
+    'access to this resource': '访问此资源',
+    'the browser agent to download a file': '浏览器智能体下载文件',
+  }).flatMap(([act, actCn]) => {
+    const esc = act.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return [
+      { pattern: `^Allow ${esc}\\?$`, flags: 'i', replace: `是否允许${actCn}？` },
+      { pattern: `^Save rule to always allow ${esc}\\?$`, flags: 'i', replace: `保存规则以始终允许${actCn}？` },
+    ];
+  }),
+  { pattern: '^Allow ([^?\\r\\n]{2,140})\\?$', flags: 'i', replace: '是否允许 $1？' },
+  { pattern: '^Save rule to always allow ([^?\\r\\n]{2,140})\\?$', flags: 'i', replace: '保存规则以始终允许 $1？' },
+  { pattern: '^You need at least (\\d+(?:,\\d+)*) AI Credits to send messages\\.\\s*To continue using this model now,\\s*purchase more AI Credits\\.\\s*Your plan[\'’]s baseline quota will refresh on\\s+(.+?)\\.\\s*To continue using this model now,\\s*enable AI Credit overages\\.?$', flags: 'i', replace: '发送消息至少需要 $1 个 AI 点数。若要立即继续使用此模型，请购买更多 AI 点数。您当前方案的基础配额将于 $2 刷新。若要立即继续使用此模型，请开启 AI 点数超额使用。' },
+  { pattern: '^You need at least (\\d+(?:,\\d+)*) AI Credits to send messages\\.\\s*To continue using (.+?) now,\\s*purchase more AI Credits\\.\\s*Your plan[\'’]s baseline quota will refresh on\\s+(.+?)\\.\\s*To continue using this model now,\\s*enable AI Credit overages\\.?$', flags: 'i', replace: '发送消息至少需要 $1 个 AI 点数。若要立即继续使用 $2，请购买更多 AI 点数。您当前方案的基础配额将于 $3 刷新。若要立即继续使用此模型，请开启 AI 点数超额使用。' },
+  { pattern: '^You need at least (\\d+(?:,\\d+)*) AI Credits to send messages\\.\\s*To continue using this model now,\\s*purchase more AI Credits\\.\\s*Your plan[\'’]s baseline quota will refresh on\\s+(.+?)\\.?$', flags: 'i', replace: '发送消息至少需要 $1 个 AI 点数。若要立即继续使用此模型，请购买更多 AI 点数。您当前方案的基础配额将于 $2 刷新。' },
+  { pattern: '^You need at least (\\d+(?:,\\d+)*) AI Credits to send messages\\.\\s*To continue using (.+?) now,\\s*purchase more AI Credits\\.\\s*Your plan[\'’]s baseline quota will refresh on\\s+(.+?)\\.?$', flags: 'i', replace: '发送消息至少需要 $1 个 AI 点数。若要立即继续使用 $2，请购买更多 AI 点数。您当前方案的基础配额将于 $3 刷新。' },
+  { pattern: '^You need more AI Credits to send messages\\.\\s*To continue using this model now,\\s*purchase more AI Credits\\.?$', flags: 'i', replace: '发送消息需要更多 AI 点数。若要立即继续使用此模型，请购买更多 AI 点数。' },
+  { pattern: '^You need more AI Credits to send messages\\.\\s*To continue using (.+?) now,\\s*purchase more AI Credits\\.?$', flags: 'i', replace: '发送消息需要更多 AI 点数。若要立即继续使用 $1，请购买更多 AI 点数。' },
+  { pattern: '^Your plan[\'’]s baseline quota will refresh on\\s+(.+?)\\.\\s*To continue using this model now,\\s*enable AI Credit overages\\.?$', flags: 'i', replace: '您当前方案的基础配额将于 $1 刷新。若要立即继续使用此模型，请开启 AI 点数超额使用。' },
+  { pattern: '^Your plan[\'’]s baseline quota will refresh on\\s+(.+?)\\.?$', flags: 'i', replace: '您当前方案的基础配额将于 $1 刷新。' },
+  { pattern: '^To continue using this model now,\\s*enable AI Credit overages\\.?$', flags: 'i', replace: '若要立即继续使用此模型，请开启 AI 点数超额使用。' },
+  { pattern: '^Your quota for this model will reset on\\s+(.+?)\\.\\s*Switch to another available model to continue\\.?$', flags: 'i', replace: '此模型的配额将于 $1 重置。请切换至其他可用模型以继续。' },
+  { pattern: '^Your quota for (.+?) will reset on\\s+(.+?)\\.\\s*Switch to another available model to continue\\.?$', flags: 'i', replace: '$1 的配额将于 $2 重置。请切换至其他可用模型以继续。' },
+  { pattern: '^Your quota for this model has been reached\\.\\s*Switch to another available model to continue\\.?$', flags: 'i', replace: '此模型的配额已用尽。请切换至其他可用模型以继续。' },
+  { pattern: '^Your quota for (.+?) has been reached\\.\\s*Switch to another available model to continue\\.?$', flags: 'i', replace: '$1 的配额已用尽。请切换至其他可用模型以继续。' },
+  { pattern: '^Use Hydrogen for better quality with lower quota usage\\.\\s*$', flags: 'i', replace: '使用 Hydrogen 可获得更好的质量，同时消耗更少配额。' },
+  { pattern: '^((?:this model|(?:Gemini|Claude|GPT|Gemma|Veo|Imagen|Hydrogen|Helium|Lithium|Sonnet|Opus|Haiku|DeepSeek|Qwen|Llama|Mistral|o[134])(?:[\\s._/-][^\\r\\n]{0,48})?))\\s+(?:is\\s+)?leaving on\\s+((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\\.?\\s+(?:[12]?\\d|3[01])(?:st|nd|rd|th)?(?:,?\\s*\\d{4})?)\\.?$', flags: 'i', replace: '$1 将于 $2 下线。' },
+  { pattern: '^leaving on\\s+((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\\.?\\s+(?:[12]?\\d|3[01])(?:st|nd|rd|th)?(?:,?\\s*\\d{4})?)\\.?$', flags: 'i', replace: '此模型将于 $1 下线。' },
+
+  // v2.35.1 Queue / Plan / Git / Hooks / LaTeX / Mermaid / Schedule
+  { pattern: '^Message queued\\.\\s+(\\d+)\\s+messages?\\s+in\\s+queue\\.\\s+Sends after background work finishes\\.\\s+Actions available:\\s*Send Now,\\s*Edit,\\s*Delete\\.$', flags: 'i', replace: '消息已加入队列。队列中共有 $1 条消息。将在后台工作完成后发送。可用操作：立即发送、编辑、删除。' },
+  { pattern: '^Message queued\\.\\s+(\\d+)\\s+messages?\\s+in\\s+queue\\.\\s+Sends after agent finishes working\\.\\s+Actions available:\\s*Send Now,\\s*Edit,\\s*Delete\\.$', flags: 'i', replace: '消息已加入队列。队列中共有 $1 条消息。将在智能体完成当前工作后发送。可用操作：立即发送、编辑、删除。' },
+  { pattern: '^Message queued\\.\\s+Sends after background work finishes\\.\\s+Actions available:\\s*Send Now,\\s*Edit,\\s*Delete\\.$', flags: 'i', replace: '消息已加入队列。将在后台工作完成后发送。可用操作：立即发送、编辑、删除。' },
+  { pattern: '^Message queued\\.\\s+Sends after agent finishes working\\.\\s+Actions available:\\s*Send Now,\\s*Edit,\\s*Delete\\.$', flags: 'i', replace: '消息已加入队列。将在智能体完成当前工作后发送。可用操作：立即发送、编辑、删除。' },
+  { pattern: '^Proceed with implementation plan and (\\d+) comments?$', flags: 'i', replace: '按实施计划继续并附带 $1 条评论' },
+  { pattern: '^Show (\\d+) earlier steps?$', flags: 'i', replace: '显示更早的 $1 个步骤' },
+  { pattern: '^Turn (\\d+) of (\\d+)$', flags: 'i', replace: '第 $1 / $2 回合' },
+  { pattern: '^Go to turn (\\d+) of (\\d+)$', flags: 'i', replace: '跳转到第 $1 / $2 回合' },
+  { pattern: '^(\\d+) Files? With Changes$', flags: 'i', replace: '$1 个已更改文件' },
+  { pattern: '^All changes since (.+)$', flags: '', replace: '自 $1 以来的所有更改' },
+  { pattern: '^Push (\\d+) commits? to (.+)$', flags: '', replace: '推送 $1 个提交到 $2' },
+  { pattern: '^Pushed (\\d+) commits? to (.+)\\.$', flags: '', replace: '已推送 $1 个提交到 $2。' },
+  { pattern: '^Pushed to (.+)\\.$', flags: '', replace: '已推送到 $1。' },
+  { pattern: '^Publish (.+) to origin$', flags: '', replace: '将 $1 发布到 origin' },
+  { pattern: '^Published (.+) to origin\\.$', flags: '', replace: '已将 $1 发布到 origin。' },
+  { pattern: '^Hook will only trigger if the tool name matches (.+)\\.$', flags: '', replace: '仅当工具名称匹配 $1 时才会触发 Hook。' },
+  { pattern: '^Hook will only trigger if the tool name starts with (.+)\\.$', flags: '', replace: '仅当工具名称以 $1 开头时才会触发 Hook。' },
+  { pattern: '^⚠️\\s*Failed to render LaTeX:\\s*(.+)$', flags: '', replace: '⚠️ 渲染 LaTeX 失败：$1' },
+  { pattern: '^⚠️\\s*Failed to render Mermaid diagram:\\s*(.+)$', flags: '', replace: '⚠️ 渲染 Mermaid 图表失败：$1' },
+  { pattern: '^Every hour at :(\\d{2})\\s*·\\s*(.+)$', flags: '', replace: '每小时 :$1 · $2' },
+  { pattern: '^Every hour at :(\\d{2})$', flags: '', replace: '每小时 :$1' },
+  { pattern: '^Every hour\\s*·\\s*(.+)$', flags: '', replace: '每小时 · $1' },
+  { pattern: '^Every hour$', flags: '', replace: '每小时' },
+  { pattern: '^(?:Today|今天)\\s+(\\d{1,2}:\\d{2}(?:\\s*[AP]M)?)$', flags: 'i', replace: '今天 $1' },
+  { pattern: '^(?:Tomorrow|明天)\\s+(\\d{1,2}:\\d{2}(?:\\s*[AP]M)?)$', flags: 'i', replace: '明天 $1' },
+  { pattern: '^(?:Yesterday|昨天)\\s+(\\d{1,2}:\\d{2}(?:\\s*[AP]M)?)$', flags: 'i', replace: '昨天 $1' },
+
+  // v2.35.2 10 $-safe nav/sign-in/error prefixes
+  { pattern: '^Blocked navigation to "(.+)"$', flags: '', replace: '已拦截前往“$1”的导航' },
+  { pattern: '^Sign in from the ([^.!?\\r\\n]{1,40}) panel\\.$', flags: '', replace: '请从 $1 面板登录。' },
+  { pattern: '^Sign in to use ([^.!?\\r\\n]{1,40})!$', flags: '', replace: '请登录以使用 $1！' },
+  ...Object.entries({ create: '创建', save: '保存', unarchive: '取消归档', delete: '删除' }).flatMap(([act, actCn]) =>
+    Object.entries({
+      project: '项目',
+      workspace: '工作区',
+      settings: '设置',
+      'project settings': '项目设置',
+      'project permissions': '项目权限',
+      'cloud permission settings': '云端权限设置',
+      configuration: '配置',
+    }).map(([tgt, tgtCn]) => ({
+      pattern: `^Failed to ${act} ${tgt}:\\s*(.+)$`,
+      flags: 'i',
+      replace: `${actCn}${tgtCn}失败：$1`,
+    }))
+  ),
+  { pattern: '^Could not attach folder "(.+)":\\s*(.+)$', flags: '', replace: '无法附加文件夹“$1”：$2' },
+  { pattern: '^Could not attach image:\\s*(.+)$', flags: '', replace: '无法附加图片：$1' },
+  { pattern: '^Could not open folder:\\s*(.+)$', flags: '', replace: '无法打开文件夹：$1' },
+  { pattern: '^Error installing MCP server:\\s*(.+)$', flags: '', replace: '安装 MCP 服务器出错：$1' },
+  { pattern: '^Error refreshing MCP servers:\\s*(.+)$', flags: '', replace: '刷新 MCP 服务器出错：$1' },
+  { pattern: '^Error restarting MCP server:\\s*(.+)$', flags: '', replace: '重启 MCP 服务器出错：$1' },
+  { pattern: '^Error updating agent:\\s*(.+)$', flags: '', replace: '更新智能体出错：$1' },
+  { pattern: '^Error restarting ([^:\\r\\n]{1,60}):\\s*(.+)$', flags: '', replace: '重启 $1 出错：$2' },
+  { pattern: '^Added MCP server "(.+)", but it failed to start:\\s*(.+)$', flags: '', replace: '已添加 MCP 服务器“$1”，但启动失败：$2' },
+  { pattern: '^Failed to send interaction:\\s*(.+)$', flags: '', replace: '发送交互失败：$1' },
+
+  // Native menu / window / dialog patterns (MUST follow specific Open URL rule above)
   { pattern: '^Open\\s+(.+)\\s+\\(Default\\)$', flags: 'i', replace: '打开 $1（默认）' },
   { pattern: '^Open in\\s+(.+)\\s+\\(Default\\)$', flags: 'i', replace: '在 $1 中打开（默认）' },
   { pattern: '^Move to Group:\\s*(.+)$', flags: 'i', replace: '移动到分组：$1' },
@@ -458,6 +619,10 @@ const BLOCKED_LEGACY_PATTERNS = new Set([
   '^Explored\\s+(.*)$',
   '^Edited\\s+(.*)$',
   '^Viewed\\s+(.*)$',
+  '^Error restarting (.+?):\\s*(.+)$',
+  '^Today\\s+(\\d{1,2}:\\d{2}(?:\\s*[AP]M)?)$',
+  '^Tomorrow\\s+(\\d{1,2}:\\d{2}(?:\\s*[AP]M)?)$',
+  '^Yesterday\\s+(\\d{1,2}:\\d{2}(?:\\s*[AP]M)?)$',
 ]);
 
 // =====================================================================
@@ -792,17 +957,32 @@ const TW_PHRASE_MAP = [
   ['限制', '限制'],
   ['上限', '上限'],
   ['下限', '下限'],
+  ['全部撤销', '全部撤銷'],
+  ['无法撤销', '無法撤銷'],
+  ['将被撤销', '將被撤銷'],
+  ['撤销：', '撤銷：'],
+  ['收件箱里', '收件箱裡'],
+  ['文本查看器', '文字檢視器'],
+  ['图片查看器', '圖片檢視器'],
+  ['查看器', '檢視器'],
+  ['图标', '圖示'],
+  ['故障排除指南', '故障排除指南'],
 ];
-// Sort phrase rules longest-first so multi-char phrases beat short substrings
+// Sort phrase rules longest-first and apply in a single pass so multi-char replacements (e.g. 文档->文件) are never re-transformed (e.g. 文件->檔案)
 TW_PHRASE_MAP.sort((a, b) => b[0].length - a[0].length);
+const TW_PHRASE_MAP_LOOKUP = new Map(TW_PHRASE_MAP);
+const TW_PHRASE_RE = new RegExp(
+  TW_PHRASE_MAP.map(([sc]) => sc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'),
+  'g'
+);
 
 // Comprehensive Simplified -> Traditional CJK single-character map (common UI/technical characters)
 const S2T_CHARS_SRC =
   '万与丑专业丛东丝丢两严丧个丰临为丽举么义乌乐乔习乡书买乱争于亏云亚产亩亲亵亿仅从仑仓仪们价众优伙会伞伟传伤伦伪伫体余佣佩佳使例供依侠侣侦侧侨保信俩修俯俱倍倒候借倦值倾假伟偏做停健偶偷偿储催傲傻像僚僧僵儿允兄充先光克免党兰关兴兹养兽内冈册写军农冠冬冯冰冲决况冻净凄准凉减凑凝几凭凯凰出击函凿划刘则创初删判别利刮到制刷券刹刺刻剂剃削前剑剔剖剥剧剩剪副割力劝办功加务劣动助努劫励劲劳势勃勇勉勋勒勘募勤协博占卢卫却卷厂厅历厉压厌厕厢厨去县参又双反发叔取受变叙叠古只叫召可台史右号司叹吃各合吉同名后吐向吓吕吗君吝吞否吧含听启呈吴吸吹吻吼呀呆告呐员呜呢周味呵呼命和咀咱哀品哇哈响哎哑哄哑哇咽咱哀品哲哭哮哪售唯唱商啊问啸啥啦啪喀喂善喇喊喜喝喧喷喻嗓嗜嗡嗣叹嘉嘎嘘嘛嘲嘴嘻嘿器噩喷噪吓团园困囱围固国图圆圈圣在场坏块坚坛坝坠垒垦垫垮埃埋城域培基堂堆堕堡堪塑塔涂塞填境墓墙增墨壁压坏垄壳声处备复夏够头夸夹夺奋奖套奥女妆妇妈妖妙妥妨妹妻始姐姑姓委姿威娃娘娱娶婆婉婚婴婶媒嫁嫌嫩子孔字存孙学季孤孩孵宁它宇守安完宏宗官宙定宛宜实审客宣室宫宪害家容宽宾宿寂寄密富寒察寡寝实宠审对寻导寿将尊小少尔尘尚尝尤就尺尼尽尾局层居屈屋展属履山岁岂岗岛岩岭岳岸峡峰崎崩川州巡工巧巨差己已巴布帅师希帐帕帖帝带席帮常帽幅幕币干平年并幸幻幼广庄庆庇床序库应底店庙府度座庭康庸廉廊廓延建开异弃弄式引张弥弦弯弹强归当录形彩影彻彼往征径待很律后徒得徘徙御复微德心必忆忍志忘忙忠忧快念忽怀态怒怕怜思急怨怪恋恒恐恕恢恨恩恰恶恼悄悉悔悟患悲闷情惊惑惜惠惧惨惩惫惯想惹愁愈愉意愚感愧慈慌慎慕慢慰庆忧懂懒怀悬成我戒或战截户房所扁扇手才扎扑打托扛扣执扩扫扬扭扮扯扰扶批找承技抄把抓投抖抗折抚抛抠抡抢护报披抬抱抵抹抽担拆拉拌拍拎拐拒拓拔拖招拜拟拢拣拥拦拧拨择括拭拯拱拳拾拿持挂指按挑挖挨挪挫振挺挽捂捆捉捕损捡换掉掌排掏掠探接控推掩措掷揉描提插握揣揭援揽搜搞搬搭携摄摆摇摊摔摘摩摸撑撒撕撞撤撩播撮撰扑撵撼操擒擅擦攀支收改攻放政故效敌敏救教敛散敬数整敲文斋斑斗料斜斤斥断斯新方旁旅旋族旗无既日旦旧早旬时旺昂昆昌明昏易昔星映春昨昭是显晃晋晒晓晕晚晨普景晰晴晶智暂暑暖暗暮暴曲更书曾替最会月有朋服朗望朝期木未末本术朱朴机杀杂权杆李材村杖杜束条来杨杭杯杰松板极构析林果枝枢枪枫架柏某染柔柜查柬柱柳柴标栈栋栏树栖样校核根格框案桌桑档桥桦桩桶梁梅梦梯械梳检棉棋棍棒棕棚森棱棵植椒椭椰椿杨楚楼概榜荣构榴槽乐樊标模横樱橡机权次欢欣欧欲欺款歇歌正此步武歧歪死殊残段杀毁母每毒比毛毫氏民气氧氢水永求汇汉汗汝江池汤汪汹汽沃沈沉沙沟没沧沫河油治沼沿泄泉泊泌法泡波泥注泪泰泳泽洁洋洒洗洛洞津洪洲活洽派流浅测济浑浓浙浦浩浪浮浴海浸涂消涉涌液涵淋淑淘淡淤净深混淹添清渊渐渔渗渡渣温测港游湖湘湾湿溃溅滋滑滔滚满滤滥滨滩滴漂漏演漠漫涨激浊浓湿济涛滥涛火灭灯灰灵灶灾灿炉炎炒炫炮炸点炼烂烈烤烦烧热焦焰然无然煤照煮熊熏熔熟燃爆爱爷爸爽片版牌牙牛牧物牲特牵犀牺犬犯状犹狂狐狗狠独狭狮狱狼猎猛猜猫献猴玄率玉王玩环现玻珊珍珠班现球理琐瑞瑟瑰瑶环瓜瓦瓶甘甜生用甩田由甲申电男画畅界留略番画异当疏疑疗疯症疲疼疾病痕痛痴痒登白百的皂的皇皮盈益监盒盖盘盛盟目直相盼盾省眉看真眠眼着睁睡督瞒瞧瞩矛矢知短石研砖破砸硬碎碗碟碑碰磁磨示礼社祖祝神祥票祭禁祸福禅离秀私秋科秒秘租秤秦稀税程稳稻稿谷究穷空穿突窃窄窗窝立竖站竞竟章童端竹笑笔笛符第等筋筑筒答策筹签简算管箱节范茎茅茧草荐荒荣药荷获莱莲获营萧萨落著葛葬葱葵蒋蒙蒸蓄蓝蔓蔬蕴藏藤药虎虑虚虫虹虽虾蚀蚁蚊蛇蛋蛙蜂蜗蝉蝶融血行街衡衣表衰补衬袋装裤西要覆见观规觅视览觉角解触言订计认讨让训议讯记讲讳讶许论讼设访证评识诉词译试诗诚话诞询该详语误说请诸诺读课谁调谅谈谊谋谓谜谢谨谦谣谱谷豆象豪貌贝贞负贡财责贤败货质贩贪贫购贯贱贴贵贷贸费贺贼资贾贿赏赔赖赚赛赞赠赢赤走赴起趁超越趋足跃距跟跨路跳踏踢踩身躯车轨轩转轮软轰轻载较辅辆辈辉辑输辞辩边达迁过迈迎运近返还这进远违连迟追退送适逃选逊透通递途逛逝速造逢连逮进逸遇遍道遗遥遭遮避邀那邦邪邮邻郁郊郎郑部郭都配酒酷酸酿采释里重野量金鉴针钉钙钛钟钢钦钩钮钱钻铁铃铅缺铜铝铭铲银铸铺链销锁锅锋错锡锦键锯镇镜长门闪闭问闯闲间闷闸闹闻阀阁阅队列防阳阴阵阶阻阿附际陆陈降限院除险陪陵陶陷隆随隐隔障难雄集雅雕雨雪雾震霉霜露霸青静非面革鞋音页顶项顺须顽顾顿预领颇颈频颗题颜额风飘飞食餐饥饭饮饰饱饼馆首香马驱驳驴驶驻驾验骑骗骚骨高鱼鲜鸡鸣鸭鹅黄黑默鼓鼠鼻齐齿龄龙龟' +
-  '刚匀区医单唤屿屉帧总戏昵杠滞潜烁烟睐码础确碍种积称类紧纠级纯纲纳线练组织终绍经绑结绕绘给绝统继绪续维缀缓编缘缝缩职联聪胁胜胶脑脱腊账赋践踪逻锚阐隶颁据泄淀后余准';
+  '刚匀区医单唤屿屉帧总戏昵杠滞潜烁烟睐码础确碍种积称类紧纠级纯纲纳线练组织终绍经绑结绕绘给绝统继绪续维缀缓编缘缝缩职联聪胁胜胶脑脱腊账赋践踪逻锚阐隶颁据泄淀后余准毕粤';
 const S2T_TRAD_SRC =
   '萬與丑專業叢東絲丟兩嚴喪個豐臨為麗舉麼義烏樂喬習鄉書買亂爭於虧雲亞產畝親褻億僅從侖倉儀們價眾優夥會傘偉傳傷倫偽佇體餘傭佩佳使例供依俠侶偵側僑保信倆修俯俱倍倒候借倦值傾假偉偏做停健偶偷償儲催傲傻像僚僧僵兒允兄充先光克免黨蘭關興茲養獸內岡冊寫軍農冠冬馮冰衝決況凍淨淒準涼減湊凝幾憑凱凰出擊函鑿劃劉則創初刪判別利刮到制刷券剎刺刻劑剃削前劍剔剖剝劇剩剪副割力勸辦功加務劣動助努劫勵勁勞勢勃勇勉勳勒勘募勤協博占盧衛卻捲廠廳歷厲壓厭廁廂廚去縣參又雙反發叔取受變敘疊古只叫召可台史右號司嘆吃各合吉同名後吐向嚇呂嗎君吝吞否吧含聽啟呈吳吸吹吻吼呀呆告吶員嗚呢周味呵呼命和咀咱哀品哇哈響哎啞哄啞哇咽咱哀品哲哭哮哪售唯唱商啊問嘯啥啦啪喀喂善喇喊喜喝喧噴喻嗓嗜嗡嗣嘆嘉嘎噓嘛嘲嘴嘻嘿器噩噴噪嚇團園困囪圍固國圖圓圈聖在場壞塊堅壇壩墜壘墾墊垮埃埋城域培基堂堆墮堡堪塑塔塗塞填境墓牆增墨壁壓壞壟殼聲處備復夏夠頭誇夾奪奮獎套奧女妝婦媽妖妙妥妨妹妻始姐姑姓委姿威娃娘娛娶婆婉婚嬰嬸媒嫁嫌嫩子孔字存孫學季孤孩孵寧它宇守安完宏宗官宙定宛宜實審客宣室宮憲害家容寬賓宿寂寄密富寒察寡寢實寵審對尋導壽將尊小少爾塵尚嘗尤就尺尼盡尾局層居屈屋展屬履山歲豈崗島岩嶺岳岸峽峰崎崩川州巡工巧巨差己已巴布帥師希帳帕帖帝帶席幫常帽幅幕幣干平年並幸幻幼廣莊慶庇床序庫應底店廟府度座庭康庸廉廊廓延建開異棄弄式引張彌弦彎彈強歸當錄形彩影徹彼往徵徑待很律後徒得徘徙御復微德心必憶忍志忘忙忠憂快念忽懷態怒怕憐思急怨怪戀恆恐恕恢恨恩恰惡惱悄悉悔悟患悲悶情驚惑惜惠懼慘懲憊慣想惹愁愈愉意愚感愧慈慌慎慕慢慰慶憂懂懶懷懸成我戒或戰截戶房所扁扇手才扎撲打托扛扣執擴掃揚扭扮扯擾扶批找承技抄把抓投抖抗折撫拋摳掄搶護報披抬抱抵抹抽擔拆拉拌拍拎拐拒拓拔拖招拜擬攏揀擁攔擰撥擇括拭拯拱拳拾拿持掛指按挑挖挨挪挫振挺挽捂捆捉捕損撿換掉掌排掏掠探接控推掩措擲揉描提插握揣揭援攬搜搞搬搭攜攝擺搖攤摔摘摩摸撐撒撕撞撤撩播撮撰撲攆撼操擒擅擦攀支收改攻放政故效敵敏救教斂散敬數整敲文齋斑斗料斜斤斥斷斯新方旁旅旋族旗無既日旦舊早旬時旺昂昆昌明昏易昔星映春昨昭是顯晃晉晒曉暈晚晨普景晰晴晶智暫暑暖暗暮暴曲更書曾替最會月有朋服朗望朝期木未末本術朱樸機殺雜權杆李材村杖杜束條來楊杭杯傑松板極構析林果枝樞槍楓架柏某染柔櫃查柬柱柳柴標棧棟欄樹棲樣校核根格框案桌桑檔橋樺樁桶梁梅夢梯械梳檢棉棋棍棒棕棚森棱棵植椒橢椰椿楊楚樓概榜榮構榴槽樂樊標模橫櫻橡機權次歡欣歐欲欺款歇歌正此步武歧歪死殊殘段殺毀母每毒比毛毫氏民氣氧氫水永求匯漢汗汝江池湯汪洶汽沃沈沉沙溝沒滄沫河油治沼沿泄泉泊泌法泡波泥注淚泰泳澤潔洋灑洗洛洞津洪洲活洽派流淺測濟渾濃浙浦浩浪浮浴海浸塗消涉湧液涵淋淑淘淡淤淨深混淹添清淵漸漁滲渡渣溫測港游湖湘灣濕潰濺滋滑滔滾滿濾濫濱灘滴漂漏演漠漫漲激濁濃濕濟濤濫濤火滅燈灰靈灶災燦爐炎炒炫炮炸點煉爛烈烤煩燒熱焦焰然無然煤照煮熊熏熔熟燃爆愛爺爸爽片版牌牙牛牧物牲特牽犀犧犬犯狀猶狂狐狗狠獨狹獅獄狼獵猛猜貓獻猴玄率玉王玩環現玻珊珍珠班現球理瑣瑞瑟瑰瑤環瓜瓦瓶甘甜生用甩田由甲申電男畫暢界留略番畫異當疏疑療瘋症疲疼疾病痕痛癡癢登白百的皂的皇皮盈益監盒蓋盤盛盟目直相盼盾省眉看真眠眼著睜睡督瞞瞧矚矛矢知短石研磚破砸硬碎碗碟碑碰磁磨示禮社祖祝神祥票祭禁禍福禪離秀私秋科秒秘租秤秦稀稅程穩稻稿穀究窮空穿突竊窄窗窩立豎站競竟章童端竹笑筆笛符第等筋築筒答策籌簽簡算管箱節範莖茅繭草薦荒榮藥荷獲萊蓮獲營蕭薩落著葛葬蔥葵蔣蒙蒸蓄藍蔓蔬蘊藏藤藥虎慮虛蟲虹雖蝦蝕蟻蚊蛇蛋蛙蜂蝸蟬蝶融血行街衡衣表衰補襯袋裝褲西要覆見觀規覓視覽覺角解觸言訂計認討讓訓議訊記講諱訝許論訟設訪證評識訴詞譯試詩誠話誕詢該詳語誤說請諸諾讀課誰調諒談誼謀謂謎謝謹謙謠譜穀豆象豪貌貝貞負貢財責賢敗貨質販貪貧購貫賤貼貴貸貿費賀賊資賈賄賞賠賴賺賽讚贈贏赤走赴起趁超越趨足躍距跟跨路跳踏踢踩身軀車軌軒轉輪軟轟輕載較輔輛輩輝輯輸辭辯邊達遷過邁迎運近返還這進遠違連遲追退送適逃選遜透通遞途逛逝速造逢連逮進逸遇遍道遺遙遭遮避邀那邦邪郵鄰鬱郊郎鄭部郭都配酒酷酸釀采釋里重野量金鑑針釘鈣鈦鐘鋼欽鉤鈕錢鑽鐵鈴鉛缺銅鋁銘鏟銀鑄鋪鏈銷鎖鍋鋒錯錫錦鍵鋸鎮鏡長門閃閉問闖閒間悶閘鬧聞閥閣閱隊列防陽陰陣階阻阿附際陸陳降限院除險陪陵陶陷隆隨隱隔障難雄集雅雕雨雪霧震霉霜露霸青靜非面革鞋音頁頂項順須頑顧頓預領頗頸頻顆題顏額風飄飛食餐飢飯飲飾飽餅館首香馬驅駁驢駛駐駕驗騎騙騷骨高魚鮮雞鳴鴨鵝黃黑默鼓鼠鼻齊齒齡龍龜' +
-  '剛勻區醫單喚嶼屜幀總戲暱槓滯潛爍煙睞碼礎確礙種積稱類緊糾級純綱納線練組織終紹經綁結繞繪給絕統繼緒續維綴緩編緣縫縮職聯聰脅勝膠腦脫臘帳賦踐蹤邏錨闡隸頒據洩澱後餘準';
+  '剛勻區醫單喚嶼屜幀總戲暱槓滯潛爍煙睞碼礎確礙種積稱類緊糾級純綱納線練組織終紹經綁結繞繪給絕統繼緒續維綴緩編緣縫縮職聯聰脅勝膠腦脫臘帳賦踐蹤邏錨闡隸頒據洩澱後餘準畢粵';
 
 const S2T_CHAR_MAP = new Map();
 {
@@ -818,13 +998,8 @@ const S2T_CHAR_MAP = new Map();
 
 function toTraditionalChinese(text) {
   if (!text || typeof text !== 'string') return text;
-  // Preserve placeholders ($1, $2, etc.) and ASCII segments naturally
-  let out = text;
-  for (const [sc, tc] of TW_PHRASE_MAP) {
-    if (out.includes(sc)) {
-      out = out.split(sc).join(tc);
-    }
-  }
+  // Single-pass longest-match phrase conversion followed by S2T character conversion
+  const out = text.replace(TW_PHRASE_RE, (m) => TW_PHRASE_MAP_LOOKUP.get(m) || m);
   let res = '';
   for (const ch of out) {
     res += S2T_CHAR_MAP.get(ch) || ch;
@@ -835,6 +1010,7 @@ function toTraditionalChinese(text) {
 function isCleanExactKey(key) {
   if (!key || typeof key !== 'string') return false;
   if (key.length > 1500) return false;
+  if (key === 'Search languages to add (e.g. English, Spanish, 中文, yue)...') return true;
   // Reject keys containing Chinese characters (corrupted/half-translated keys)
   if (/[\u4e00-\u9fa5]/.test(key)) return false;
   return true;
@@ -842,8 +1018,8 @@ function isCleanExactKey(key) {
 
 function compilePatternRule(pattern, flags, replace) {
   if (!pattern || typeof pattern !== 'string' || typeof replace !== 'string') return null;
-  // Skip rules whose pattern matches half-Chinese artifacts unless explicitly needed
-  if (/[\u4e00-\u9fa5]/.test(pattern)) return null;
+  // Skip rules whose pattern matches half-Chinese artifacts unless explicitly part of idempotent date rules
+  if (/[\u4e00-\u9fa5]/.test(pattern) && !/^\^\(\?:(?:Today|Tomorrow|Yesterday)\|/.test(pattern)) return null;
   if (BLOCKED_LEGACY_PATTERNS.has(pattern)) return null;
   try {
     new RegExp(pattern, flags || '');
@@ -1059,6 +1235,33 @@ const CURATED_EXACT_TW = {
   'Confirm Quit': '確認結束',
   'Are you sure you want to quit?': '您確定要結束嗎？',
   'There may be agents or background tasks running.': '可能還有代理或背景任務正在執行。',
+  'Inbox': '收件匣',
+  'Inbox Mode': '收件匣模式',
+  'Working Section': '「正在執行」分組',
+  'Auto-Resolve': '自動解決',
+  'Resolve': '標為已解決',
+  'Resolved': '已解決',
+  'Return to Inbox': '移回收件匣',
+  'Docs': '文件',
+  'Toggle Developer Tools': '開發人員工具',
+  'No agents running': '目前無執行中的代理',
+  'No updates available': '目前已是最新版本',
+  'Text viewer': '文字檢視器',
+  'Image viewer': '圖片檢視器',
+  'Video player': '視訊播放器',
+  'Audio player': '音訊播放器',
+  'HTML viewer': 'HTML 檢視器',
+  'Notebook viewer': 'Notebook 檢視器',
+  'PDF viewer': 'PDF 檢視器',
+  'System default app': '系統預設應用程式',
+  'Application Menu': '應用程式選單',
+  'For Me': '僅自己使用',
+  'For My Team': '團隊共享',
+  'Sidecar disabled': 'Sidecar 已停用',
+  'Not running': '未執行',
+  'Not secure': '不安全',
+  'Protocol': '通訊協定',
+  'Interrupted': '已中斷',
 };
 
 const CURATED_REGEX_TW_MAP = new Map([
@@ -1081,7 +1284,56 @@ const CURATED_REGEX_TW_MAP = new Map([
   ['^Close\\s+(.+)$\u0000', '關閉 $1'],
   ['^Connect\\s+to\\s+(.+)$\u0000', '連線至 $1'],
   ['^Quit\\s+Antigravity\\??$\u0000i', '確定要結束 Antigravity 嗎？'],
+  ['^(.+?) \\(Not running\\)$\u0000', '$1（未執行）'],
+  ['^(.+?) \\(Sidecar disabled\\)$\u0000', '$1（Sidecar 已停用）'],
+  ['^Blocked navigation to "(.+)"$\u0000', '已封鎖前往「$1」的導覽'],
+  ['^Sign in from the ([^.!?\\r\\n]{1,40}) panel\\.$\u0000', '請從 $1 面板登入。'],
+  ['^Sign in to use ([^.!?\\r\\n]{1,40})!$\u0000', '請登入以使用 $1！'],
+  ['^Could not attach folder "(.+)":\\s*(.+)$\u0000', '無法附加資料夾「$1」：$2'],
+  ['^Added MCP server "(.+)", but it failed to start:\\s*(.+)$\u0000', '已新增 MCP 伺服器「$1」，但啟動失敗：$2'],
 ]);
+
+const YIHENG_NOISY_EXACT_KEYS = new Set([
+  '.', 'here', 'more', 'line', 'lines', 'panel', 'project', 'projects', 'resources',
+  'This', 'Use', 'Start', 'Update', 'Readme', 'documentation',
+  'when working in these conversations.', 'when working in these conversations',
+  'when working in', 'when working', 'in this project.', 'in this project',
+  'this project.', 'this project', 'in these conversations.', 'in these conversations',
+  'these conversations.', 'these conversations', 'is managed by the',
+  'automation and can only be deleted by deleting that automation.',
+  'with this name already exists.', 'within it.', 'and make it the default.',
+  'and sign in again.', 'directly in the side pane.', 'in your browser.',
+  "to any content or files that you upload, including content of minors. Don't generate content that infringes on others' rights, including content that deceives, harasses, or harms. When using Antigravity, you must comply with Google's",
+  'Avoid uploading highly sensitive data and verify actions taken by your agent. Make sure you have the',
+  'Available for', 'Select all in', 'This will permanently delete',
+  'Finish signing in to', "Couldn't switch accounts:", 'To switch accounts, sign out in the',
+  'For corp passwords (such as', 'Setting up WSL:', 'Settings -',
+  'Attackers might be trying to steal your information from',
+  '(for example, passwords, messages, or credit cards).',
+  '(none)', '(not set)', '(still loading…)',
+  '▾ menu', '▾ menu)', '▼ menu', '▼ menu)', '▾ menu).', '▼ menu).',
+  '(▾ menu)', '(▾ menu).', '(▼ menu)', '(▼ menu).', 'Active environment: os=',
+  'by Google', 'Command:', 'Scopes:', 'Event:', 'Definition:', 'Payload:',
+  'Domains:', 'Used for:', 'Current parameter:', 'Sign-in failed:',
+  'Failed to start host bridge server:', 'Failed to close host bridge server:',
+  'Failed to close session connections:', 'Also includes Global Permissions when working in these conversations. Learn more.',
+]);
+
+const YIHENG_NORMALIZED_CN = {
+  'Enable AI credit overages': '启用 AI 点数超额使用',
+  '5h limit.': '5 小时限额。',
+};
+
+function isAcceptableYihengPhrase(key) {
+  if (!isCleanExactKey(key)) return false;
+  if (key !== key.trim()) return false;
+  if (YIHENG_NOISY_EXACT_KEYS.has(key)) return false;
+  if (/^[.,;:!?)\]}▾▼]/.test(key)) return false;
+  if (/[({[]$/.test(key)) return false;
+  if (/\{[a-zA-Z0-9_]+\}/.test(key)) return false;
+  if (/:$/.test(key) && key.split(/\s+/).length <= 3 && /^(?:Failed|Sign-in|Used|Current|Event|Definition|Payload|Domains|Scopes|Command)/i.test(key)) return false;
+  return true;
+}
 
 function main() {
   const opts = parseCliArgs(process.argv.slice(2));
@@ -1110,11 +1362,12 @@ function main() {
     addRegex(r.pattern, r.flags, r.replace);
   }
 
-  // 2. Existing dict.zh-CN.json (baseline preservation)
+  // 2. Existing dict.zh-CN.json (baseline preservation, stripping noisy fragments if any)
   const existingCN = readJsonSafe(OUT_CN);
   if (existingCN && existingCN.exact) {
     sourcesUsed.push('existing:dict.zh-CN.json');
     for (const [k, v] of Object.entries(existingCN.exact)) {
+      if (YIHENG_NOISY_EXACT_KEYS.has(k)) continue;
       addExact(k, v);
     }
     for (const r of existingCN.regex || []) {
@@ -1142,7 +1395,47 @@ function main() {
     for (const p of acvDict.patterns || []) addRegex(p.regex, p.flags || '', p.replacement);
   }
 
-  // 6. REF_I18N/src/dictionary.js + REF_I18N/localize.js (highest authority for 2.34.0)
+  // 6. REF_YIHENG selective merge (Swarm graph/GIF/narrator + clean complete 2.35.0-2.35.2 phrases, skipping fragments)
+  if (opts.refYiheng && fs.existsSync(opts.refYiheng)) {
+    const swarmDict = readJsonSafe(path.join(opts.refYiheng, 'dict', 'scoped', 'swarm.json'));
+    let swarmAdded = 0;
+    if (swarmDict && swarmDict.exact) {
+      for (const [k, v] of Object.entries(swarmDict.exact)) {
+        if (!isAcceptableYihengPhrase(k)) continue;
+        if (!Object.prototype.hasOwnProperty.call(exactCN, k)) {
+          addExact(k, v);
+          swarmAdded++;
+        }
+      }
+    }
+    const yihengDict = readJsonSafe(path.join(opts.refYiheng, 'dict', 'zh-CN.json'));
+    let yihengAdded = 0;
+    if (yihengDict && yihengDict.exact) {
+      for (const [k, v] of Object.entries(yihengDict.exact)) {
+        if (!isAcceptableYihengPhrase(k)) continue;
+        if (!Object.prototype.hasOwnProperty.call(exactCN, k)) {
+          addExact(k, YIHENG_NORMALIZED_CN[k] || v);
+          yihengAdded++;
+        }
+      }
+    }
+    sourcesUsed.push(`REF_YIHENG(swarm:+${swarmAdded},clean:+${yihengAdded})`);
+  }
+
+  // 7. REF_I18N/localize.js + REF_I18N/src/dictionary.js (v2.35.2 Web UI dictionary is highest authority for Web UI exact keys)
+  const refLocalizePath = path.join(opts.refI18n, 'localize.js');
+  if (fs.existsSync(refLocalizePath)) {
+    const menuMap = extractObjectMapFromLocalizeJs(refLocalizePath, 'menuTranslationMap');
+    const ctxMap = extractObjectMapFromLocalizeJs(refLocalizePath, 'contextMenuTranslationMap');
+    sourcesUsed.push(`REF_I18N:menus(${Object.keys(menuMap).length}+${Object.keys(ctxMap).length})`);
+    for (const [k, v] of Object.entries(menuMap)) addExact(k, v);
+    for (const [k, v] of Object.entries(ctxMap)) addExact(k, v);
+  }
+
+  for (const [k, v] of Object.entries(CURATED_EXACT_CN)) {
+    addExact(k, v);
+  }
+
   const refI18nDictPath = path.join(opts.refI18n, 'src', 'dictionary.js');
   if (fs.existsSync(refI18nDictPath)) {
     const refMod = require(refI18nDictPath);
@@ -1153,19 +1446,10 @@ function main() {
     }
   }
 
-  const refLocalizePath = path.join(opts.refI18n, 'localize.js');
-  if (fs.existsSync(refLocalizePath)) {
-    const menuMap = extractObjectMapFromLocalizeJs(refLocalizePath, 'menuTranslationMap');
-    const ctxMap = extractObjectMapFromLocalizeJs(refLocalizePath, 'contextMenuTranslationMap');
-    sourcesUsed.push(`REF_I18N:menus(${Object.keys(menuMap).length}+${Object.keys(ctxMap).length})`);
-    for (const [k, v] of Object.entries(menuMap)) addExact(k, v);
-    for (const [k, v] of Object.entries(ctxMap)) addExact(k, v);
-  }
-
-  // 7. Curated overrides win for core labels ("Settings": "设置", etc.)
-  for (const [k, v] of Object.entries(CURATED_EXACT_CN)) {
-    addExact(k, v);
-  }
+  // Re-assert Studio core labels (matching v2.35.2)
+  addExact('Settings', '设置');
+  addExact('File', '文件');
+  addExact('New Window', '新建窗口');
 
   // Sort exact keys deterministically for clean diffs
   const sortedExactCN = {};

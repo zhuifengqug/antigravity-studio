@@ -62,6 +62,8 @@
     '[data-testid="user-message-content"]',
     '[data-testid*="assistant-message"]',
     '[data-testid*="model-response"]',
+    '[data-testid="markdown-code-block-preview"]',
+    '[data-testid="automation-instructions-markdown"]',
     '.prose',
     '.markdown-body',
     '[class*="markdown"]',
@@ -74,17 +76,92 @@
     '[class*="Breadcrumb"]',
     '[data-testid="model-selector-panel"]',
     '[data-testid="model-selector-trigger"]',
+    '[data-testid="orchestrator-picker-row"]',
+    '[data-testid="orchestrator-picker-effort"]',
+    '[data-ag-cs-orch-l2]',
+    '[data-ag-cs-orch-l3]',
+    '[data-ag-cs-model-submenu]',
+    '[data-ces-orch-row]',
     '.ces-ag-section',
     '.ces-set',
+    '.input-area',
+    '.chat-input',
     '[data-testid="project-header"]',
     '[data-testid="breadcrumb-segment"]'
   ];
 
-  // Pre-compile static selectors (excluding user-message special handling) into ONE closest() call
+  // Pre-compile static selectors (excluding dynamically evaluated selectors) into ONE closest() call
   var STATIC_IGNORE_SELECTORS = IGNORE_SELECTORS.filter(function (s) {
-    return s !== '[data-testid*="user-message"]' && s !== '[data-testid="project-header"]';
+    return (
+      s !== '[data-testid*="user-message"]' &&
+      s !== '[data-testid="project-header"]' &&
+      s !== '[data-testid="breadcrumb-segment"]'
+    );
   });
   var COMBINED_STATIC_IGNORE_SEL = STATIC_IGNORE_SELECTORS.join(', ');
+
+  var codeClassPattern = /(?:^|[\s_-])(monaco-editor|editor-instance|hljs|shiki|prism|codemirror|line-content|gutter|codeblock|code-block|code-line|view-line|xterm|xterm-rows|xterm-screen|xterm-accessibility)(?:$|[\s_-])/i;
+
+  var CODE_OR_LITERAL_TAGS = new Set([
+    'CODE', 'PRE', 'KBD', 'SAMP', 'VAR', 'SVG', 'MATH', 'MJX-CONTAINER'
+  ]);
+  var UI_MARKDOWN_CHROME_TESTIDS = new Set([
+    'toast-notification', 'nux-card'
+  ]);
+  var PROTECTED_MARKDOWN_TESTIDS = new Set([
+    'markdown-code-block-preview', 'automation-instructions-markdown'
+  ]);
+  var ORCHESTRATOR_OR_SLIDER_TESTIDS = new Set([
+    'model-selector-panel',
+    'model-selector-trigger',
+    'orchestrator-picker-row',
+    'orchestrator-picker-effort'
+  ]);
+  var ORCHESTRATOR_OR_SLIDER_ATTRS = [
+    'data-ag-cs-orch-l2',
+    'data-ag-cs-orch-l3',
+    'data-ag-cs-model-submenu',
+    'data-ces-orch-row'
+  ];
+  var ORCHESTRATOR_OR_SLIDER_CLASSES = ['ces-ag-section', 'ces-set'];
+
+  var SETTINGS_PROJECT_SECTION_HEADERS = new Set([
+    'projects', '项目', '專案',
+    'workspaces', '工作区', '工作區'
+  ]);
+  var PROJECT_PLACEHOLDER_LABELS = new Set([
+    'unknown project', '未知项目', '未知專案',
+    'unknown workspace', '未知工作区', '未知工作區'
+  ]);
+  var BREADCRUMB_PLACEHOLDER_LABELS = new Set([
+    'unknown project', '未知项目', '未知專案',
+    'unknown workspace', '未知工作区', '未知工作區',
+    'new project', '新建项目', '新增專案',
+    'new workspace', '新建工作区', '新增工作區'
+  ]);
+  var EDIT_PROJECT_NAME_ARIA_RE = /^(?:Edit\s+(?:project|workspace)\s+name|编辑\s*(?:项目|工作区)\s*名称?|編輯\s*(?:專案|工作區)\s*名稱?)$/i;
+  var PROJECT_BREADCRUMB_ARIA_RE = /^(?:(?:Project|Workspace)\s*:\s*|(?:项目|工作区|專案|工作區)\s*[:：]\s*)/i;
+
+  var COMPOSER_ARIA_ALLOWED = new Set(['Message input']);
+  var VOICE_BUTTON_ARIA_ALLOWED = new Set(['Start Voice mode', 'End Voice mode']);
+
+  var ENGLISH_MONTHS = {
+    january: 1, jan: 1,
+    february: 2, feb: 2,
+    march: 3, mar: 3,
+    april: 4, apr: 4,
+    may: 5,
+    june: 6, jun: 6,
+    july: 7, jul: 7,
+    august: 8, aug: 8,
+    september: 9, sep: 9, sept: 9,
+    october: 10, oct: 10,
+    november: 11, nov: 11,
+    december: 12, dec: 12
+  };
+  var MODEL_LEAVING_SUBJECT_RE = /^(?:this model|(?:Gemini|Claude|GPT|Gemma|Veo|Imagen|Hydrogen|Helium|Lithium|Sonnet|Opus|Haiku|DeepSeek|Qwen|Llama|Mistral|o[134])(?:[\s._/-]|$))/i;
+
+  var skipCache = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
 
   var SWARM_PROTECTED_CLASSES = [
     'msg-body', 'mention', 'msg-author', 'o2-mauth', 'chip-name', 'o2-wchip',
@@ -256,6 +333,69 @@
     return false;
   }
 
+  function hasAttr(el, name) {
+    if (!el || el.nodeType !== 1) return false;
+    if (el.hasAttribute && el.hasAttribute(name)) return true;
+    var val = el.getAttribute ? el.getAttribute(name) : null;
+    return val !== null && val !== undefined;
+  }
+
+  function hasAncestorTestId(el, allowedSet) {
+    var cur = el;
+    while (cur && (typeof document === 'undefined' || cur !== document.body)) {
+      if (cur.nodeType === 1 && cur.getAttribute) {
+        var tid = cur.getAttribute('data-testid');
+        if (tid && allowedSet.has(tid)) return true;
+      }
+      cur = cur.parentElement;
+    }
+    return false;
+  }
+
+  function isProtectedMarkdownElement(el) {
+    if (!el || el.nodeType !== 1) return false;
+    var tid = el.getAttribute ? el.getAttribute('data-testid') : null;
+    if (tid && PROTECTED_MARKDOWN_TESTIDS.has(tid)) return true;
+    if (hasAttr(el, 'data-markdown-root')) {
+      return !hasAncestorTestId(el, UI_MARKDOWN_CHROME_TESTIDS);
+    }
+    return false;
+  }
+
+  function isOrchestratorOrSliderSelf(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (el.getAttribute) {
+      var tid = el.getAttribute('data-testid');
+      if (tid && ORCHESTRATOR_OR_SLIDER_TESTIDS.has(tid)) return true;
+      for (var i = 0; i < ORCHESTRATOR_OR_SLIDER_ATTRS.length; i++) {
+        if (hasAttr(el, ORCHESTRATOR_OR_SLIDER_ATTRS[i])) return true;
+      }
+    }
+    if (el.classList) {
+      for (var j = 0; j < ORCHESTRATOR_OR_SLIDER_CLASSES.length; j++) {
+        if (el.classList.contains(ORCHESTRATOR_OR_SLIDER_CLASSES[j])) return true;
+      }
+    }
+    return false;
+  }
+
+  function isProjectHeaderElement(el) {
+    if (!el || el.nodeType !== 1 || !el.getAttribute) return false;
+    return (
+      el.getAttribute('data-testid') === 'project-header' ||
+      ((el.tagName || '').toUpperCase() === 'BUTTON' && el.getAttribute('data-project-card') === 'true')
+    );
+  }
+
+  function findProjectHeaderElement(node) {
+    var cur = node;
+    while (cur && (typeof document === 'undefined' || cur !== document.body)) {
+      if (isProjectHeaderElement(cur)) return cur;
+      cur = cur.parentElement;
+    }
+    return null;
+  }
+
   function isSystemGroupProjectHeader(headerEl) {
     if (!headerEl || headerEl.nodeType !== 1 || !headerEl.getAttribute) return false;
     var hasExplicitDropId = false;
@@ -279,6 +419,221 @@
     return false;
   }
 
+  function isUserProjectHeader(el) {
+    return isProjectHeaderElement(el) && !isSystemGroupProjectHeader(el);
+  }
+
+  function getPreviousElementSibling(el) {
+    if (!el) return null;
+    if (el.previousElementSibling !== undefined) return el.previousElementSibling;
+    var parent = el.parentElement;
+    if (!parent || !parent.childNodes) return null;
+    var idx = Array.prototype.indexOf.call(parent.childNodes, el);
+    for (var i = idx - 1; i >= 0; i--) {
+      if (parent.childNodes[i] && parent.childNodes[i].nodeType === 1) {
+        return parent.childNodes[i];
+      }
+    }
+    return null;
+  }
+
+  function getNextElementSibling(el) {
+    if (!el) return null;
+    if (el.nextElementSibling !== undefined) return el.nextElementSibling;
+    var parent = el.parentElement;
+    if (!parent || !parent.childNodes) return null;
+    var idx = Array.prototype.indexOf.call(parent.childNodes, el);
+    if (idx < 0) return null;
+    for (var i = idx + 1; i < parent.childNodes.length; i++) {
+      if (parent.childNodes[i] && parent.childNodes[i].nodeType === 1) {
+        return parent.childNodes[i];
+      }
+    }
+    return null;
+  }
+
+  function isProjectGlyphIconNode(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (hasAttr(el, 'data-project-glyph')) return true;
+    if ((el.tagName || '').toUpperCase() === 'SPAN' && el.childNodes && el.childNodes.length > 0) {
+      var hasGlyphChild = false;
+      for (var i = 0; i < el.childNodes.length; i++) {
+        var ch = el.childNodes[i];
+        if (!ch) continue;
+        if (ch.nodeType === 3) {
+          if ((ch.nodeValue || '').trim()) return false;
+        } else if (ch.nodeType === 1) {
+          if (hasAttr(ch, 'data-project-glyph')) hasGlyphChild = true;
+          else return false;
+        }
+      }
+      if (hasGlyphChild) return true;
+    }
+    return false;
+  }
+
+  function isProjectGlyphLabelSelf(cur) {
+    if (!cur || cur.nodeType !== 1) return false;
+    if (hasAttr(cur, 'data-project-glyph')) return true;
+    if ((cur.tagName || '').toUpperCase() !== 'SPAN') return false;
+    var prev = getPreviousElementSibling(cur);
+    if (!isProjectGlyphIconNode(prev)) return false;
+    var rawLabel = (cur.innerText || cur.textContent || '').trim().toLowerCase();
+    return !PROJECT_PLACEHOLDER_LABELS.has(rawLabel);
+  }
+
+  function isProjectGlyphLabelElement(el) {
+    var cur = el;
+    var depth = 0;
+    while (cur && (typeof document === 'undefined' || cur !== document.body) && depth < 3) {
+      if (isProjectGlyphLabelSelf(cur)) return true;
+      cur = cur.parentElement;
+      depth++;
+    }
+    return false;
+  }
+
+  function isSettingsSectionHeading(el, allowedTitles) {
+    if (!el || el.nodeType !== 1) return false;
+    var headingEl = null;
+    if ((el.tagName || '').toUpperCase() === 'H2') {
+      headingEl = el;
+    } else if (el.childNodes) {
+      for (var i = 0; i < el.childNodes.length; i++) {
+        var ch = el.childNodes[i];
+        if (ch && ch.nodeType === 1 && (ch.tagName || '').toUpperCase() === 'H2') {
+          headingEl = ch;
+          break;
+        }
+      }
+    }
+    if (!headingEl) return false;
+    var text = (headingEl.innerText || headingEl.textContent || '').trim().toLowerCase();
+    return allowedTitles.has(text);
+  }
+
+  function isSettingsNavButton(el) {
+    if (!el || el.nodeType !== 1 || !el.getAttribute) return false;
+    if ((el.tagName || '').toUpperCase() !== 'BUTTON') return false;
+    return (el.getAttribute('data-testid') || '').indexOf('settings-nav-item-') === 0;
+  }
+
+  function isSettingsProjectNavButton(navBtn) {
+    if (!isSettingsNavButton(navBtn)) return false;
+    var rawLabel = (navBtn.innerText || navBtn.textContent || '').trim().toLowerCase();
+    if (PROJECT_PLACEHOLDER_LABELS.has(rawLabel)) return false;
+
+    var flatPrev = getPreviousElementSibling(navBtn);
+    while (flatPrev && isSettingsNavButton(flatPrev)) {
+      flatPrev = getPreviousElementSibling(flatPrev);
+    }
+    if (isSettingsSectionHeading(flatPrev, SETTINGS_PROJECT_SECTION_HEADERS)) {
+      return true;
+    }
+
+    var sidebar = null;
+    if (typeof navBtn.closest === 'function') {
+      sidebar = navBtn.closest('[data-testid="settings-sidebar"]');
+    } else {
+      var c = navBtn;
+      while (c && (typeof document === 'undefined' || c !== document.body)) {
+        if (c.nodeType === 1 && c.getAttribute && c.getAttribute('data-testid') === 'settings-sidebar') {
+          sidebar = c;
+          break;
+        }
+        c = c.parentElement;
+      }
+    }
+    if (!sidebar) return false;
+
+    var listNode = navBtn.parentElement;
+    var depth = 0;
+    while (listNode && listNode !== sidebar && depth < 4) {
+      var prev = getPreviousElementSibling(listNode);
+      if (isSettingsSectionHeading(prev, SETTINGS_PROJECT_SECTION_HEADERS)) return true;
+      listNode = listNode.parentElement;
+      depth++;
+    }
+    return false;
+  }
+
+  function isSettingsProjectNavItem(el) {
+    var cur = el;
+    var depth = 0;
+    while (cur && (typeof document === 'undefined' || cur !== document.body) && depth < 4) {
+      if (isSettingsNavButton(cur)) return isSettingsProjectNavButton(cur);
+      cur = cur.parentElement;
+      depth++;
+    }
+    return false;
+  }
+
+  function isSettingsProjectTitleSelf(cur) {
+    if (!cur || cur.nodeType !== 1 || (cur.tagName || '').toUpperCase() !== 'SPAN') return false;
+    var next = getNextElementSibling(cur);
+    if (!next || (next.tagName || '').toUpperCase() !== 'BUTTON' || !next.getAttribute) return false;
+    var aria = (next.getAttribute('aria-label') || '').trim();
+    if (!EDIT_PROJECT_NAME_ARIA_RE.test(aria)) return false;
+    var rawLabel = (cur.innerText || cur.textContent || '').trim().toLowerCase();
+    return !PROJECT_PLACEHOLDER_LABELS.has(rawLabel);
+  }
+
+  function isSettingsProjectTitleElement(el) {
+    var cur = el;
+    var depth = 0;
+    while (cur && (typeof document === 'undefined' || cur !== document.body) && depth < 3) {
+      if (isSettingsProjectTitleSelf(cur)) return true;
+      cur = cur.parentElement;
+      depth++;
+    }
+    return false;
+  }
+
+  function isProjectBreadcrumbSegmentSelf(seg) {
+    if (!seg || seg.nodeType !== 1 || !seg.getAttribute) return false;
+    if (seg.getAttribute('data-testid') !== 'breadcrumb-segment') return false;
+    var aria = (seg.getAttribute('aria-label') || '').trim();
+    if (!PROJECT_BREADCRUMB_ARIA_RE.test(aria)) return false;
+    var rawLabel = (seg.innerText || seg.textContent || '').trim().toLowerCase();
+    return !BREADCRUMB_PLACEHOLDER_LABELS.has(rawLabel);
+  }
+
+  function isProjectBreadcrumbSegment(el) {
+    if (!el) return false;
+    if (typeof el.closest === 'function') {
+      var seg = el.closest('[data-testid="breadcrumb-segment"]');
+      return seg ? isProjectBreadcrumbSegmentSelf(seg) : false;
+    }
+    var cur = el;
+    var depth = 0;
+    while (cur && (typeof document === 'undefined' || cur !== document.body) && depth < 5) {
+      if (cur.nodeType === 1 && cur.getAttribute && cur.getAttribute('data-testid') === 'breadcrumb-segment') {
+        return isProjectBreadcrumbSegmentSelf(cur);
+      }
+      cur = cur.parentElement;
+      depth++;
+    }
+    return false;
+  }
+
+  function isProtectedProjectNameSelf(el) {
+    return (
+      isProjectGlyphLabelSelf(el) ||
+      isSettingsProjectNavButton(el) ||
+      isSettingsProjectTitleSelf(el) ||
+      isProjectBreadcrumbSegmentSelf(el)
+    );
+  }
+
+  function isProtectedProjectNameElement(el) {
+    return (
+      isProjectGlyphLabelElement(el) ||
+      isSettingsProjectNavItem(el) ||
+      isSettingsProjectTitleElement(el) ||
+      isProjectBreadcrumbSegment(el)
+    );
+  }
+
   function isSwarmProtectedElement(el) {
     if (!el || !el.classList) return false;
     for (var i = 0; i < SWARM_PROTECTED_CLASSES.length; i++) {
@@ -287,6 +642,77 @@
     var tag = (el.tagName || '').toUpperCase();
     if ((tag === 'B' || tag === 'P') && el.parentElement && el.parentElement.classList && el.parentElement.classList.contains('o2-goal')) {
       return true;
+    }
+    return false;
+  }
+
+  function isInsideThinkingBody(cur, isThinkingBtn) {
+    if (isThinkingBtn || !cur) return false;
+    if (cur.previousElementSibling &&
+        cur.previousElementSibling.getAttribute &&
+        cur.previousElementSibling.getAttribute('data-testid') === 'thinking-collapsible-trigger') {
+      return true;
+    }
+    if (cur.parentElement && cur.parentElement.querySelector) {
+      try {
+        var trig = cur.parentElement.querySelector(':scope > button[data-testid="thinking-collapsible-trigger"]');
+        if (trig && cur !== trig && !trig.contains(cur)) return true;
+      } catch (_e) {}
+    }
+    return false;
+  }
+
+  function isProtectedSelfCore(cur, allowComposerSurface) {
+    if (!cur || cur.nodeType !== 1) return false;
+    var curTag = (cur.tagName || '').toUpperCase();
+    if (CODE_OR_LITERAL_TAGS.has(curTag) || curTag === 'SCRIPT' || curTag === 'STYLE' || curTag === 'NOSCRIPT') {
+      return true;
+    }
+    if (isProtectedMarkdownElement(cur) || isSwarmProtectedElement(cur) || isOrchestratorOrSliderSelf(cur)) {
+      return true;
+    }
+    if (cur.getAttribute) {
+      var tid = cur.getAttribute('data-testid');
+      var ce = cur.getAttribute('contenteditable');
+      var role = cur.getAttribute('role');
+      if (
+        tid === 'user-message-content' ||
+        role === 'code' ||
+        (!allowComposerSurface && (ce === 'true' || role === 'textbox' || cur.getAttribute('data-lexical-editor') === 'true')) ||
+        cur.getAttribute('data-language') ||
+        cur.getAttribute('data-code') ||
+        cur.getAttribute('data-line') ||
+        cur.getAttribute('data-line-number')
+      ) {
+        return true;
+      }
+    }
+    if (cur.classList && (
+      cur.classList.contains('group/user-input-step') ||
+      cur.classList.contains('user-message') ||
+      cur.classList.contains('thought-content') ||
+      cur.classList.contains('thinking-content') ||
+      cur.classList.contains('thought-box') ||
+      cur.classList.contains('cursor-edit') ||
+      cur.classList.contains('cursor-text') ||
+      cur.classList.contains('monaco-editor') ||
+      cur.classList.contains('editor-instance') ||
+      cur.classList.contains('katex') ||
+      cur.classList.contains('katex-display') ||
+      cur.classList.contains('katex-html') ||
+      cur.classList.contains('mjx-container')
+    )) {
+      return true;
+    }
+    if (cur.className && typeof cur.className === 'string') {
+      var lowerClass = cur.className.toLowerCase();
+      if (
+        lowerClass.indexOf('code-line') !== -1 ||
+        lowerClass.indexOf('view-line') !== -1 ||
+        codeClassPattern.test(cur.className)
+      ) {
+        return true;
+      }
     }
     return false;
   }
@@ -300,7 +726,8 @@
       tag === 'PRE' || tag === 'CODE' ||
       tag === 'KBD' || tag === 'SAMP' || tag === 'VAR' ||
       tag === 'MATH' || tag === 'MJX-CONTAINER' ||
-      tag === 'IFRAME' || tag === 'VIDEO' || tag === 'AUDIO'
+      tag === 'IFRAME' || tag === 'VIDEO' || tag === 'AUDIO' ||
+      tag === 'INPUT' || tag === 'TEXTAREA'
     ) {
       return true;
     }
@@ -313,46 +740,121 @@
       }
     }
 
-    if (typeof el.closest === 'function') {
-      var isThinkingBtn = el.closest('button[data-testid="thinking-collapsible-trigger"]');
-      if (el.closest('[data-testid="user-message-content"]')) return true;
+    // Dynamic project headers & PR #72 project names (checked BEFORE skipCache & isActionPill)
+    var projHeader = typeof el.closest === 'function'
+      ? el.closest('[data-testid="project-header"], button[data-project-card="true"]')
+      : findProjectHeaderElement(el);
+    if (projHeader && !isSystemGroupProjectHeader(projHeader)) {
+      return true;
+    }
+    if (isProtectedProjectNameElement(el)) {
+      return true;
+    }
 
-      if (COMBINED_STATIC_IGNORE_SEL && el.closest(COMBINED_STATIC_IGNORE_SEL)) return true;
-
-      var um = el.closest('[data-testid*="user-message"]');
-      if (um && !el.closest('[data-testid="queued-decorators"], [data-testid="user-message-actions"]')) {
-        return true;
-      }
-
-      // Fast pointer-only ancestor walk (zero querySelector calls)
-      var cur = el;
-      var hops = 0;
-      while (cur && hops < 16 && (typeof document === 'undefined' || cur !== document.body)) {
-        if (!isThinkingBtn && cur.previousElementSibling &&
-            cur.previousElementSibling.getAttribute &&
-            cur.previousElementSibling.getAttribute('data-testid') === 'thinking-collapsible-trigger') {
-          return true;
+    // Slash / @-mention option item labels (recycled nodes; never write skipCache)
+    var hasClosest = typeof el.closest === 'function';
+    var menuOpt = hasClosest ? el.closest('[data-testid="menu-option-label"]') : null;
+    if (!menuOpt && !hasClosest) {
+      var mCur = el;
+      while (mCur && (typeof document === 'undefined' || mCur !== document.body)) {
+        if (mCur.getAttribute && mCur.getAttribute('data-testid') === 'menu-option-label') {
+          menuOpt = mCur;
+          break;
         }
-        if (isSwarmProtectedElement(cur)) return true;
-        cur = cur.parentElement;
-        hops++;
+        mCur = mCur.parentElement;
       }
+    }
+    if (menuOpt) {
+      var optTxt = (menuOpt.innerText || menuOpt.textContent || '').trim();
+      return !MENTION_CATEGORIES.has(optTxt);
+    }
 
-      // Protect user project headers while allowing system group headers
-      var projHeader = el.closest('[data-testid="project-header"], button[data-project-card="true"]');
-      if (projHeader && !isSystemGroupProjectHeader(projHeader)) {
-        return true;
+    // Explicit UI controls inside agent responses / queued decorators
+    var isThinkingBtn = hasClosest ? el.closest('button[data-testid="thinking-collapsible-trigger"]') : null;
+    if (!isThinkingBtn && !hasClosest) {
+      var tCur = el;
+      while (tCur && (typeof document === 'undefined' || tCur !== document.body)) {
+        if ((tCur.tagName || '').toUpperCase() === 'BUTTON' && tCur.getAttribute && tCur.getAttribute('data-testid') === 'thinking-collapsible-trigger') {
+          isThinkingBtn = tCur;
+          break;
+        }
+        tCur = tCur.parentElement;
       }
+    }
+    if (isThinkingBtn) {
+      if (skipCache) skipCache.set(el, false);
+      return false;
+    }
 
-      // Protect slash/mention option item names while translating category headers
-      var menuOpt = el.closest('[data-testid="menu-option-label"]');
-      if (menuOpt) {
-        var optTxt = (menuOpt.textContent || '').trim();
-        if (!MENTION_CATEGORIES.has(optTxt)) return true;
+    if (hasClosest) {
+      var isUserActionDecorator = el.closest('[data-testid="queued-decorators"], [data-testid="user-message-actions"]');
+      if (isUserActionDecorator && !el.closest('[data-testid="user-message-content"]')) {
+        if (skipCache) skipCache.set(el, false);
+        return false;
       }
     }
 
-    return false;
+    // Quote / Ask /btw floating selection pills & action step pills (must verify not inside protected ancestors)
+    var textContent = (el.innerText || el.textContent || '').trim();
+    var isQuoteOrBtwBubble = textContent.length <= 40 && /^(?:Quote|Ask(?:\s+|\s*\/\s*)btw)(?:\s+(?:Ctrl|Cmd)(?:\+[a-zA-Z0-9]+)+)?$/i.test(textContent);
+    var isActionPill = textContent.length <= 40 && /^(Explored|Exploring|Ran|Run|Running|Viewed|Viewing|Edited|Editing|Thought|Thinking|Working|Done|Analyzed|Analyzing|Created|Creating|Deleted|Deleting|Waiting|Rejected|Errored|Completed|Used)(\s+(command|commands|files?|tools?|artifacts?))?$/i.test(textContent);
+    if (isQuoteOrBtwBubble || isActionPill) {
+      var inProtected = false;
+      var chk = el;
+      while (chk && (typeof document === 'undefined' || chk !== document.body)) {
+        if (isProtectedSelfCore(chk) || isInsideThinkingBody(chk, false)) {
+          inProtected = true;
+          break;
+        }
+        chk = chk.parentElement;
+      }
+      if (!inProtected) {
+        return false;
+      }
+    }
+
+    // Hot-path WeakMap skipCache lookup
+    if (skipCache && skipCache.has(el)) {
+      return skipCache.get(el);
+    }
+
+    if (hasClosest) {
+      if (el.closest('[data-testid="user-message-content"]')) {
+        if (skipCache) skipCache.set(el, true);
+        return true;
+      }
+      if (COMBINED_STATIC_IGNORE_SEL && el.closest(COMBINED_STATIC_IGNORE_SEL)) {
+        if (skipCache) skipCache.set(el, true);
+        return true;
+      }
+      var um = el.closest('[data-testid*="user-message"]');
+      if (um && !el.closest('[data-testid="queued-decorators"], [data-testid="user-message-actions"]')) {
+        if (skipCache) skipCache.set(el, true);
+        return true;
+      }
+    }
+
+    // Pointer-only ancestor walk (works identically in browser & minimal Node DOM mocks without closest())
+    var cur = el;
+    var shouldSkip = false;
+    while (cur && (typeof document === 'undefined' || cur !== document.body)) {
+      if (skipCache && skipCache.has(cur)) {
+        shouldSkip = skipCache.get(cur);
+        break;
+      }
+      if (isProtectedSelfCore(cur) || isInsideThinkingBody(cur, isThinkingBtn)) {
+        shouldSkip = true;
+        break;
+      }
+      if (cur.classList && (cur.classList.contains('input-area') || cur.classList.contains('chat-input'))) {
+        shouldSkip = true;
+        break;
+      }
+      cur = cur.parentElement;
+    }
+
+    if (skipCache) skipCache.set(el, shouldSkip);
+    return shouldSkip;
   }
 
   function createTranslatorEngine(payload) {
@@ -509,6 +1011,12 @@
           if (/^Conflicts with "(.+)" \(managed by application menu\)$/i.test(part)) {
             return part.replace(/^Conflicts with "(.+)" \(managed by application menu\)$/i, isTW ? '與「$1」衝突（由應用程式選單管理）' : '与“$1”冲突（由应用程序菜单管理）');
           }
+          if (/^Conflicts with "(.+)" \(reserved for sidebar switching\)$/i.test(part)) {
+            return part.replace(/^Conflicts with "(.+)" \(reserved for sidebar switching\)$/i, isTW ? '與「$1」衝突（保留用於側欄切換）' : '与“$1”冲突（保留用于侧栏切换）');
+          }
+          if (/^Conflicts with "(.+)" \((.+)\)$/i.test(part)) {
+            return part.replace(/^Conflicts with "(.+)" \((.+)\)$/i, isTW ? '與「$1」衝突（$2）' : '与“$1”冲突（$2）');
+          }
           if (/^Conflicts with "(.+)"$/i.test(part)) {
             return part.replace(/^Conflicts with "(.+)"$/i, isTW ? '與「$1」衝突' : '与“$1”冲突');
           }
@@ -541,6 +1049,278 @@
         }
       }
 
+      // 11. PR #77 AI Credits / Baseline Quota Refresh / Overages & Model Quota Exhausted
+      var quotaExMatch = trimmed.match(/^Your quota for\s+(.+?)\s+(will reset on\s+(.+?)|has been reached)\.\s*Switch to another available model to continue\.?$/i);
+      if (quotaExMatch) {
+        var qModel = quotaExMatch[1].trim();
+        var qResetAt = quotaExMatch[3];
+        var qSubj = /^this model$/i.test(qModel) ? (isTW ? '此模型' : '此模型') : (qModel + ' ');
+        return qResetAt
+          ? (qSubj + (isTW ? '的配額將於 ' : '的配额将于 ') + qResetAt.trim() + (isTW ? ' 重設。請切換至其他可用模型以繼續。' : ' 重置。请切换至其他可用模型以继续。'))
+          : (qSubj + (isTW ? '的配額已用盡。請切換至其他可用模型以繼續。' : '的配额已用尽。请切换至其他可用模型以继续。'));
+      }
+
+      if (/^(?:You need (?:at least \d+(?:,\d+)*|more) AI Credits to send messages\.|Your plan['’]s baseline quota will refresh on |To continue using this model now,\s*enable AI Credit overages\.?)/i.test(trimmed)) {
+        var rest = trimmed;
+        var needPart = '';
+        var refreshPart = '';
+        var overagePart = '';
+        var needMatch = rest.match(/^You need (?:at least\s+(\d+(?:,\d+)*)|more)\s+AI Credits to send messages\.\s*To continue using\s+(.+?)\s+now,\s*purchase more AI Credits\.?(?:\s+|$)/i);
+        if (needMatch) {
+          var credits = needMatch[1];
+          var rawM = needMatch[2].trim();
+          var contClause = /^this model$/i.test(rawM)
+            ? (isTW ? '若要立即繼續使用此模型，請購買更多 AI 點數。' : '若要立即继续使用此模型，请购买更多 AI 点数。')
+            : (isTW ? ('若要立即繼續使用 ' + rawM + '，請購買更多 AI 點數。') : ('若要立即继续使用 ' + rawM + '，请购买更多 AI 点数。'));
+          var needPrefix = credits
+            ? (isTW ? ('傳送訊息至少需要 ' + credits + ' 個 AI 點數。') : ('发送消息至少需要 ' + credits + ' 个 AI 点数。'))
+            : (isTW ? '傳送訊息需要更多 AI 點數。' : '发送消息需要更多 AI 点数。');
+          needPart = needPrefix + contClause;
+          rest = rest.slice(needMatch[0].length).trim();
+        }
+        var overageMatch = rest.match(/(?:^|\s+)To continue using this model now,\s*enable AI Credit overages\.?$/i);
+        if (overageMatch) {
+          overagePart = isTW ? '若要立即繼續使用此模型，請開啟 AI 點數超額使用。' : '若要立即继续使用此模型，请开启 AI 点数超额使用。';
+          rest = rest.slice(0, rest.length - overageMatch[0].length).trim();
+        }
+        if (rest) {
+          var refreshMatch = rest.match(/^Your plan['’]s baseline quota will refresh on\s+(.+?)\.?$/i);
+          if (refreshMatch) {
+            refreshPart = isTW
+              ? ('您目前方案的基礎配額將於 ' + refreshMatch[1].trim() + ' 重新整理。')
+              : ('您当前方案的基础配额将于 ' + refreshMatch[1].trim() + ' 刷新。');
+            rest = '';
+          }
+        }
+        var combinedCredits = needPart + refreshPart + overagePart;
+        if (combinedCredits && !rest) {
+          return combinedCredits;
+        }
+      }
+
+      // 12. PR #79 Hydrogen Tooltip & Date-Validated "leaving on" / "will be removed on"
+      function parseEnglishDateLocalized(rawDate) {
+        var m = String(rawDate || '').trim().match(/^([A-Za-z]+)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?$/i);
+        if (!m) return null;
+        var month = ENGLISH_MONTHS[m[1].toLowerCase()];
+        var day = Number(m[2]);
+        if (!month || day < 1 || day > 31) return null;
+        return (m[3] ? m[3] + ' 年 ' : '') + month + ' 月 ' + day + ' 日';
+      }
+      function formatLeavingSubjectLocalized(model) {
+        var m = String(model || '').trim();
+        if (!m || /^this model$/i.test(m)) return '此模型';
+        return m + ' ';
+      }
+      var hydroMatch = trimmed.match(/^Use Hydrogen for better quality with lower quota usage\.(?:\s+(.+))?$/i);
+      if (hydroMatch) {
+        var trailingText = hydroMatch[1] || '';
+        var hLeaving = trailingText.match(/^(?:(.+?)\s+)?(?:is\s+)?leaving on\s+(.+?)\.?$/i);
+        var hFixed = isTW
+          ? '使用 Hydrogen 可獲得更好的品質，同時消耗更少配額。'
+          : '使用 Hydrogen 可获得更好的质量，同时消耗更少配额。';
+        var hDate = hLeaving ? parseEnglishDateLocalized(hLeaving[2]) : null;
+        if (hLeaving && hDate) {
+          return hFixed + formatLeavingSubjectLocalized(hLeaving[1]) + (isTW ? '將於 ' : '将于 ') + hDate + (isTW ? ' 下線。' : ' 下线。');
+        }
+        if (trailingText) {
+          return hFixed + (translateCore(trailingText) || trailingText);
+        }
+        return hFixed;
+      }
+      var leavingMatch = trimmed.match(/^(?:(.+?)\s+)?(?:is\s+)?leaving on\s+(.+?)\.?$/i);
+      if (leavingMatch) {
+        var lModel = (leavingMatch[1] || '').trim();
+        var lDate = parseEnglishDateLocalized(leavingMatch[2]);
+        var subjectOk = !lModel || (lModel.length <= 64 && MODEL_LEAVING_SUBJECT_RE.test(lModel));
+        if (lDate && subjectOk) {
+          return formatLeavingSubjectLocalized(lModel) + (isTW ? '將於 ' : '将于 ') + lDate + (isTW ? ' 下線。' : ' 下线。');
+        }
+      }
+      var removedMatch = trimmed.match(/^(?:((?:(?![.!?]\s).)+?)\s+)?will be removed(\s+from Antigravity)?\s+on\s+(.+?)\.?$/i);
+      if (removedMatch) {
+        var rDate = parseEnglishDateLocalized(removedMatch[3]) || removedMatch[3];
+        var rModel = removedMatch[1] ? removedMatch[1].trim() : '';
+        var rSubj = !rModel ? '' : (/^this model$/i.test(rModel) ? '此模型' : (rModel + ' '));
+        return rSubj + (isTW ? '將於 ' : '将于 ') + rDate + (removedMatch[2] ? (isTW ? ' 從 Antigravity 移除。' : ' 从 Antigravity 移除。') : '移除。');
+      }
+
+      // 13. PR #74 9-Action Path/URL/Command Permissions & Approval Prompts
+      var permQMatch = trimmed.match(/^(Save rule to always allow|Allow)\s+([^?\r\n]{2,140})\?$/i);
+      if (permQMatch) {
+        var permActMap = isTW
+          ? {
+              'read access to this path': '讀取此路徑',
+              'write access to this path': '寫入此路徑',
+              'reading this url': '讀取此 URL',
+              'executing actions on this url': '在此 URL 上執行操作',
+              'browser downloads from this site': '瀏覽器從此網站下載檔案',
+              'running this command': '執行此命令',
+              'running this command outside the sandbox': '在沙箱外執行此命令',
+              'using this mcp tool': '使用此 MCP 工具',
+              'a one-time administrator (uac) elevation': '一次性系統管理員 (UAC) 提權',
+              'access to this resource': '存取此資源',
+              'the browser agent to download a file': '瀏覽器代理下載檔案'
+            }
+          : {
+              'read access to this path': '读取此路径',
+              'write access to this path': '写入此路径',
+              'reading this url': '读取此 URL',
+              'executing actions on this url': '在此 URL 上执行操作',
+              'browser downloads from this site': '浏览器从此站点下载文件',
+              'running this command': '运行此命令',
+              'running this command outside the sandbox': '在沙盒外运行此命令',
+              'using this mcp tool': '使用此 MCP 工具',
+              'a one-time administrator (uac) elevation': '一次性管理员 (UAC) 提权',
+              'access to this resource': '访问此资源',
+              'the browser agent to download a file': '浏览器智能体下载文件'
+            };
+        var pAct = permQMatch[2].trim();
+        var pActCn = permActMap[pAct.toLowerCase()];
+        if (/^Save rule/i.test(permQMatch[1])) {
+          return pActCn
+            ? ((isTW ? '儲存規則以一律允許' : '保存规则以始终允许') + pActCn + '？')
+            : ((isTW ? '儲存規則以一律允許 ' : '保存规则以始终允许 ') + pAct + '？');
+        }
+        return pActCn
+          ? ((isTW ? '是否允許' : '是否允许') + pActCn + '？')
+          : ((isTW ? '是否允許 ' : '是否允许 ') + pAct + '？');
+      }
+
+      var waitAppMatch = trimmed.match(/^Waiting for approval to (access|execute|run|read|write|edit|modify|delete|use|download)(?::\s*(.+))?$/i);
+      if (waitAppMatch) {
+        var verbMap235 = isTW
+          ? { access: '存取', execute: '執行', run: '執行', read: '讀取', write: '寫入', edit: '編輯', modify: '修改', delete: '刪除', use: '使用', download: '下載' }
+          : { access: '访问', execute: '执行', run: '运行', read: '读取', write: '写入', edit: '编辑', modify: '修改', delete: '删除', use: '使用', download: '下载' };
+        return (isTW ? '正在等待核准' : '正在等待批准') + (verbMap235[waitAppMatch[1].toLowerCase()] || waitAppMatch[1]) + (waitAppMatch[2] ? ('：' + waitAppMatch[2]) : '');
+      }
+
+      // 14. v2.35.2 10 $-safe Navigation / Sign-in / Error Prefixes (callback-safe)
+      var blkNav = trimmed.match(/^Blocked navigation to "(.+)"$/);
+      if (blkNav) return isTW ? ('已封鎖前往「' + blkNav[1] + '」的導覽') : ('已拦截前往“' + blkNav[1] + '”的导航');
+      var signPanel = trimmed.match(/^Sign in from the ([^.!?\r\n]{1,40}) panel\.$/);
+      if (signPanel) return isTW ? ('請從 ' + signPanel[1] + ' 面板登入。') : ('请从 ' + signPanel[1] + ' 面板登录。');
+      var signUse = trimmed.match(/^Sign in to use ([^.!?\r\n]{1,40})!$/);
+      if (signUse) return isTW ? ('請登入以使用 ' + signUse[1] + '！') : ('请登录以使用 ' + signUse[1] + '！');
+      var failMatch = trimmed.match(/^Failed to (create|save|unarchive|delete) (project|workspace|settings|project settings|project permissions|cloud permission settings|configuration):\s*(.+)$/i);
+      if (failMatch) {
+        var actM = isTW
+          ? { create: '建立', save: '儲存', unarchive: '取消封存', delete: '刪除' }
+          : { create: '创建', save: '保存', unarchive: '取消归档', delete: '删除' };
+        var tgtM = isTW
+          ? { project: '專案', workspace: '工作區', settings: '設定', 'project settings': '專案設定', 'project permissions': '專案權限', 'cloud permission settings': '雲端權限設定', configuration: '設定' }
+          : { project: '项目', workspace: '工作区', settings: '设置', 'project settings': '项目设置', 'project permissions': '项目权限', 'cloud permission settings': '云端权限设置', configuration: '配置' };
+        return (actM[failMatch[1].toLowerCase()] || failMatch[1]) + (tgtM[failMatch[2].toLowerCase()] || failMatch[2]) + (isTW ? '失敗：' : '失败：') + failMatch[3];
+      }
+      var attachFolderM = trimmed.match(/^Could not attach folder "(.+)":\s*(.+)$/);
+      if (attachFolderM) return isTW ? ('無法附加資料夾「' + attachFolderM[1] + '」：' + attachFolderM[2]) : ('无法附加文件夹“' + attachFolderM[1] + '”：' + attachFolderM[2]);
+      var attachImgOrOpen = trimmed.match(/^Could not (attach image|open folder):\s*(.+)$/);
+      if (attachImgOrOpen) {
+        return (isTW ? '無法' : '无法') + (attachImgOrOpen[1] === 'attach image' ? (isTW ? '附加圖片' : '附加图片') : (isTW ? '開啟資料夾' : '打开文件夹')) + '：' + attachImgOrOpen[2];
+      }
+      var errMcpM = trimmed.match(/^Error (installing MCP server|refreshing MCP servers|restarting MCP server|updating agent):\s*(.+)$/);
+      if (errMcpM) {
+        var errMcpMap = isTW
+          ? { 'installing MCP server': '安裝 MCP 伺服器', 'refreshing MCP servers': '重新整理 MCP 伺服器', 'restarting MCP server': '重新啟動 MCP 伺服器', 'updating agent': '更新代理' }
+          : { 'installing MCP server': '安装 MCP 服务器', 'refreshing MCP servers': '刷新 MCP 服务器', 'restarting MCP server': '重启 MCP 服务器', 'updating agent': '更新智能体' };
+        return (errMcpMap[errMcpM[1]] || errMcpM[1]) + (isTW ? '發生錯誤：' : '出错：') + errMcpM[2];
+      }
+      var errRestartM = trimmed.match(/^Error restarting ([^:\r\n]{1,60}):\s*(.+)$/);
+      if (errRestartM) return (isTW ? '重新啟動 ' : '重启 ') + errRestartM[1] + (isTW ? ' 發生錯誤：' : ' 出错：') + errRestartM[2];
+      var addedMcpFailM = trimmed.match(/^Added MCP server "(.+)", but it failed to start:\s*(.+)$/);
+      if (addedMcpFailM) return isTW ? ('已新增 MCP 伺服器「' + addedMcpFailM[1] + '」，但啟動失敗：' + addedMcpFailM[2]) : ('已添加 MCP 服务器“' + addedMcpFailM[1] + '”，但启动失败：' + addedMcpFailM[2]);
+      var failInteractM = trimmed.match(/^Failed to send interaction:\s*(.+)$/);
+      if (failInteractM) return (isTW ? '傳送互動失敗：' : '发送交互失败：') + failInteractM[1];
+
+      // 15. v2.35.0 & v2.35.1 Dynamic Rules (Inbox / Permissions / Viewers / Queue / Git / Hooks / Schedule / Forms)
+      var resMatch = trimmed.match(/^Resolved "(.+)"$/);
+      if (resMatch) return isTW ? ('已解決「' + resMatch[1] + '」') : ('已解决“' + resMatch[1] + '”');
+      var allowInM = trimmed.match(/^Allowed in (.+)$/);
+      if (allowInM) return isTW ? ('已在 ' + allowInM[1] + ' 中允許') : ('已在 ' + allowInM[1] + ' 中允许');
+      var revAllM = trimmed.match(/^Revoke all:\s*(.+)$/);
+      if (revAllM) return (isTW ? '全部撤銷：' : '全部撤销：') + revAllM[1];
+      var revM = trimmed.match(/^Revoke:\s*(.+)$/);
+      if (revM) return (isTW ? '撤銷：' : '撤销：') + revM[1];
+      var noLangM = trimmed.match(/^No matching languages for "(.+)"$/);
+      if (noLangM) return isTW ? ('未找到符合「' + noLangM[1] + '」的語言') : ('未找到匹配“' + noLangM[1] + '”的语言');
+      var moveConvM = trimmed.match(/^Move this conversation to "(.+)"\?$/);
+      if (moveConvM) return isTW ? ('確定將此對話移動至「' + moveConvM[1] + '」嗎？') : ('确定将此对话移动到“' + moveConvM[1] + '”吗？');
+      var statusSuffixM = trimmed.match(/^(.+?) \((Not running|Sidecar disabled)\)$/);
+      if (statusSuffixM) {
+        var stPrefix = statusSuffixM[1];
+        var stPrefixCn = exactMap.has(stPrefix) ? exactMap.get(stPrefix) : (lowerMap.get(stPrefix.toLowerCase()) || stPrefix);
+        var stReasonCn = statusSuffixM[2] === 'Sidecar disabled'
+          ? (isTW ? 'Sidecar 已停用' : 'Sidecar 已禁用')
+          : (isTW ? '未執行' : '未运行');
+        return stPrefixCn + '（' + stReasonCn + '）';
+      }
+      var reqToM = trimmed.match(/^Required to ([^:\r\n]{1,40}):\s*(.+)$/);
+      if (reqToM) {
+        var reqMap = isTW
+          ? { save: '儲存', create: '建立', enable: '啟用', run: '執行', continue: '繼續', submit: '提交', activate: '啟用', start: '啟動' }
+          : { save: '保存', create: '创建', enable: '启用', run: '运行', continue: '继续', submit: '提交', activate: '激活', start: '启动' };
+        var rActCn = reqMap[reqToM[1].trim().toLowerCase()] || reqToM[1];
+        return (isTW ? '執行「' : '执行“') + rActCn + (isTW ? '」所需的條件：' : '”所需的条件：') + reqToM[2];
+      }
+      var openUrlSysM = trimmed.match(/^Open URL in system browser:\s*(.+)$/);
+      if (openUrlSysM) return (isTW ? '在系統瀏覽器中開啟連結：' : '在系统浏览器中打开链接：') + openUrlSysM[1];
+      var msgQMatch = trimmed.match(/^Message queued\.(?:\s+(\d+)\s+messages?\s+in\s+queue\.)?\s+(Sends after background work finishes\.|Sends after agent finishes working\.)\s+Actions available:\s*Send Now,\s*Edit,\s*Delete\.$/i);
+      if (msgQMatch) {
+        var qCnt = msgQMatch[1];
+        var qWhenCn = /background work/i.test(msgQMatch[2])
+          ? (isTW ? '將在背景工作完成後傳送。' : '将在后台工作完成后发送。')
+          : (isTW ? '將在代理完成目前工作後傳送。' : '将在智能体完成当前工作后发送。');
+        return (isTW ? '訊息已加入佇列。' : '消息已加入队列。')
+          + (qCnt ? (isTW ? ('佇列中共有 ' + qCnt + ' 則訊息。') : ('队列中共有 ' + qCnt + ' 条消息。')) : '')
+          + qWhenCn
+          + (isTW ? '可用操作：立即傳送、編輯、刪除。' : '可用操作：立即发送、编辑、删除。');
+      }
+      var allChangesM = trimmed.match(/^All changes since (.+)$/);
+      if (allChangesM) return (isTW ? '自 ' : '自 ') + allChangesM[1] + (isTW ? ' 以來的所有變更' : ' 以来的所有更改');
+      var pushCommitsM = trimmed.match(/^Push (\d+) commits? to (.+)$/);
+      if (pushCommitsM) return (isTW ? '推送 ' : '推送 ') + pushCommitsM[1] + (isTW ? ' 個提交至 ' : ' 个提交到 ') + pushCommitsM[2];
+      var pushedCommitsM = trimmed.match(/^Pushed (\d+) commits? to (.+)\.$/);
+      if (pushedCommitsM) return (isTW ? '已推送 ' : '已推送 ') + pushedCommitsM[1] + (isTW ? ' 個提交至 ' : ' 个提交到 ') + pushedCommitsM[2] + '。';
+      var pushedToM = trimmed.match(/^Pushed to (.+)\.$/);
+      if (pushedToM) return (isTW ? '已推送至 ' : '已推送到 ') + pushedToM[1] + '。';
+      var publishM = trimmed.match(/^Publish (.+) to origin$/);
+      if (publishM) return (isTW ? '將 ' : '将 ') + publishM[1] + (isTW ? ' 發佈至 origin' : ' 发布到 origin');
+      var publishedM = trimmed.match(/^Published (.+) to origin\.$/);
+      if (publishedM) return (isTW ? '已將 ' : '已将 ') + publishedM[1] + (isTW ? ' 發佈至 origin。' : ' 发布到 origin。');
+      var hookTrigM = trimmed.match(/^Hook will only trigger if the tool name (matches|starts with) (.+)\.$/);
+      if (hookTrigM) {
+        return hookTrigM[1] === 'matches'
+          ? (isTW ? ('僅當工具名稱匹配 ' + hookTrigM[2] + ' 時才會觸發 Hook。') : ('仅当工具名称匹配 ' + hookTrigM[2] + ' 时才会触发 Hook。'))
+          : (isTW ? ('僅當工具名稱以 ' + hookTrigM[2] + ' 開頭時才會觸發 Hook。') : ('仅当工具名称以 ' + hookTrigM[2] + ' 开头时才会触发 Hook。'));
+      }
+      var renderFailM = trimmed.match(/^⚠️\s*Failed to render (LaTeX|Mermaid diagram):\s*(.+)$/);
+      if (renderFailM) {
+        return '⚠️ ' + (isTW ? '渲染 ' : '渲染 ') + (renderFailM[1] === 'LaTeX' ? 'LaTeX ' : (isTW ? 'Mermaid 圖表' : 'Mermaid 图表')) + (isTW ? '失敗：' : '失败：') + renderFailM[2];
+      }
+      var everyHourM = trimmed.match(/^Every hour(?: at :(\d{2}))?(?:\s*·\s*(.+))?$/);
+      if (everyHourM) {
+        return (isTW ? '每小時' : '每小时') + (everyHourM[1] ? ' :' + everyHourM[1] : '') + (everyHourM[2] ? ' · ' + everyHourM[2] : '');
+      }
+      var dayTimeM = trimmed.match(/^(Today|Tomorrow|Yesterday|今天|明天|昨天)\s+(\d{1,2}:\d{2}(?:\s*[AP]M)?)$/i);
+      if (dayTimeM) {
+        var dayW = { today: '今天', tomorrow: '明天', yesterday: '昨天', '今天': '今天', '明天': '明天', '昨天': '昨天' };
+        return (dayW[dayTimeM[1].toLowerCase()] || dayTimeM[1]) + ' ' + dayTimeM[2];
+      }
+
+      // 16. Swarm & Archive Split Toast Dynamic Helpers
+      var postsOverM = trimmed.match(/^(\d+)\s+posts?\s+over\s+(.+)$/i);
+      if (postsOverM) return postsOverM[1] + (isTW ? ' 則動態 · 歷時 ' : ' 条动态 · 历时 ') + formatDurationLocalized(postsOverM[2], isTW);
+      var gifReadyM = trimmed.match(/^GIF\s+ready\s+\((.+)\)\s+—\s+right-click\s+image\s+to\s+save\.$/);
+      if (gifReadyM) return isTW ? ('GIF 已就緒（' + gifReadyM[1] + '）— 右鍵圖片即可儲存。') : ('GIF 已就绪（' + gifReadyM[1] + '）— 右键图片即可保存。');
+      var coordDoneM = trimmed.match(/^Coordinator\s+·\s+(\d+)\s+of\s+(\d+)\s+done(?:\s+·\s+Needs you)?$/);
+      if (coordDoneM) {
+        var needsYou = /Needs you$/.test(trimmed);
+        return (isTW ? '協調器 · 已完成 ' : '协调器 · 已完成 ') + coordDoneM[1] + ' / ' + coordDoneM[2] + (needsYou ? (isTW ? ' · 需要你處理' : ' · 需要你处理') : '');
+      }
+      if (/^View archived in the sidebar \($/.test(trimmed)) return isTW ? '已封存內容可在側邊欄（' : '已归档内容可在侧边栏（';
+      if (/^menu\)\.$/.test(trimmed)) return isTW ? '選單）中檢視。' : '菜单）中查看。';
+      if (/^Customize Sidebar\)\.$/.test(trimmed)) return isTW ? '自訂側邊欄）中檢視。' : '自定义侧边栏）中查看。';
+
       return null;
     }
 
@@ -561,6 +1341,10 @@
         cacheSet(trimmed, endLabel);
         return endLabel;
       }
+      if (trimmed === 'log') {
+        cacheSet(trimmed, null);
+        return null;
+      }
 
       // 1. Exact lookup
       if (exactMap.has(trimmed)) {
@@ -575,7 +1359,7 @@
         return normHit;
       }
 
-      // 2. Complex dynamic rules (quota resets, shortcuts, voice, conflicts, etc. before unanchored regexes)
+      // 2. Complex dynamic rules (quota resets, shortcuts, voice, conflicts, v2.35.x rules before unanchored regexes)
       var dynHit = translateComplexDynamic(trimmed, isTW);
       if (dynHit !== null) {
         cacheSet(trimmed, dynHit);
@@ -593,9 +1377,10 @@
         }
       }
 
-      // 4. Case-insensitive exact match (skip ambiguous lowercase single word 'end')
-      if (trimmed.toLowerCase() !== 'end') {
-        var ciHit = lowerMap.get(trimmed.toLowerCase());
+      // 4. Case-insensitive exact match (skip ambiguous lowercase single words 'end' and 'log')
+      var lowerKey = trimmed.toLowerCase();
+      if (lowerKey !== 'end' && trimmed !== 'log') {
+        var ciHit = lowerMap.get(lowerKey);
         if (ciHit !== undefined) {
           cacheSet(trimmed, ciHit);
           return ciHit;
@@ -617,7 +1402,7 @@
       }
 
       if (core) {
-        var coreTrans = exactMap.has(core) ? exactMap.get(core) : (core.toLowerCase() !== 'end' ? lowerMap.get(core.toLowerCase()) : undefined);
+        var coreTrans = exactMap.has(core) ? exactMap.get(core) : (core.toLowerCase() !== 'end' && core !== 'log' ? lowerMap.get(core.toLowerCase()) : undefined);
         if (coreTrans !== undefined && coreTrans !== '') {
           var combined = coreTrans + trailPunc;
           cacheSet(trimmed, combined);
@@ -646,7 +1431,7 @@
           return null;
         }
         var lw = tok.toLowerCase();
-        if (lw === 'end') {
+        if (lw === 'end' || (words.length === 1 && tok === 'log')) {
           cacheSet(trimmed, null);
           return null;
         }
@@ -701,6 +1486,11 @@
     var pendingTextNodes = new Set();
     var pendingAttrNodes = new Map();
     var batchScheduled = false;
+    var pendingPortalNodes = new Set();
+    var pendingPortalTextNodes = new Set();
+    var pendingPortalAttrNodes = new Map();
+    var portalDebounceTimer = null;
+    var PORTAL_DEBOUNCE_MS = 120;
     var currentEpoch = 1;
 
     function isNewBadgeTextNode(node) {
@@ -831,13 +1621,131 @@
       if (lastTranslatedAttrs) lastTranslatedAttrs.delete(el);
     }
 
+    function isNonComposerProtectedSelf(cur) {
+      if (!cur || cur.nodeType !== 1) return false;
+      if (isProtectedSelfCore(cur, true) || isUserProjectHeader(cur) || isProtectedProjectNameSelf(cur)) {
+        return true;
+      }
+      if (isInsideThinkingBody(cur, false)) return true;
+      return false;
+    }
+
+    function isProtectedFromComposerLabel(node) {
+      var cur = node && node.nodeType === 3 ? node.parentElement : node;
+      while (cur && (typeof document === 'undefined' || cur !== document.body)) {
+        if (isNonComposerProtectedSelf(cur)) return true;
+        cur = cur.parentElement;
+      }
+      return false;
+    }
+
+    function setTranslatedAttribute(el, attr, targetVal) {
+      if (!el || !el.getAttribute || !el.setAttribute) return;
+      var curVal = el.getAttribute(attr);
+      if (!curVal) return;
+      var saved = originalAttrs ? originalAttrs.get(el) : null;
+      if (originalAttrs && (!saved || saved[attr] === undefined)) {
+        var map = saved || {};
+        map[attr] = curVal;
+        originalAttrs.set(el, map);
+      }
+      if (curVal !== targetVal) {
+        el.setAttribute(attr, targetVal);
+      }
+      if (lastTranslatedAttrs) {
+        var lmap = lastTranslatedAttrs.get(el) || {};
+        lmap[attr] = { val: targetVal, epoch: currentEpoch };
+        lastTranslatedAttrs.set(el, lmap);
+      }
+    }
+
+    function translateComposerLabel(node, skipAncestorCheck) {
+      if (!node || node.nodeType !== 1 || !node.getAttribute) return;
+      if (!engine.isEnabled()) {
+        restoreAttributes(node);
+        return;
+      }
+      var label = node.getAttribute('aria-label');
+      if (!label) return;
+      var lastMap = lastTranslatedAttrs ? lastTranslatedAttrs.get(node) : null;
+      var lastEntry = lastMap ? lastMap['aria-label'] : null;
+      if (lastEntry && lastEntry.epoch === currentEpoch && lastEntry.val === label) return;
+
+      var saved = originalAttrs ? originalAttrs.get(node) : null;
+      var srcLabel = (saved && saved['aria-label'] !== undefined && lastEntry && lastEntry.val === label)
+        ? saved['aria-label']
+        : label;
+
+      var trimmed = srcLabel.trim();
+      var upperTag = (node.tagName || '').toUpperCase();
+      var eligible = false;
+      if (COMPOSER_ARIA_ALLOWED.has(trimmed)) {
+        var role = node.getAttribute('role');
+        eligible = role === 'textbox' || role === 'combobox' || upperTag === 'TEXTAREA';
+      } else if (VOICE_BUTTON_ARIA_ALLOWED.has(trimmed)) {
+        eligible = upperTag === 'BUTTON';
+      }
+      if (!eligible || (!skipAncestorCheck && isProtectedFromComposerLabel(node))) return;
+      var translated = engine.translateText(srcLabel);
+      if (translated && translated !== srcLabel) {
+        setTranslatedAttribute(node, 'aria-label', translated);
+      }
+    }
+
+    function isEditableSurface(node) {
+      if (!node || node.nodeType !== 1) return false;
+      return Boolean(node.isContentEditable || (node.getAttribute && (
+        node.getAttribute('contenteditable') === 'true' ||
+        node.getAttribute('data-lexical-editor') === 'true'
+      )));
+    }
+
+    function isComposerSubtreeRoot(node) {
+      if (!node || node.nodeType !== 1) return false;
+      if (node.classList && (node.classList.contains('chat-input') || node.classList.contains('input-area'))) {
+        return true;
+      }
+      return isEditableSurface(node) || Boolean(node.getAttribute && (
+        node.getAttribute('role') === 'textbox' ||
+        node.getAttribute('role') === 'combobox'
+      ));
+    }
+
+    function translateComposerLabelsInSubtree(rootNode) {
+      if (!rootNode || rootNode.nodeType !== 1) return;
+      if (isProtectedFromComposerLabel(rootNode)) return;
+      function walkComposer(el) {
+        if (!el || el.nodeType !== 1 || isNonComposerProtectedSelf(el)) return;
+        translateComposerLabel(el, true);
+        // Prune immediately at contenteditable / Lexical editor surface to never traverse pasted drafts
+        if (isEditableSurface(el)) return;
+        if (el.shadowRoot) {
+          observeRoot(el.shadowRoot);
+          var srChildren = el.shadowRoot.childNodes;
+          for (var s = 0; srChildren && s < srChildren.length; s++) {
+            walkComposer(srChildren[s]);
+          }
+        }
+        var children = el.childNodes;
+        for (var i = 0; children && i < children.length; i++) {
+          walkComposer(children[i]);
+        }
+      }
+      walkComposer(rootNode);
+    }
+
     function processAttributes(el, attrSubset) {
       if (!el || el.nodeType !== 1) return;
       var upperTag = (el.tagName || '').toUpperCase();
       var isInputLike = upperTag === 'INPUT' || upperTag === 'TEXTAREA';
       if (isInputLike) {
-        if (el.parentElement && shouldIgnoreElement(el.parentElement)) return;
+        if (el.parentElement && shouldIgnoreElement(el.parentElement)) {
+          translateComposerLabel(el, false);
+          return;
+        }
       } else if (shouldIgnoreElement(el)) {
+        if (isComposerSubtreeRoot(el)) translateComposerLabelsInSubtree(el);
+        else translateComposerLabel(el, false);
         return;
       }
 
@@ -892,6 +1800,176 @@
       }
     }
 
+    function setCombinedTextValue(tNode, nextVal) {
+      if (!tNode || tNode.nodeType !== 3) return;
+      if (originalTexts && !originalTexts.has(tNode)) {
+        originalTexts.set(tNode, tNode.nodeValue || '');
+      }
+      if (tNode.nodeValue !== nextVal) {
+        tNode.nodeValue = nextVal;
+      }
+      if (lastTranslatedTexts) {
+        lastTranslatedTexts.set(tNode, { val: nextVal, epoch: currentEpoch });
+      }
+    }
+
+    function tryCombinedSentenceTranslation(element) {
+      if (!engine.isEnabled() || !element || element.nodeType !== 1) return false;
+      if (shouldIgnoreElement(element)) return false;
+      var children = element.childNodes ? Array.prototype.slice.call(element.childNodes) : [];
+      if (children.length < 2) return false;
+
+      var slots = [];
+      for (var i = 0; i < children.length; i++) {
+        var child = children[i];
+        if (child.nodeType === 3) {
+          if (!(child.nodeValue || '').trim()) {
+            slots.push({ type: 'space', node: child });
+            continue;
+          }
+          slots.push({ type: 'text', node: child });
+        } else if (child.nodeType === 1) {
+          if (!child.childNodes || child.childNodes.length !== 1 || !child.firstChild || child.firstChild.nodeType !== 3) {
+            return false;
+          }
+          var anchorTag = (child.tagName || '').toUpperCase();
+          var isProtectedAnchor = CODE_OR_LITERAL_TAGS.has(anchorTag) || shouldIgnoreElement(child);
+          slots.push({
+            type: 'anchor',
+            node: child,
+            anchorText: (child.firstChild.nodeValue || '').trim(),
+            isProtectedAnchor: isProtectedAnchor
+          });
+        } else {
+          return false;
+        }
+      }
+
+      var anchors = slots.filter(function (s) { return s.type === 'anchor'; });
+      var isTW = engine.getLanguage() === 'zh-TW';
+      if (!anchors.length) {
+        // React 3-text-node preservation: {"Site data cleared for "}{host}{"."} / {"Could not clear site data for "}{host}{"."}
+        if (children.length === 3 && children.every(function (c) { return c.nodeType === 3; })) {
+          var pre = (children[0].nodeValue || '').trim();
+          var mid = (children[1].nodeValue || '').trim();
+          var post = (children[2].nodeValue || '').trim();
+          if (mid && (post === '.' || post === '。' || post === '')) {
+            if (/^Site data cleared for$/i.test(pre)) {
+              setCombinedTextValue(children[0], '已清除 ');
+              if (lastTranslatedTexts) lastTranslatedTexts.set(children[1], { val: children[1].nodeValue, epoch: currentEpoch });
+              setCombinedTextValue(children[2], isTW ? ' 的網站資料。' : ' 的站点数据。');
+              return true;
+            }
+            if (/^Could not clear site data for$/i.test(pre)) {
+              setCombinedTextValue(children[0], isTW ? '無法清除 ' : '无法清除 ');
+              if (lastTranslatedTexts) lastTranslatedTexts.set(children[1], { val: children[1].nodeValue, epoch: currentEpoch });
+              setCombinedTextValue(children[2], isTW ? ' 的網站資料。' : ' 的站点数据。');
+              return true;
+            }
+          }
+        }
+        return false;
+      }
+
+      var fullText = '';
+      for (var k = 0; k < children.length; k++) {
+        fullText += children[k].nodeType === 3 ? (children[k].nodeValue || '') : (children[k].textContent || '');
+      }
+      var key = fullText.trim();
+      if (!key || !/[A-Za-z]/.test(key)) return false;
+
+      var translated = engine.translateText(key);
+      if (!translated || translated === key) return false;
+
+      var probe = 0;
+      for (var aIdx = 0; aIdx < anchors.length; aIdx++) {
+        var a = anchors[aIdx];
+        if (!a.anchorText || a.anchorText.length < 2) return false;
+        var idx = translated.indexOf(a.anchorText, probe);
+        var matchedText = a.anchorText;
+        var shouldTranslateAnchor = false;
+        if (idx < 0 && !a.isProtectedAnchor) {
+          var anchorCn = engine.translateText(a.anchorText);
+          if (anchorCn && anchorCn !== a.anchorText && anchorCn.length >= 2) {
+            idx = translated.indexOf(anchorCn, probe);
+            if (idx >= 0) {
+              matchedText = anchorCn;
+              shouldTranslateAnchor = true;
+            }
+          }
+        }
+        if (idx < 0) return false;
+        a.start = idx;
+        a.end = idx + matchedText.length;
+        a.newAnchorText = shouldTranslateAnchor ? matchedText : null;
+        probe = a.end;
+      }
+
+      var anchorCursor = 0;
+      var consumed = 0;
+      for (var sIdx = 0; sIdx < slots.length; sIdx++) {
+        var s = slots[sIdx];
+        if (s.type === 'anchor') {
+          var anc = anchors[anchorCursor];
+          if (anc.newAnchorText) {
+            setCombinedTextValue(s.node.firstChild, anc.newAnchorText);
+          } else if (lastTranslatedTexts && s.node.firstChild) {
+            lastTranslatedTexts.set(s.node.firstChild, { val: s.node.firstChild.nodeValue || '', epoch: currentEpoch });
+          }
+          consumed = anc.end;
+          anchorCursor++;
+          continue;
+        }
+        if (s.type === 'space') {
+          setCombinedTextValue(s.node, '');
+          continue;
+        }
+        var segEnd = anchorCursor < anchors.length ? anchors[anchorCursor].start : translated.length;
+        var segVal = translated.slice(consumed, segEnd);
+        setCombinedTextValue(s.node, segVal);
+        consumed = segEnd;
+      }
+      return true;
+    }
+
+    function collectSafeLeafTextNodes(rootEl, out) {
+      if (!rootEl || !rootEl.childNodes) return;
+      for (var i = 0; i < rootEl.childNodes.length; i++) {
+        var ch = rootEl.childNodes[i];
+        if (ch.nodeType === 3) {
+          if (ch.nodeValue && ch.nodeValue.trim()) {
+            out.push(ch);
+          }
+        } else if (ch.nodeType === 1) {
+          if (isNonComposerProtectedSelf(ch)) continue;
+          collectSafeLeafTextNodes(ch, out);
+        }
+      }
+    }
+
+    function tryConvergeEmptyState(el) {
+      if (!engine.isEnabled() || !el || el.nodeType !== 1 || shouldIgnoreElement(el)) return false;
+      var leafTexts = [];
+      collectSafeLeafTextNodes(el, leafTexts);
+      if (leafTexts.length >= 1 && leafTexts.length <= 8) {
+        var joinedLeafText = leafTexts.map(function (t) { return t.nodeValue || ''; }).join('').trim();
+        var emptyStateMatch = joinedLeafText.match(/^No\s+(automations?|automation|自动化|自動化|conversations?|conversation|对话|對話|groups?|group|分组|分組)\s+yet[.。]?$/i);
+        if (emptyStateMatch) {
+          var isTW = engine.getLanguage() === 'zh-TW';
+          var emptyStateMap = isTW
+            ? { automations: '暫無自動化', automation: '暫無自動化', '自动化': '暫無自動化', '自動化': '暫無自動化', conversations: '暫無對話', conversation: '暫無對話', '对话': '暫無對話', '對話': '暫無對話', groups: '暫無分組', group: '暫無分組', '分组': '暫無分組', '分組': '暫無分組' }
+            : { automations: '暂无自动化', automation: '暂无自动化', '自动化': '暂无自动化', '自動化': '暂无自动化', conversations: '暂无对话', conversation: '暂无对话', '对话': '暂无对话', '對話': '暂无对话', groups: '暂无分组', group: '暂无分组', '分组': '暂无分组', '分組': '暂无分组' };
+          var targetText = emptyStateMap[emptyStateMatch[1].toLowerCase()] || (isTW ? '暫無自動化' : '暂无自动化');
+          setCombinedTextValue(leafTexts[0], targetText);
+          for (var i = 1; i < leafTexts.length; i++) {
+            setCombinedTextValue(leafTexts[i], '');
+          }
+          return true;
+        }
+      }
+      return false;
+    }
+
     function tryHealFragmentedText(el) {
       if (!engine.isEnabled() || !el || el.nodeType !== 1) return false;
       var first = el.firstChild;
@@ -932,6 +2010,28 @@
       return false;
     }
 
+    function processElementNode(el) {
+      var upperTag = (el.tagName || '').toUpperCase();
+      if (upperTag === 'INPUT' || upperTag === 'TEXTAREA') {
+        processAttributes(el);
+        return false;
+      }
+      if (shouldIgnoreElement(el)) {
+        if (isComposerSubtreeRoot(el)) translateComposerLabelsInSubtree(el);
+        else translateComposerLabel(el, false);
+        return false;
+      }
+      processAttributes(el);
+      if (el.shadowRoot) {
+        observeRoot(el.shadowRoot);
+        walkAndTranslate(el.shadowRoot);
+      }
+      if (tryConvergeEmptyState(el)) return false;
+      tryCombinedSentenceTranslation(el);
+      tryHealFragmentedText(el);
+      return true;
+    }
+
     function walkAndTranslate(rootEl) {
       if (!rootEl) return;
       if (rootEl.nodeType === 3) {
@@ -941,48 +2041,56 @@
       if (rootEl.nodeType !== 1 && rootEl.nodeType !== 11 /* DOCUMENT_FRAGMENT_NODE */) return;
 
       if (rootEl.nodeType === 1) {
-        var upperTag = (rootEl.tagName || '').toUpperCase();
-        if (upperTag === 'INPUT' || upperTag === 'TEXTAREA') {
-          processAttributes(rootEl);
-          return;
-        }
-        if (shouldIgnoreElement(rootEl)) return;
-        processAttributes(rootEl);
-        if (rootEl.shadowRoot) {
-          observeRoot(rootEl.shadowRoot);
-          walkAndTranslate(rootEl.shadowRoot);
-        }
-        if (tryHealFragmentedText(rootEl)) return;
+        if (!processElementNode(rootEl)) return;
       }
 
-      var walker = document.createTreeWalker(rootEl, 5 /* SHOW_ELEMENT | SHOW_TEXT */, {
-        acceptNode: function (node) {
-          if (node.nodeType === 1) {
-            var nt = (node.tagName || '').toUpperCase();
-            if (nt === 'INPUT' || nt === 'TEXTAREA') return 1 /* FILTER_ACCEPT */;
-            if (shouldIgnoreElement(node)) return 2 /* FILTER_REJECT (skips whole subtree!) */;
-          }
-          return 1;
-        }
-      });
-      var current = walker.nextNode();
-      while (current) {
-        if (current.nodeType === 1) {
-          var cTag = (current.tagName || '').toUpperCase();
-          if (cTag === 'INPUT' || cTag === 'TEXTAREA') {
-            processAttributes(current);
-          } else {
-            processAttributes(current);
-            if (current.shadowRoot) {
-              observeRoot(current.shadowRoot);
-              walkAndTranslate(current.shadowRoot);
+      if (typeof document.createTreeWalker === 'function') {
+        var composerRoots = [];
+        var composerSingles = [];
+        var walker = document.createTreeWalker(rootEl, 5 /* SHOW_ELEMENT | SHOW_TEXT */, {
+          acceptNode: function (node) {
+            if (node.nodeType === 1) {
+              var nt = (node.tagName || '').toUpperCase();
+              if (nt === 'INPUT' || nt === 'TEXTAREA') return 1 /* FILTER_ACCEPT */;
+              if (shouldIgnoreElement(node)) {
+                if (isComposerSubtreeRoot(node)) composerRoots.push(node);
+                else if (node.getAttribute && node.getAttribute('aria-label')) composerSingles.push(node);
+                return 2 /* FILTER_REJECT (skips whole subtree!) */;
+              }
             }
-            tryHealFragmentedText(current);
+            return 1;
           }
-        } else if (current.nodeType === 3) {
-          processTextNode(current);
+        });
+        var current = walker.nextNode();
+        while (current) {
+          if (current.nodeType === 1) {
+            var cTag = (current.tagName || '').toUpperCase();
+            if (cTag === 'INPUT' || cTag === 'TEXTAREA') {
+              processAttributes(current);
+            } else {
+              processAttributes(current);
+              if (current.shadowRoot) {
+                observeRoot(current.shadowRoot);
+                walkAndTranslate(current.shadowRoot);
+              }
+              if (!tryConvergeEmptyState(current)) {
+                if (!tryCombinedSentenceTranslation(current)) {
+                  tryHealFragmentedText(current);
+                }
+              }
+            }
+          } else if (current.nodeType === 3) {
+            processTextNode(current);
+          }
+          current = walker.nextNode();
         }
-        current = walker.nextNode();
+        for (var cr = 0; cr < composerRoots.length; cr++) translateComposerLabelsInSubtree(composerRoots[cr]);
+        for (var cs = 0; cs < composerSingles.length; cs++) translateComposerLabel(composerSingles[cs], false);
+      } else {
+        var chs = rootEl.childNodes;
+        for (var i = 0; chs && i < chs.length; i++) {
+          walkAndTranslate(chs[i]);
+        }
       }
     }
 
@@ -999,6 +2107,40 @@
       }
     }
 
+    function drainBatchedSets(addedSet, textSet, attrMap) {
+      if (attrMap.size > 0) {
+        attrMap.forEach(function (attrSet, target) {
+          processAttributes(target, Array.from(attrSet));
+        });
+        attrMap.clear();
+      }
+      if (textSet.size > 0) {
+        textSet.forEach(function (tNode) {
+          processTextNode(tNode);
+        });
+        textSet.clear();
+      }
+      if (addedSet.size > 0) {
+        var roots = [];
+        addedSet.forEach(function (node) {
+          var hasAnc = false;
+          var p = node.parentElement;
+          while (p) {
+            if (addedSet.has(p)) {
+              hasAnc = true;
+              break;
+            }
+            p = p.parentElement;
+          }
+          if (!hasAnc) roots.push(node);
+        });
+        addedSet.clear();
+        for (var i = 0; i < roots.length; i++) {
+          walkAndTranslate(roots[i]);
+        }
+      }
+    }
+
     function flushPendingBatch() {
       batchScheduled = false;
       if (isApplying || !engine.isEnabled()) {
@@ -1008,37 +2150,20 @@
         return;
       }
       runWithoutObserver(function () {
-        if (pendingAttrNodes.size > 0) {
-          pendingAttrNodes.forEach(function (attrSet, target) {
-            processAttributes(target, Array.from(attrSet));
-          });
-          pendingAttrNodes.clear();
-        }
-        if (pendingTextNodes.size > 0) {
-          pendingTextNodes.forEach(function (tNode) {
-            processTextNode(tNode);
-          });
-          pendingTextNodes.clear();
-        }
-        if (pendingAddedNodes.size > 0) {
-          var roots = [];
-          pendingAddedNodes.forEach(function (node) {
-            var hasAnc = false;
-            var p = node.parentElement;
-            while (p) {
-              if (pendingAddedNodes.has(p)) {
-                hasAnc = true;
-                break;
-              }
-              p = p.parentElement;
-            }
-            if (!hasAnc) roots.push(node);
-          });
-          pendingAddedNodes.clear();
-          for (var i = 0; i < roots.length; i++) {
-            walkAndTranslate(roots[i]);
-          }
-        }
+        drainBatchedSets(pendingAddedNodes, pendingTextNodes, pendingAttrNodes);
+      });
+    }
+
+    function flushPortalBatch() {
+      portalDebounceTimer = null;
+      if (isApplying || !engine.isEnabled()) {
+        pendingPortalNodes.clear();
+        pendingPortalTextNodes.clear();
+        pendingPortalAttrNodes.clear();
+        return;
+      }
+      runWithoutObserver(function () {
+        drainBatchedSets(pendingPortalNodes, pendingPortalTextNodes, pendingPortalAttrNodes);
       });
     }
 
@@ -1052,34 +2177,72 @@
       }
     }
 
+    function schedulePortalBatch() {
+      if (portalDebounceTimer) clearTimeout(portalDebounceTimer);
+      portalDebounceTimer = setTimeout(flushPortalBatch, PORTAL_DEBOUNCE_MS);
+    }
+
+    function isPortalMutationNode(node) {
+      if (!node) return false;
+      var el = node.nodeType === 3 ? node.parentElement : node;
+      if (!el || el.nodeType !== 1) return false;
+      if (typeof el.closest === 'function') {
+        try {
+          if (el.closest('[data-base-ui-portal], [data-hover-card-popup]')) return true;
+        } catch (_e) {}
+      }
+      var cur = el;
+      while (cur && (typeof document === 'undefined' || cur !== document.body)) {
+        if (hasAttr(cur, 'data-base-ui-portal') || hasAttr(cur, 'data-hover-card-popup')) return true;
+        cur = cur.parentElement;
+      }
+      return false;
+    }
+
     function ensureObserver() {
       if (!observer && typeof MutationObserver === 'function') {
         observer = new MutationObserver(function (mutations) {
           if (isApplying || !engine.isEnabled()) return;
-          var any = false;
+          var anyMain = false;
+          var anyPortal = false;
           for (var i = 0; i < mutations.length; i++) {
             var m = mutations[i];
             if (m.type === 'childList') {
               for (var j = 0; j < m.addedNodes.length; j++) {
                 var added = m.addedNodes[j];
+                if (skipCache && added && added.nodeType === 1) skipCache.delete(added);
                 if (added.shadowRoot) observeRoot(added.shadowRoot);
-                pendingAddedNodes.add(added);
-                any = true;
+                if (isPortalMutationNode(added) || isPortalMutationNode(m.target)) {
+                  pendingPortalNodes.add(added);
+                  anyPortal = true;
+                } else {
+                  pendingAddedNodes.add(added);
+                  anyMain = true;
+                }
               }
             } else if (m.type === 'characterData') {
-              pendingTextNodes.add(m.target);
-              any = true;
+              if (isPortalMutationNode(m.target)) {
+                pendingPortalTextNodes.add(m.target);
+                anyPortal = true;
+              } else {
+                pendingTextNodes.add(m.target);
+                anyMain = true;
+              }
             } else if (m.type === 'attributes') {
-              var set = pendingAttrNodes.get(m.target);
+              var isP = isPortalMutationNode(m.target);
+              var targetAttrMap = isP ? pendingPortalAttrNodes : pendingAttrNodes;
+              var set = targetAttrMap.get(m.target);
               if (!set) {
                 set = new Set();
-                pendingAttrNodes.set(m.target, set);
+                targetAttrMap.set(m.target, set);
               }
               set.add(m.attributeName);
-              any = true;
+              if (isP) anyPortal = true;
+              else anyMain = true;
             }
           }
-          if (any) scheduleBatch();
+          if (anyMain) scheduleBatch();
+          if (anyPortal) schedulePortalBatch();
         });
       }
     }
@@ -1148,7 +2311,9 @@
       runFullScan();
     }
 
-    // Hover Tooltip / Radix Portal / Floating UI / ContextMenu scanner
+    // Hover Tooltip / Radix Portal / Base UI Portal / HoverCard / Floating UI / ContextMenu scanner
+    var FLOATING_PORTAL_SEL = '[role="tooltip"], [role="menu"], [role="dialog"], [data-floating-ui-portal], [data-radix-popper-content-wrapper], [data-base-ui-portal], [data-hover-card-popup], .popover, .tooltip, .context-view, .monaco-hover';
+
     function isFloatingElement(el) {
       if (!el || el.nodeType !== 1) return false;
       if (el === document.body || el === document.documentElement || el.id === 'workbench') return false;
@@ -1156,14 +2321,16 @@
       if (cls.indexOf('monaco-workbench') !== -1) return false;
       if (el.matches) {
         try {
-          if (el.matches('[role="tooltip"], [role="menu"], [role="dialog"], [data-floating-ui-portal], [data-radix-popper-content-wrapper], .popover, .tooltip, .context-view, .monaco-hover')) {
+          if (el.matches(FLOATING_PORTAL_SEL)) {
             return true;
           }
         } catch (_e) {}
       }
       var role = el.getAttribute ? el.getAttribute('role') : '';
       if (role === 'tooltip' || role === 'menu' || role === 'dialog') return true;
-      if (el.hasAttribute && (el.hasAttribute('data-floating-ui-portal') || el.hasAttribute('data-radix-popper-content-wrapper'))) return true;
+      if (hasAttr(el, 'data-floating-ui-portal') || hasAttr(el, 'data-radix-popper-content-wrapper') || hasAttr(el, 'data-base-ui-portal') || hasAttr(el, 'data-hover-card-popup')) {
+        return true;
+      }
       return cls.indexOf('popover') !== -1 || cls.indexOf('tooltip') !== -1 || cls.indexOf('context-view') !== -1 || cls.indexOf('monaco-hover') !== -1;
     }
 
@@ -1175,9 +2342,11 @@
         if (last && last.previousElementSibling && isFloatingElement(last.previousElementSibling)) {
           walkAndTranslate(last.previousElementSibling);
         }
-        var portals = document.querySelectorAll('[role="tooltip"], [role="menu"], [role="dialog"], [data-floating-ui-portal], [data-radix-popper-content-wrapper], .popover, .tooltip, .context-view, .monaco-hover');
-        for (var i = 0; i < portals.length; i++) {
-          walkAndTranslate(portals[i]);
+        if (typeof document.querySelectorAll === 'function') {
+          var portals = document.querySelectorAll(FLOATING_PORTAL_SEL);
+          for (var i = 0; i < portals.length; i++) {
+            walkAndTranslate(portals[i]);
+          }
         }
       });
     }
@@ -1207,8 +2376,10 @@
     function bootListeners() {
       runFullScan();
       if (document.body) observeRoot(document.body);
-      document.addEventListener('contextmenu', onHoverOrContext, { capture: true, passive: true });
-      if (typeof window !== 'undefined') {
+      if (typeof document.addEventListener === 'function') {
+        document.addEventListener('contextmenu', onHoverOrContext, { capture: true, passive: true });
+      }
+      if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
         window.addEventListener('popstate', function () { setTimeout(runFullScan, 60); });
       }
       // Low-frequency safety scan (30s via requestIdleCallback, never spinning)
@@ -1227,7 +2398,7 @@
       }, 30000);
     }
 
-    if (document.readyState === 'loading') {
+    if (document.readyState === 'loading' && typeof document.addEventListener === 'function') {
       document.addEventListener('DOMContentLoaded', bootListeners);
     } else {
       bootListeners();
@@ -1238,6 +2409,7 @@
       runFullScan: runFullScan,
       applyPayload: applyPayload,
       translateText: engine.translateText,
+      tryCombinedSentenceTranslation: tryCombinedSentenceTranslation,
       shouldIgnoreElement: shouldIgnoreElement,
       looksLikeCodeOrPath: looksLikeCodeOrPath
     };
@@ -1252,7 +2424,8 @@
     looksLikeCodeOrPath: looksLikeCodeOrPath,
     shouldIgnoreElement: shouldIgnoreElement,
     createTranslatorEngine: createTranslatorEngine,
-    initPreloadI18n: initPreloadI18n
+    initPreloadI18n: initPreloadI18n,
+    mountDomI18n: initPreloadI18n
   };
 
   if (typeof module !== 'undefined' && module.exports) {

@@ -7,7 +7,7 @@ const { ConfigStore } = require('../shared/config-store');
 let currentLangOverride = null;
 const dictCache = new Map();
 
-// Complete Antigravity 2.34.0 Native Menu, Context Menu, System Tray & Dialog Vocabulary
+// Complete Antigravity 2.35.2 Native Menu, Context Menu, System Tray & Dialog Vocabulary
 // [en, zh-CN, zh-TW]
 const NATIVE_ENTRIES = [
   // Top-level menus & standard Electron roles
@@ -266,6 +266,44 @@ const NATIVE_ENTRIES = [
   ['Send Immediately', '立即发送', '立即傳送'],
   ['Connection info…', '连接信息…', '連線資訊…'],
   ['Connection info', '连接信息', '連線資訊'],
+
+  // 2.35.0 - 2.35.2 Inbox, Move Conversation, Continue as New, Open with, Remote Agents & Downloads
+  ['Resolve', '标为已解决', '標為已解決'],
+  ['Return to Inbox', '移回收件箱', '移回收件匣'],
+  ['Inbox Mode', '收件箱模式', '收件匣模式'],
+  ['Working Section', '“正在工作”分组', '「正在執行」分組'],
+  ['Auto-Resolve', '自动解决', '自動解決'],
+  ['Subtitle', '副标题', '副標題'],
+  ['Move to Project', '移动到项目', '移動至專案'],
+  ['Move to Workspace', '移动到工作区', '移動至工作區'],
+  ['New Project...', '新建项目...', '新增專案...'],
+  ['New Workspace...', '新建工作区...', '新增工作區...'],
+  ['Remove from Project', '从项目中移除', '從專案中移除'],
+  ['Remove from Workspace', '从工作区中移除', '從工作區中移除'],
+  ['Continue as a New Conversation', '作为新对话继续', '作為新對話繼續'],
+  ['Continue in Current Workspace', '在当前工作区继续', '在目前工作區繼續'],
+  ['Continue in Shared Workspace', '在共享工作区继续', '在共享工作區繼續'],
+  ['Continue in New Workspace', '在新工作区继续', '在新工作區繼續'],
+  ['Open with', '打开方式', '開啟方式'],
+  ['Text viewer', '文本查看器', '文字檢視器'],
+  ['Image viewer', '图片查看器', '圖片檢視器'],
+  ['Video player', '视频播放器', '視訊播放器'],
+  ['Audio player', '音频播放器', '音訊播放器'],
+  ['HTML viewer', 'HTML 查看器', 'HTML 檢視器'],
+  ['Notebook viewer', 'Notebook 查看器', 'Notebook 檢視器'],
+  ['PDF viewer', 'PDF 查看器', 'PDF 檢視器'],
+  ['System default app', '系统默认应用', '系統預設應用程式'],
+  ['Application Menu', '应用菜单', '應用程式選單'],
+  ['For Me', '仅自己使用', '僅自己使用'],
+  ['For My Team', '团队共享', '團隊共享'],
+  ['Sidecar disabled', 'Sidecar 已禁用', 'Sidecar 已停用'],
+  ['Not running', '未运行', '未執行'],
+  ['Open in external browser', '在外部浏览器中打开', '在外部瀏覽器中開啟'],
+  ['Open in External Browser', '在外部浏览器中打开', '在外部瀏覽器中開啟'],
+  ['Show in folder', '在文件夹中显示', '在資料夾中顯示'],
+  ['Cancel download', '取消下载', '取消下載'],
+  ['Remove from list', '从列表中移除', '從列表中移除'],
+  ['Close downloads', '关闭下载列表', '關閉下載列表'],
 ];
 
 const BUILTIN_EXACT = {
@@ -359,6 +397,16 @@ function resolveEffectiveLang(lang) {
   return lang === 'zh-TW' ? 'zh-TW' : (lang === 'en' ? 'en' : 'zh-CN');
 }
 
+function getDictionary(lang = getCurrentLanguage()) {
+  const effLang = resolveEffectiveLang(lang);
+  if (effLang === 'en') return { exact: {}, regex: [] };
+  const dict = loadDict(effLang);
+  return {
+    exact: Object.assign({}, dict.exact, BUILTIN_EXACT[effLang] || {}),
+    regex: dict.regex.slice(),
+  };
+}
+
 function translateNativeLabel(label, lang = getCurrentLanguage()) {
   if (!label || typeof label !== 'string' || lang === 'en') return label;
   const effLang = resolveEffectiveLang(lang);
@@ -372,7 +420,29 @@ function translateNativeLabel(label, lang = getCurrentLanguage()) {
     if (Object.prototype.hasOwnProperty.call(builtinMap, rawTrim)) return builtinMap[rawTrim];
   }
 
-  // 2. Built-in native dynamic patterns (e.g. "Open in Chrome (Default)", "Move to Group: X")
+  // 2. Dynamic viewer/status suffixes: "(Not running)" / "(Sidecar disabled)" / "(Default)"
+  const statusSuffixMatch = clean.match(/^(.+?)\s+\((Not running|Sidecar disabled)\)$/);
+  if (statusSuffixMatch) {
+    const base = statusSuffixMatch[1].trim();
+    const dictForPrefix = loadDict(effLang);
+    const baseTrans = (builtinMap && builtinMap[base]) || dictForPrefix.exact[base] || base;
+    const reasonKey = statusSuffixMatch[2];
+    const reasonTrans = (builtinMap && builtinMap[reasonKey])
+      || (effLang === 'zh-TW'
+        ? (reasonKey === 'Sidecar disabled' ? 'Sidecar 已停用' : '未執行')
+        : (reasonKey === 'Sidecar disabled' ? 'Sidecar 已禁用' : '未运行'));
+    return `${baseTrans}（${reasonTrans}）`;
+  }
+
+  const defaultSuffixMatch = clean.match(/^(.+?)\s+\(Default\)$/i);
+  if (defaultSuffixMatch) {
+    const base = defaultSuffixMatch[1].trim();
+    if (builtinMap && Object.prototype.hasOwnProperty.call(builtinMap, base)) {
+      return `${builtinMap[base]}${effLang === 'zh-TW' ? '（預設）' : '（默认）'}`;
+    }
+  }
+
+  // 3. Built-in native dynamic patterns (e.g. "Open in Chrome (Default)", "Move to Group: X")
   const builtinRegs = BUILTIN_REGEX[effLang] || [];
   for (const rule of builtinRegs) {
     if (rule.re.test(clean)) {
@@ -380,7 +450,7 @@ function translateNativeLabel(label, lang = getCurrentLanguage()) {
     }
   }
 
-  // 3. Full merged dictionary fallback (6,600+ entries + 540+ regex rules)
+  // 4. Full merged dictionary fallback (6,800+ entries + 540+ regex rules)
   const dict = loadDict(effLang);
   if (Object.prototype.hasOwnProperty.call(dict.exact, clean)) {
     return dict.exact[clean];
@@ -490,6 +560,7 @@ function formatTrayAgentCount(count, lang = getCurrentLanguage()) {
 module.exports = {
   getCurrentLanguage,
   setCurrentLanguage,
+  getDictionary,
   translateNativeLabel,
   translateMenuItemOptions,
   translateMenuTemplate,

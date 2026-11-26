@@ -59,6 +59,22 @@ const CLAMP_256K_X64 = Buffer.from('81fa00e80300be00e803000f42f2', 'hex');
 const PATCH_256K_X64 = Buffer.concat([Buffer.from('89d6', 'hex'), Buffer.alloc(12, 0x90)]);
 const DEF_ORIG_X64 = Buffer.from('c7400c00e80300', 'hex');
 const DEF_PREFIX_X64 = Buffer.from('c7400c', 'hex');
+const X64_CLAMP_VARIANTS = [
+  {
+    id: 'edx_esi_256k',
+    origLimit: 256000,
+    origBuf: CLAMP_256K_X64,
+    dynBuf: PATCH_256K_X64,
+    constOpcode: 0xbe
+  },
+  {
+    id: 'ecx_edx_128k',
+    origLimit: 128000,
+    origBuf: Buffer.from('81f900f40100ba00f401000f42d1', 'hex'),
+    dynBuf: Buffer.concat([Buffer.from('89ca', 'hex'), Buffer.alloc(12, 0x90)]),
+    constOpcode: 0xba
+  }
+];
 const SERIALIZER_STOCK_X64 = Buffer.from('4889442470488b8c24a80100008908b830000000', 'hex');
 const SERIALIZER_HEAD_X64 = Buffer.from('4889442470c700', 'hex');
 const SERIALIZER_TAIL_X64 = Buffer.from('90909090b830000000', 'hex');
@@ -112,9 +128,24 @@ function decodeArm64BlTarget(instr, pcVA) {
   return pcVA + BigInt(imm26 * 4);
 }
 
-function buildClampConstX64(limitTokens) {
+function findClampVariant(variantOrGate3a) {
+  const variantId = typeof variantOrGate3a === 'string'
+    ? variantOrGate3a
+    : variantOrGate3a?.clampVariant;
+  return X64_CLAMP_VARIANTS.find((v) => v.id === variantId) || X64_CLAMP_VARIANTS[0];
+}
+
+function buildClampOrigX64(variantOrGate3a) {
+  return findClampVariant(variantOrGate3a).origBuf;
+}
+
+function buildClampDynX64(variantOrGate3a) {
+  return findClampVariant(variantOrGate3a).dynBuf;
+}
+
+function buildClampConstX64(limitTokens, variantOrGate3a) {
   const out = Buffer.alloc(14, 0x90);
-  out[0] = 0xbe;
+  out[0] = findClampVariant(variantOrGate3a).constOpcode;
   out.writeUInt32LE(limitTokens >>> 0, 1);
   return out;
 }
@@ -237,6 +268,26 @@ function detectTargetBinary(customPath) {
     if (fs.existsSync(p)) return p;
   }
   return null;
+}
+
+function detectCliBinary(customPath, options = {}) {
+  if (customPath) {
+    const resolved = path.resolve(customPath);
+    if (fs.existsSync(resolved)) return resolved;
+    throw new Error(`指定的目标文件不存在: ${customPath}`);
+  }
+  const { resolveCliExecutable } = require('./meter-cli-launcher');
+  const res = resolveCliExecutable(null, options);
+  if (!res || !res.ok) return null;
+  let candidate = res.exePath || res.cliPath;
+  if (!candidate) return null;
+  const lower = String(candidate).toLowerCase();
+  if (lower.endsWith('.cmd') || lower.endsWith('.bat')) {
+    const sib = path.join(path.dirname(candidate), 'agy.exe');
+    if (fs.existsSync(sib)) candidate = sib;
+    else return null;
+  }
+  return fs.existsSync(candidate) ? path.resolve(candidate) : null;
 }
 
 function findTextSection(buf) {
@@ -536,19 +587,41 @@ function checkGate3A(buf, textOff, sym, arch, options = {}) {
   const clampHits = [];
   for (let i = 0; i <= body.length - 14; i++) {
     const slice = body.subarray(i, i + 14);
-    if (slice.equals(CLAMP_256K_X64)) {
-      clampHits.push({ state: 'ORIG', mode: 'default', limit: DEFAULT_CHECKPOINT_TOKENS, offset: fnOff + i });
-    } else if (slice.equals(PATCH_256K_X64)) {
-      clampHits.push({ state: 'DYN', mode: 'dynamic', limit: null, offset: fnOff + i });
-    } else if (slice[0] === 0xbe) {
-      let allNops = true;
-      for (let j = 5; j < 14; j++) {
-        if (slice[j] !== 0x90) { allNops = false; break; }
+    for (const variant of X64_CLAMP_VARIANTS) {
+      if (slice.equals(variant.origBuf)) {
+        clampHits.push({
+          state: 'ORIG',
+          mode: 'default',
+          limit: variant.origLimit,
+          origLimit: variant.origLimit,
+          clampVariant: variant.id,
+          offset: fnOff + i
+        });
+        break;
       }
-      if (allNops) {
+      if (slice.equals(variant.dynBuf)) {
+        clampHits.push({
+          state: 'DYN',
+          mode: 'dynamic',
+          limit: null,
+          origLimit: variant.origLimit,
+          clampVariant: variant.id,
+          offset: fnOff + i
+        });
+        break;
+      }
+      if (slice[0] === variant.constOpcode && slice.subarray(5, 14).every((b) => b === 0x90)) {
         const imm = slice.readUInt32LE(1);
         if (imm >= 4096 && imm <= 16 * 1024 * 1024) {
-          clampHits.push({ state: 'CONST', mode: 'fixed', limit: imm, offset: fnOff + i });
+          clampHits.push({
+            state: 'CONST',
+            mode: 'fixed',
+            limit: imm,
+            origLimit: variant.origLimit,
+            clampVariant: variant.id,
+            offset: fnOff + i
+          });
+          break;
         }
       }
     }
@@ -646,11 +719,14 @@ function checkGate3A(buf, textOff, sym, arch, options = {}) {
   }
 
   const hasDefaultSite = Boolean(chosenDef);
+  const origLimit = chosenClamp.origLimit || DEFAULT_CHECKPOINT_TOKENS;
   const baseInfo = {
     offset: chosenClamp.offset,
     length: 14,
     mode: chosenClamp.mode,
     limit: chosenClamp.limit,
+    origLimit,
+    clampVariant: chosenClamp.clampVariant || 'edx_esi_256k',
     clampState: chosenClamp.state,
     defaultOffset: chosenDef ? chosenDef.offset : null,
     defaultLength: chosenDef ? 7 : 0,
@@ -663,7 +739,7 @@ function checkGate3A(buf, textOff, sym, arch, options = {}) {
 
   if (hasDefaultSite) {
     if (chosenClamp.state === 'ORIG' && chosenDef.state !== 'ORIG') {
-      return { ...baseInfo, status: 'partial', reason: `Gate 3A 部分匹配：clamp 为官方默认 (256,000)，但 default 站点为 ${chosenDef.limit.toLocaleString('en-US')}` };
+      return { ...baseInfo, status: 'partial', reason: `Gate 3A 部分匹配：clamp 为官方默认 (${origLimit.toLocaleString('en-US')})，但 default 站点为 ${chosenDef.limit.toLocaleString('en-US')}` };
     }
     if (chosenClamp.state === 'DYN' && chosenDef.state !== 'ORIG') {
       return { ...baseInfo, status: 'partial', reason: `Gate 3A 部分匹配：clamp 为动态透传 (DYN)，但 default 站点未处于官方默认值 (实测 ${chosenDef.limit.toLocaleString('en-US')})` };
@@ -1465,6 +1541,9 @@ function buildAnalysisResult({
       configuredMode: manifest.configuredMode || null,
       configuredLimitTokens: manifest.configuredLimitTokens ?? null
     } : null,
+    ...(container?.format === 'Mach-O' || process.platform === 'darwin'
+      ? { macosSignatureWarning: 'macOS 修改 language_server 二进制会破坏官方 Hardened Runtime 签名，运行中可能因 Code Signature Invalid 触发 SIGKILL 闪退；默认关闭，建议还原并重装客户端后执行 codesign -vvv --deep --strict 验签。' }
+      : {}),
     author: AUTHOR_INFO
   };
 }
@@ -2197,6 +2276,8 @@ function applyUnlock(options = {}) {
       origSize: fileSize,
       backupPath: backupFile,
       backupSha256: beforeSha256,
+      gate3aVariant: gate3a.clampVariant || 'edx_esi_256k',
+      gate3aOrigLimit: gate3a.origLimit || DEFAULT_CHECKPOINT_TOKENS,
       gate3bOrigHex: gate3b.origHex || null,
       gate3bLength: gate3b.length || null,
       gate3bOffset: gate3b.offset ?? null,
@@ -2220,11 +2301,15 @@ function applyUnlock(options = {}) {
 
   const syncedConfigs = syncExternalContextConfigs(targetSpec.mode, targetSpec.limitTokens, options);
 
+  const effectiveLimitTokens = targetSpec.mode === 'default'
+    ? (gate3a.origLimit || DEFAULT_CHECKPOINT_TOKENS)
+    : targetSpec.limitTokens;
+
   if (manifestToSave) {
     manifestToSave.patchedSha256 = afterSha256;
     manifestToSave.patchedAt = new Date().toISOString();
     manifestToSave.configuredMode = targetSpec.mode;
-    manifestToSave.configuredLimitTokens = targetSpec.limitTokens;
+    manifestToSave.configuredLimitTokens = effectiveLimitTokens;
     manifestToSave.needsRestart = true;
     saveManifest(manifestToSave, options.backupDir);
   }
@@ -2448,7 +2533,7 @@ function patchUnlockBuffer(buf, targetSpec, gate3a, gate3b, serializerGate, gate
   };
 
   if (targetSpec.mode === 'default') {
-    buf.set(isArm64 ? CLAMP_256K_ARM64 : CLAMP_256K_X64, gate3a.offset);
+    buf.set(isArm64 ? CLAMP_256K_ARM64 : buildClampOrigX64(gate3a), gate3a.offset);
     if (gate3a.hasDefaultSite && gate3a.defaultOffset !== null) {
       buf.set(isArm64 ? DEF_ORIG_ARM64 : DEF_ORIG_X64, gate3a.defaultOffset);
     }
@@ -2460,7 +2545,7 @@ function patchUnlockBuffer(buf, targetSpec, gate3a, gate3b, serializerGate, gate
       serializerPatched = true;
     }
   } else if (targetSpec.mode === 'fixed') {
-    buf.set(isArm64 ? buildClampConstArm64(targetSpec.limitTokens) : buildClampConstX64(targetSpec.limitTokens), gate3a.offset);
+    buf.set(isArm64 ? buildClampConstArm64(targetSpec.limitTokens) : buildClampConstX64(targetSpec.limitTokens, gate3a), gate3a.offset);
     if (gate3a.hasDefaultSite && gate3a.defaultOffset !== null) {
       buf.set(isArm64 ? buildDefConstArm64(targetSpec.limitTokens) : buildDefConstX64(targetSpec.limitTokens), gate3a.defaultOffset);
     }
@@ -2472,7 +2557,7 @@ function patchUnlockBuffer(buf, targetSpec, gate3a, gate3b, serializerGate, gate
       serializerPatched = true;
     }
   } else if (targetSpec.mode === 'dynamic') {
-    buf.set(isArm64 ? PATCH_256K_ARM64 : PATCH_256K_X64, gate3a.offset);
+    buf.set(isArm64 ? PATCH_256K_ARM64 : buildClampDynX64(gate3a), gate3a.offset);
     if (gate3a.hasDefaultSite && gate3a.defaultOffset !== null) {
       buf.set(isArm64 ? DEF_ORIG_ARM64 : DEF_ORIG_X64, gate3a.defaultOffset);
     }
@@ -2628,6 +2713,8 @@ async function applyUnlockAsync(options = {}) {
         origSize: fileSize,
         backupPath: backupFile,
         backupSha256: beforeSha256,
+        gate3aVariant: gate3a.clampVariant || 'edx_esi_256k',
+        gate3aOrigLimit: gate3a.origLimit || DEFAULT_CHECKPOINT_TOKENS,
         gate3bOrigHex: gate3b.origHex || null,
         gate3bLength: gate3b.length || null,
         gate3bOffset: gate3b.offset ?? null,
@@ -2652,11 +2739,15 @@ async function applyUnlockAsync(options = {}) {
 
     const syncedConfigs = syncExternalContextConfigs(targetSpec.mode, targetSpec.limitTokens, options);
 
+    const effectiveLimitTokens = targetSpec.mode === 'default'
+      ? (gate3a.origLimit || DEFAULT_CHECKPOINT_TOKENS)
+      : targetSpec.limitTokens;
+
     if (manifestToSave) {
       manifestToSave.patchedSha256 = afterSha256;
       manifestToSave.patchedAt = new Date().toISOString();
       manifestToSave.configuredMode = targetSpec.mode;
-      manifestToSave.configuredLimitTokens = targetSpec.limitTokens;
+      manifestToSave.configuredLimitTokens = effectiveLimitTokens;
       manifestToSave.needsRestart = true;
       saveManifest(manifestToSave, options.backupDir);
     }
@@ -3052,8 +3143,10 @@ module.exports = {
   MIN_ENGINEERING_LIMIT,
   MAX_ENGINEERING_LIMIT,
   KNOWN_LIMIT_PRESETS,
+  X64_CLAMP_VARIANTS,
   validateContextLimit,
   detectTargetBinary,
+  detectCliBinary,
   findTextSection,
   findPclntab,
   buildFunctions,

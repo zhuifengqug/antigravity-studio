@@ -118,6 +118,58 @@ function collectBundleFiles(projectRoot = PROJECT_ROOT) {
   return overlay;
 }
 
+function readAsarPackageVersionSafe(asarPath) {
+  try {
+    const raw = readAsarFile(asarPath, 'package.json').toString('utf8');
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed.version === 'string' && parsed.version.trim()
+      ? parsed.version.trim()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function atomicCopyFile(srcPath, destPath) {
+  const tmpDest = `${destPath}.tmp-${process.pid}-${Date.now()}`;
+  fs.copyFileSync(srcPath, tmpDest);
+  try {
+    fs.renameSync(tmpDest, destPath);
+  } catch {
+    fs.copyFileSync(tmpDest, destPath);
+    try { fs.unlinkSync(tmpDest); } catch {}
+  }
+}
+
+function ensureStockBackup(asarPath, backupPath, stockPkgVersion, isAlreadyPatched, currentAsarSha) {
+  if (!fs.existsSync(backupPath)) {
+    atomicCopyFile(asarPath, backupPath);
+    return { rotated: false, rotatedBackupPath: null, previousBackupVersion: null };
+  }
+  if (isAlreadyPatched) {
+    return { rotated: false, rotatedBackupPath: null, previousBackupVersion: null };
+  }
+
+  const backupVersion = readAsarPackageVersionSafe(backupPath);
+  const backupSha = sha256File(backupPath);
+  const stockSha = currentAsarSha || sha256File(asarPath);
+  if (backupVersion === stockPkgVersion && backupSha === stockSha) {
+    return { rotated: false, rotatedBackupPath: null, previousBackupVersion: backupVersion };
+  }
+
+  const verTag = String(backupVersion || 'unknown').replace(/[^a-zA-Z0-9._-]/g, '_');
+  const rotatedBackupPath = `${asarPath}.studio-orig.${verTag}.bak`;
+  if (!fs.existsSync(rotatedBackupPath)) {
+    atomicCopyFile(backupPath, rotatedBackupPath);
+  }
+  atomicCopyFile(asarPath, backupPath);
+  return {
+    rotated: true,
+    rotatedBackupPath,
+    previousBackupVersion: backupVersion,
+  };
+}
+
 function getBackupCandidates(asarPath) {
   return [
     `${asarPath}${BACKUP_SUFFIX}`,
@@ -162,6 +214,7 @@ function getStudioStatus(options = {}) {
     found: true,
     asarPath,
     installed: Boolean(embeddedManifest),
+    hasStudioManifest,
     appVersion: pkg.version || 'unknown',
     productName: pkg.productName || 'Antigravity',
     studioVersion: embeddedManifest?.studioVersion || null,
@@ -256,10 +309,16 @@ function installStudio(options = {}) {
     };
   }
 
-  // Backup before modifying
-  if (!fs.existsSync(backupPath)) {
-    fs.copyFileSync(asarPath, backupPath);
-  }
+  // Backup before modifying: when installing onto an unpatched ASAR (host upgrade),
+  // rotate stale backup instead of letting restore downgrade to an older host version.
+  const isPatchedAsar = Boolean(statusBefore.hasStudioManifest || statusBefore.installed);
+  const backupOutcome = ensureStockBackup(
+    asarPath,
+    backupPath,
+    pkg.version,
+    isPatchedAsar,
+    statusBefore.currentSha256
+  );
   const origBackupSha = sha256File(backupPath);
 
   const manifest = {
@@ -269,6 +328,10 @@ function installStudio(options = {}) {
     asarPath,
     backupPath,
     backupSha256: origBackupSha,
+    ...(backupOutcome.rotated ? {
+      rotatedBackupPath: backupOutcome.rotatedBackupPath,
+      previousBackupVersion: backupOutcome.previousBackupVersion,
+    } : {}),
     patchedFiles: targetFiles,
     warnings: allWarnings,
   };

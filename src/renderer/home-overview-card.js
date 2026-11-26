@@ -14,14 +14,161 @@
     { tokens: 998000, zh: '《平凡的世界》', zhTW: '《平凡的世界》', en: 'Ordinary World' }
   ];
 
-  var MODEL_COLORS = [
-    'var(--ags-accent, #D97757)',
-    '#3B82F6',
-    '#10B981',
-    '#8B5CF6',
-    '#F59E0B',
-    '#EC4899'
+  // Camp-aware dual-theme model color palettes ([darkHex, lightHex]) — 26 fixed slots + golden-angle HSL fallback
+  var MODEL_CAMP_PALETTES = {
+    gemini: [
+      ['#4F8BFF', '#2563EB'],
+      ['#22D3EE', '#0891B2'],
+      ['#818CF8', '#4F46E5'],
+      ['#2DD4BF', '#0D9488'],
+      ['#93C5FD', '#1E40AF']
+    ],
+    claude: [
+      ['#F59E0B', '#D97706'],
+      ['#FB7185', '#E11D48'],
+      ['#F97316', '#C2410C'],
+      ['#FBBF24', '#B45309'],
+      ['#F43F5E', '#BE123C']
+    ],
+    gpt: [
+      ['#34D399', '#059669'],
+      ['#A3E635', '#65A30D'],
+      ['#4ADE80', '#16A34A'],
+      ['#5EEAD4', '#0F766E']
+    ],
+    deepseek: [
+      ['#A78BFA', '#7C3AED'],
+      ['#E879F9', '#C026D3'],
+      ['#C084FC', '#9333EA'],
+      ['#F472B6', '#DB2777']
+    ]
+  };
+  MODEL_CAMP_PALETTES.orchestrator = [
+    ['#818CF8', '#4F46E5'],
+    ['#C4B5FD', '#6D28D9'],
+    ['#38BDF8', '#0284C7'],
+    ['#4F8BFF', '#2563EB']
   ];
+  var MODEL_OVERFLOW_PALETTE = [
+    ['#38BDF8', '#0284C7'],
+    ['#EC4899', '#BE185D'],
+    ['#84CC16', '#4D7C0F'],
+    ['#FB923C', '#EA580C'],
+    ['#C4B5FD', '#6D28D9'],
+    ['#FACC15', '#CA8A04'],
+    ['#14B8A6', '#115E59'],
+    ['#94A3B8', '#475569']
+  ];
+  var MODEL_ALL_FALLBACKS = [].concat(
+    MODEL_OVERFLOW_PALETTE,
+    MODEL_CAMP_PALETTES.gemini,
+    MODEL_CAMP_PALETTES.claude,
+    MODEL_CAMP_PALETTES.gpt,
+    MODEL_CAMP_PALETTES.deepseek
+  );
+
+  function detectModelCamp(id) {
+    var s = String(id || '').toLowerCase();
+    if (/orchestrator|编排/.test(s)) {
+      if (/claude|anthropic|opus|sonnet|haiku/.test(s)) return 'claude';
+      if (/gpt|openai|codex|chatgpt/.test(s)) return 'gpt';
+      if (/deepseek/.test(s)) return 'deepseek';
+      return 'orchestrator';
+    }
+    if (/gemini|palm|bard|\b(?:neon|carbon|argon|hydrogen)\b/.test(s)) return 'gemini';
+    if (/claude|anthropic|opus|sonnet|haiku/.test(s)) return 'claude';
+    if (/gpt|openai|codex|chatgpt|\bo[134](?:-|\b)/.test(s)) return 'gpt';
+    if (/deepseek/.test(s)) return 'deepseek';
+    return 'other';
+  }
+
+  function hslToHex(hDeg, sPct, lPct) {
+    var h = (((hDeg % 360) + 360) % 360) / 360;
+    var s = sPct / 100;
+    var l = lPct / 100;
+    var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    var p = 2 * l - q;
+    function ch(t) {
+      var k = t < 0 ? t + 1 : t > 1 ? t - 1 : t;
+      var v = k < 1 / 6 ? p + (q - p) * 6 * k : k < 0.5 ? q : k < 2 / 3 ? p + (q - p) * (2 / 3 - k) * 6 : p;
+      return Math.round(v * 255).toString(16).padStart(2, '0').toUpperCase();
+    }
+    return '#' + ch(h + 1 / 3) + ch(h) + ch(h - 1 / 3);
+  }
+
+  function fnv1aHash(str) {
+    var h = 2166136261;
+    for (var i = 0; i < str.length; i++) {
+      h = Math.imul(h ^ str.charCodeAt(i), 16777619);
+    }
+    return h >>> 0;
+  }
+
+  function resolveHomeModelColours(ids, fallbackIndices) {
+    var seen = {};
+    var uniqueIds = [];
+    var raw = Array.isArray(ids) ? ids : [];
+    for (var i = 0; i < raw.length; i++) {
+      var k = raw[i];
+      if (!k || typeof k !== 'string') continue;
+      if (!Object.prototype.hasOwnProperty.call(seen, k)) {
+        seen[k] = true;
+        uniqueIds.push(k);
+      }
+    }
+    uniqueIds.sort();
+
+    var usedDark = {};
+    var usedLight = {};
+    var out = {};
+    for (var u = 0; u < uniqueIds.length; u++) {
+      var id = uniqueIds[u];
+      var camp = detectModelCamp(id);
+      var campPool = MODEL_CAMP_PALETTES[camp] || [];
+      var candidates = campPool.concat(MODEL_ALL_FALLBACKS);
+      var picked = null;
+      for (var c = 0; c < candidates.length; c++) {
+        var pair = candidates[c];
+        if (!usedDark[pair[0]] && !usedLight[pair[1]]) {
+          picked = pair;
+          break;
+        }
+      }
+      if (!picked) {
+        var baseHue = fnv1aHash(id) % 360;
+        for (var step = 0; step < 360; step++) {
+          var hue = (baseHue + step * 137.508) % 360;
+          var dHex = hslToHex(hue, 76, step % 2 === 0 ? 64 : 54);
+          var lHex = hslToHex(hue, 72, step % 2 === 0 ? 42 : 34);
+          if (!usedDark[dHex] && !usedLight[lHex]) {
+            picked = [dHex, lHex];
+            break;
+          }
+        }
+      }
+      usedDark[picked[0]] = true;
+      usedLight[picked[1]] = true;
+      var baseIdx = fallbackIndices && Number.isInteger(fallbackIndices[id]) ? fallbackIndices[id] : (u % 10);
+      out[id] = { idx: baseIdx, dark: picked[0], light: picked[1], camp: camp };
+    }
+    return out;
+  }
+
+  function resolveTopModel(d) {
+    if (!d) return '';
+    if (typeof d.topModel === 'string' && d.topModel.trim()) return d.topModel.trim();
+    if (typeof d.model === 'string' && d.model.trim()) return d.model.trim();
+    var list = Array.isArray(d.byModel) ? d.byModel : (Array.isArray(d.models) ? d.models : null);
+    if (list && list.length > 0) {
+      var first = list[0];
+      if (typeof first === 'string' && first.trim()) return first.trim();
+      if (first && typeof first === 'object') {
+        var lbl = first.model || first.id || first.name || '';
+        if (typeof lbl === 'string' && lbl.trim()) return lbl.trim();
+      }
+    }
+    return '';
+  }
 
   function esc(str) {
     return String(str == null ? '' : str)
@@ -110,7 +257,9 @@
       '.ags-home-model-left { display:inline-flex; align-items:center; gap:7px; min-width:0; }',
       '.ags-home-swatch { width:8px; height:8px; border-radius:50%; flex-shrink:0; }',
       '.ags-home-prog { height:5px; border-radius:99px; background:var(--ags-bg-subtle, rgba(148,163,184,.16)); overflow:hidden; }',
-      '.ags-home-prog-fill { height:100%; border-radius:99px; transition:width 200ms ease; }'
+      '.ags-home-prog-fill { height:100%; border-radius:99px; transition:width 200ms ease; }',
+      '.ags-home-swatch[data-ag-mc], .ags-home-prog-fill[data-ag-mc] { background:var(--_mc-d); }',
+      'html[data-ags-mode="light"] .ags-home-swatch[data-ag-mc], html[data-ags-mode="light"] .ags-home-prog-fill[data-ag-mc] { background:var(--_mc-l); }'
     ].join('\n');
     (document.head || document.documentElement).appendChild(s);
   }
@@ -270,15 +419,20 @@
             };
 
       var d = state.data || {};
+      var topModelName = resolveTopModel(d);
+      var isLightMode = typeof document !== 'undefined' && document.documentElement && document.documentElement.getAttribute &&
+        document.documentElement.getAttribute('data-ags-mode') === 'light';
       var sig = [
         lang,
         state.tab,
         state.days,
+        isLightMode ? 'light' : 'dark',
         d.sessions || 0,
         d.calls || d.messages || 0,
         d.totalTokens || 0,
         d.activeDays || 0,
-        d.topModel || '',
+        topModelName,
+        Array.isArray(d.byModel) ? d.byModel.length : 0,
         d.updatedAt || ''
       ].join('|');
       if (sig === state.lastRenderSig && card.firstChild) return;
@@ -307,7 +461,7 @@
           [labels.total, fmtCompact(totalTok)],
           [labels.days, fmtCount(d.activeDays || 0)],
           [labels.peak, fmtPeakHour(d.peakHour, lang)],
-          [labels.topModel, d.topModel || '—']
+          [labels.topModel, topModelName || '—']
         ];
         var kpiHtml = kpis.map(function (k) {
           return '<div class="ags-home-kpi"><span class="ags-home-kpi-lbl">' + esc(k[0]) +
@@ -339,21 +493,26 @@
         var deskPct = deskTok + cliTok > 0 ? Math.round((deskTok / sumSrc) * 100) : 100;
         var cliPct = deskTok + cliTok > 0 ? (100 - deskPct) : 0;
 
-        var models = Array.isArray(d.byModel) ? d.byModel.slice(0, 6) : [];
+        var rawModels = Array.isArray(d.byModel) ? d.byModel : (Array.isArray(d.models) ? d.models : []);
+        var models = rawModels.slice(0, 6);
+        var colorMap = resolveHomeModelColours(rawModels.map(function (m) { return (m && (m.model || m.id || m.name)) || ''; }));
         var sumModels = models.reduce(function (acc, m) { return acc + Number(m.totalTokens || 0); }, 0) || 1;
         var maxModel = Math.max.apply(null, models.map(function (m) { return Number(m.totalTokens || 0); }).concat([1]));
         var modelRows = models.length
-          ? models.map(function (m, idx) {
+          ? models.map(function (m) {
+              var mName = (m && (m.model || m.id || m.name)) || 'unknown';
               var tok = Number(m.totalTokens || 0);
               var pct = ((tok / sumModels) * 100).toFixed(1).replace(/\.0$/, '');
               var barW = Math.round((tok / maxModel) * 100);
-              var color = MODEL_COLORS[idx % MODEL_COLORS.length];
+              var spec = colorMap[mName] || { dark: '#4F8BFF', light: '#2563EB' };
+              var activeColor = isLightMode ? spec.light : spec.dark;
+              var colorStyle = '--_mc-d:' + spec.dark + ';--_mc-l:' + spec.light + ';background:' + activeColor;
               return '<div class="ags-home-model-row">' +
                 '  <div class="ags-home-model-meta">' +
-                '    <span class="ags-home-model-left"><span class="ags-home-swatch" style="background:' + color + '"></span><span>' + esc(m.model || 'unknown') + '</span></span>' +
+                '    <span class="ags-home-model-left"><span class="ags-home-swatch" data-ag-mc="' + esc(activeColor) + '" style="' + colorStyle + '"></span><span>' + esc(mName) + '</span></span>' +
                 '    <span style="color:var(--ags-text-secondary)">' + esc(fmtCompact(tok)) + ' (' + pct + '%)</span>' +
                 '  </div>' +
-                '  <div class="ags-home-prog"><div class="ags-home-prog-fill" style="width:' + barW + '%;background:' + color + '"></div></div>' +
+                '  <div class="ags-home-prog"><div class="ags-home-prog-fill" data-ag-mc="' + esc(activeColor) + '" style="width:' + barW + '%;' + colorStyle + '"></div></div>' +
                 '</div>';
             }).join('')
           : '<div style="font-size:12px;color:var(--ags-text-secondary)">' + esc(labels.noModels) + '</div>';
@@ -413,7 +572,10 @@
   var api = {
     createHomeOverviewCard: createHomeOverviewCard,
     normalizeHeatmap7xN: normalizeHeatmap7xN,
-    formatFunBookText: formatFunBookText
+    formatFunBookText: formatFunBookText,
+    resolveHomeModelColours: resolveHomeModelColours,
+    detectModelCamp: detectModelCamp,
+    resolveTopModel: resolveTopModel
   };
 
   if (typeof module !== 'undefined' && module.exports) {
