@@ -9321,18 +9321,56 @@ return {mountCodexEffortSlider,installMenuObserver,installAntigravityObserver,in
     var nav = null;
     var rightPane = null;
 
+    var leftPane = null;
     if (split && split.children && split.children.length >= 2) {
-      nav = split.children[0];
+      leftPane = split.children[0];
       rightPane = split.children[split.children.length - 1];
     } else if (split && split.children && split.children.length === 1) {
-      nav = split.children[0];
+      leftPane = split.children[0];
     } else {
-      nav = doc.querySelector('nav');
+      leftPane = doc.querySelector('nav');
     }
 
-    if (!nav) return null;
+    if (!leftPane) return null;
 
-    if (!rightPane || rightPane === nav) {
+    nav = leftPane;
+    var listNode = nav.querySelector
+      ? nav.querySelector('[data-testid="conversation-list-sidebar"], [data-sidebar-scroll-container="true"]')
+      : null;
+    if (listNode) {
+      var walk = listNode.parentElement;
+      while (walk && walk !== leftPane) {
+        if (
+          walk.children &&
+          walk.children.length >= 2 &&
+          walk.querySelector &&
+          walk.querySelector('[data-testid="new-conversation-button"], [data-testid="navigation-items"]')
+        ) {
+          nav = walk;
+          break;
+        }
+        walk = walk.parentElement;
+      }
+    }
+    if (nav === leftPane) {
+      for (var unwrap = 0; unwrap < 4; unwrap++) {
+        var nonIgnored = [];
+        var chList = nav.children || [];
+        for (var ui = 0; ui < chList.length; ui++) {
+          var uc = chList[ui];
+          if (uc && (!uc.getAttribute || uc.getAttribute('data-ag-studio-ignore') !== 'true')) {
+            nonIgnored.push(uc);
+          }
+        }
+        if (nonIgnored.length === 1 && nonIgnored[0].children && nonIgnored[0].children.length >= 2) {
+          nav = nonIgnored[0];
+        } else {
+          break;
+        }
+      }
+    }
+
+    if (!rightPane || rightPane === leftPane || rightPane === nav) {
       var conv = doc.querySelector('[data-testid="conversation-view"]');
       var home = doc.querySelector('.agy-home');
       rightPane =

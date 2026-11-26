@@ -270,3 +270,56 @@ test('applySessionProxy configures proxy on persist:ag-studio-gemini-web partiti
   assert.equal(geminiCall.cfg.mode, 'fixed_servers');
   assert.equal(geminiCall.cfg.proxyRules, 'http://127.0.0.1:7897');
 });
+
+test('Gemini Web mode unwraps 2.35.2 nested sidebar-split wrapper divs (div.contents / data-peek-surface)', () => {
+  const { doc, makeEl } = createMiniDom();
+  const split = makeEl('div');
+  split.setAttribute('data-testid', 'sidebar-split');
+  const outerWrap = makeEl('div', { class: 'contents' });
+  const peekSurface = makeEl('div');
+  peekSurface.setAttribute('data-peek-surface', 'closed');
+  const innerAside = makeEl('aside');
+
+  const headerSlot = makeEl('div');
+  headerSlot._rect = { top: 0, left: 0, width: 260, height: 40 };
+  const navItems = makeEl('div');
+  navItems.setAttribute('data-testid', 'navigation-items');
+  const newBtn = makeEl('div');
+  newBtn.setAttribute('data-testid', 'new-conversation-button');
+  navItems.appendChild(newBtn);
+  const convList = makeEl('div');
+  convList.setAttribute('data-testid', 'conversation-list-sidebar');
+  const convRow = makeEl('div');
+  convRow.setAttribute('data-testid', 'conversation-row-sidebar');
+  convList.appendChild(convRow);
+  const footerSlot = makeEl('div');
+  footerSlot._rect = { top: 550, left: 0, width: 260, height: 48 };
+
+  innerAside.appendChild(headerSlot);
+  innerAside.appendChild(navItems);
+  innerAside.appendChild(convList);
+  innerAside.appendChild(footerSlot);
+  peekSurface.appendChild(innerAside);
+  outerWrap.appendChild(peekSurface);
+
+  const rightPane = makeEl('div');
+  rightPane._rect = { top: 0, left: 260, width: 1000, height: 600 };
+  split.appendChild(outerWrap);
+  split.appendChild(rightPane);
+  doc.body.appendChild(split);
+
+  const ctrl = geminiWebMod.createGeminiWebController({ getDocument: () => doc });
+  ctrl.sync({ cfg: { geminiWeb: { enabled: true, defaultUrl: 'https://gemini.google.com/app' } } });
+
+  const dock = doc.querySelector('[data-testid="ags-gemini-mode-dock"]');
+  assert.ok(dock, 'dock must mount inside unwrapped innerAside');
+  assert.equal(dock.parentNode, innerAside, 'dock must mount inside innerAside, not outer div.contents wrapper');
+  assert.equal(innerAside.children[1], dock, 'dock must appear right after headerSlot and before navigation-items');
+
+  ctrl.setMode('gemini');
+  assert.equal(headerSlot.classList.contains('ags-gw-native-hidden'), false);
+  assert.equal(navItems.classList.contains('ags-gw-native-hidden'), true);
+  assert.equal(convList.classList.contains('ags-gw-native-hidden'), true);
+  assert.equal(footerSlot.classList.contains('ags-gw-native-hidden'), false);
+  ctrl.destroy();
+});
