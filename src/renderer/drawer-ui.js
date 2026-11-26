@@ -820,6 +820,15 @@
           ? '  <div class="ags-row"><span>512K 呼吸试管 (胶囊模式)</span><input type="checkbox" id="ags-vial-enabled" ' + (hudCfg.showVial !== false ? 'checked' : '') + '></div>'
           : ''),
         '  <div class="ags-row"><span>新对话首页用量概览卡片</span><input type="checkbox" id="ags-home-card-enabled" ' + (cfg.homeOverview !== false && hudCfg.homeOverview !== false ? 'checked' : '') + '></div>',
+        '  <div class="ags-row"><span>左上角 [Code | Gemini] 网页聊天</span><input type="checkbox" id="ags-gemini-web-enabled" ' + (!cfg.geminiWeb || cfg.geminiWeb.enabled !== false ? 'checked' : '') + '></div>',
+        '  <div class="ags-row"><span>网页聊天默认入口</span>' +
+        '    <select class="ags-select" style="width:165px" id="ags-gemini-web-url">' +
+        '      <option value="https://gemini.google.com/app" ' + (((!cfg.geminiWeb || !cfg.geminiWeb.defaultUrl || cfg.geminiWeb.defaultUrl === 'https://gemini.google.com/app') ? 'selected' : '')) + '>Gemini 网页版</option>' +
+        '      <option value="https://aistudio.google.com" ' + ((cfg.geminiWeb && cfg.geminiWeb.defaultUrl === 'https://aistudio.google.com') ? 'selected' : '') + '>Google AI Studio</option>' +
+        '      <option value="https://chatgpt.com" ' + ((cfg.geminiWeb && cfg.geminiWeb.defaultUrl === 'https://chatgpt.com') ? 'selected' : '') + '>ChatGPT</option>' +
+        '      <option value="https://claude.ai" ' + ((cfg.geminiWeb && cfg.geminiWeb.defaultUrl === 'https://claude.ai') ? 'selected' : '') + '>Claude</option>' +
+        '      <option value="https://chat.deepseek.com" ' + ((cfg.geminiWeb && cfg.geminiWeb.defaultUrl === 'https://chat.deepseek.com') ? 'selected' : '') + '>DeepSeek</option>' +
+        '    </select></div>',
         '  <details class="ags-details">',
         '    <summary>' + esc(t('customThemeTitle')) + ' & 三轨字体 (' + scannedFonts.length + ')</summary>',
         '    <div class="ags-row" style="gap:6px">' +
@@ -1244,6 +1253,15 @@
       var homeCardEl = el.querySelector('#ags-home-card-enabled');
       if (homeCardEl) homeCardEl.addEventListener('change', function () {
         opts.saveConfig({ homeOverview: homeCardEl.checked, hud: { homeOverview: homeCardEl.checked } });
+      });
+
+      var gwEnabledEl = el.querySelector('#ags-gemini-web-enabled');
+      var gwUrlEl = el.querySelector('#ags-gemini-web-url');
+      if (gwEnabledEl) gwEnabledEl.addEventListener('change', function () {
+        opts.saveConfig({ geminiWeb: { enabled: gwEnabledEl.checked, defaultUrl: gwUrlEl ? gwUrlEl.value : undefined } });
+      });
+      if (gwUrlEl) gwUrlEl.addEventListener('change', function () {
+        opts.saveConfig({ geminiWeb: { enabled: gwEnabledEl ? gwEnabledEl.checked : true, defaultUrl: gwUrlEl.value } });
       });
 
       var fxMap = [

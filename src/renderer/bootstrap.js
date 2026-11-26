@@ -16,6 +16,7 @@
   var effortSliderApi = window.__AG_STUDIO_EFFORT_SLIDER__;
   var thoughtTranslatorApi = window.__AG_STUDIO_THOUGHT_TRANSLATOR__;
   var inlineDiffApi = window.__AG_STUDIO_INLINE_DIFF__;
+  var geminiWebApi = window.__AG_STUDIO_GEMINI_WEB__;
   var drawerApi = window.__AG_STUDIO_DRAWER__ || window.__AG_STUDIO_DASHBOARD__;
 
   var currentConfig = {
@@ -24,6 +25,7 @@
     hud: { enabled: true, displayStyle: 'ring', position: 'composer', showVial: true, homeOverview: true },
     fx: { inkStream: true, smoothCaret: true, edgeAura: true, effortSlider: false, inlineDiff: true },
     homeOverview: true,
+    geminiWeb: { enabled: true, defaultUrl: 'https://gemini.google.com/app' },
     i18n: { language: 'zh-CN' },
     thought: {
       mode: 'off',
@@ -146,6 +148,13 @@
     ? inlineDiffApi.createInlineDiffController()
     : null;
 
+  var geminiWeb = geminiWebApi && geminiWebApi.createGeminiWebController
+    ? geminiWebApi.createGeminiWebController({
+        api: api,
+        onOpenSettings: function () { drawer.toggle(true); }
+      })
+    : null;
+
   root.appendChild(drawer.element);
 
   var lastThemeSig = '';
@@ -255,6 +264,15 @@
     }
     if (inlineDiff && typeof inlineDiff.sync === 'function') {
       inlineDiff.sync(currentConfig, api);
+    }
+    if (geminiWeb && typeof geminiWeb.sync === 'function') {
+      geminiWeb.sync({
+        cfg: currentConfig,
+        api: api,
+        isGenerating: fused.isGenerating,
+        awaitingDecision: fused.awaitingDecision,
+        onOpenSettings: function () { drawer.toggle(true); }
+      });
     }
   }
 

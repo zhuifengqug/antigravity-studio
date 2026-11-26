@@ -103,6 +103,9 @@ async function applySessionProxy(electronApp, electronSession, proxyCfg) {
   try {
     await applyOne(electronSession.fromPartition('persist:hub-browser-anonymous'));
   } catch {}
+  try {
+    await applyOne(electronSession.fromPartition('persist:ag-studio-gemini-web'));
+  } catch {}
   return { applied: true, enabled: Boolean(cfg?.enabled), proxyUrl: cfg?.proxyUrl || null };
 }
 

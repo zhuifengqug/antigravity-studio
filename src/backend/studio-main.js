@@ -2302,6 +2302,31 @@ function registerIpcOnce() {
     }, ownerHwndStr);
   });
 
+  handleSafe('ag-studio:gemini-web-clear-session', async () => {
+    const sess = session && typeof session.fromPartition === 'function'
+      ? session.fromPartition('persist:ag-studio-gemini-web')
+      : null;
+    if (sess && typeof sess.clearStorageData === 'function') {
+      await sess.clearStorageData();
+      return { ok: true };
+    }
+    return { ok: false, error: 'Electron session unavailable' };
+  });
+
+  handleSafe('ag-studio:gemini-web-open-external', async (_ev, rawUrl) => {
+    let parsed;
+    try {
+      parsed = new URL(String(rawUrl || '').trim());
+    } catch {
+      return { ok: false, error: 'Invalid URL' };
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      return { ok: false, error: 'Blocked URL protocol' };
+    }
+    await shell.openExternal(parsed.toString());
+    return { ok: true, url: parsed.toString() };
+  });
+
   handleSafe('ag-studio:open-path', async (_ev, target) => {
     store.ensureLayout();
     const p = target === 'fonts'

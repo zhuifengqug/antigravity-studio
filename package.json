@@ -1,7 +1,7 @@
 {
   "name": "antigravity-studio",
-  "version": "2.3.0",
-  "description": "All-in-one desktop enhancement engine for Google Antigravity 2.x: Claude & Antigravity themes, 4 pixel mascots (Clawd/Deepy/Astra/Whalegirl), breathing 512K vial + HUD, home overview card, v2.35.2 full localization, real-time thought translator, fail-closed inline Git diff preview, real context/quota/speed telemetry, multi-account switcher, prompt tiers & Chinese title patch, context unlocker, compact rehydrate, and TUN-free local proxy.",
+  "version": "2.4.0",
+  "description": "All-in-one desktop enhancement engine for Google Antigravity 2.x: Claude & Antigravity themes, top-left [Code | Gemini] web chat mode, 4 pixel mascots (Clawd/Deepy/Astra/Whalegirl), breathing 512K vial + HUD, home overview card, v2.35.2 full localization, real-time thought translator, fail-closed inline Git diff preview, real context/quota/speed telemetry, multi-account switcher, prompt tiers & Chinese title patch, context unlocker, compact rehydrate, and TUN-free local proxy.",
   "main": "cli.js",
   "bin": {
     "ag-studio": "cli.js"

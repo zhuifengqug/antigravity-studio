@@ -80,6 +80,8 @@
       diagnoseThought: function (payload) { return invoke('ag-studio:thought-diagnose', payload || {}); },
       clearThoughtCache: function () { return invoke('ag-studio:thought-clear-cache'); },
       getInlineDiff: function (payload) { return invoke('ag-studio:inline-diff', payload || {}); },
+      clearGeminiWebSession: function () { return invoke('ag-studio:gemini-web-clear-session'); },
+      openGeminiWebExternal: function (url) { return invoke('ag-studio:gemini-web-open-external', url); },
       openPath: function (target) { return invoke('ag-studio:open-path', target); },
       restartHost: function () { return invoke('ag-studio:restart-host'); },
       restartLanguageServers: function () { return invoke('ag-studio:restart-language-servers'); },

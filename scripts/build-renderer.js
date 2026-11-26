@@ -32,6 +32,7 @@ function buildAll() {
     path.join(ROOT, 'src', 'renderer', 'effort-slider.js'),
     path.join(ROOT, 'src', 'renderer', 'thought-translator.js'),
     path.join(ROOT, 'src', 'renderer', 'inline-diff.js'),
+    path.join(ROOT, 'src', 'renderer', 'gemini-web-mode.js'),
     path.join(ROOT, 'src', 'renderer', 'drawer-ui.js'),
     path.join(ROOT, 'src', 'renderer', 'bootstrap.js'),
   ];

@@ -3,7 +3,7 @@
 const os = require('os');
 const path = require('path');
 
-const STUDIO_VERSION = '2.3.0';
+const STUDIO_VERSION = '2.4.0';
 const STUDIO_DIR_NAME = 'ag-studio';
 const STATE_DIR_NAME = 'AntigravityStudio';
 const LEGACY_METER_DIR_NAME = 'AntigravityContextMeter';
@@ -142,6 +142,10 @@ function getDefaultConfig() {
       },
     },
     homeOverview: true,
+    geminiWeb: {
+      enabled: true,
+      defaultUrl: 'https://gemini.google.com/app',
+    },
     homeOverviewPrefs: {
       defaultView: 'overview', // overview | models
       defaultDays: 0, // 0 (all) | 30 | 7
